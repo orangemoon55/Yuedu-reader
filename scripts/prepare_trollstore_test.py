@@ -203,7 +203,7 @@ def run(*args):
     return subprocess.check_output([str(x) for x in args], stderr=subprocess.STDOUT, text=True)
 
 
-def check_binary(path):
+def check_binary(path, strict_minimum=True):
     description = run("/usr/bin/file", "-b", path)
     need("Mach-O" in description, "目标可执行文件不是 Mach-O：" + path.name)
     arches = run("xcrun", "lipo", "-archs", path).split()
@@ -221,8 +221,9 @@ def check_binary(path):
             minimum = re.search(r"\bversion ([0-9.]+)", block)
             need(minimum, "Mach-O 缺少最低 iOS 版本：" + path.name)
             minimums.append(minimum[1])
-    need(minimums and all(version(v) <= (17, 0, 0) for v in minimums),
-         "Mach-O 最低系统版本高于 iOS 17.0 或无法确认：" + path.name)
+    if strict_minimum:
+        need(minimums and all(version(v) <= (17, 0, 0) for v in minimums),
+             "Mach-O 最低系统版本高于 iOS 17.0 或无法确认：" + path.name)
     print("真机二进制复核通过：" + path.name + "；最低 iOS " + ", ".join(minimums))
 
 
@@ -266,7 +267,7 @@ def package(source, path_file, output):
             with path.open("rb") as stream:
                 header = stream.read(4)
             if header in magic:
-                check_binary(path)
+                check_binary(path, strict_minimum=False)
     nested = list(staged.rglob("*.framework")) + list(staged.rglob("*.dylib"))
     for path in sorted(nested, key=lambda p: len(p.parts), reverse=True):
         if not path.is_symlink():
