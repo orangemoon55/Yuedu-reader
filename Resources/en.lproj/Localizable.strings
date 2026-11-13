@@ -4496,3 +4496,6 @@
 "預讀章節數" = "Chapters to Preload";
 "提前下載正在閱讀章節之後的幾章。數字越大，對來源網站的請求與流量越多；同時進行的請求不超過「並行數」，最多 8 個。" = "Downloads the chapters after the one you are reading in advance. Higher numbers mean more requests and data to the source site; no more run at once than Concurrent Requests allows, up to 8.";
 "已調整順序" = "Reordered";
+"切換" = "Switch";
+"源內搜索" = "Search This Source";
+"請先匯入並啟用支援發現的書源" = "Import and enable a source with discovery first.";

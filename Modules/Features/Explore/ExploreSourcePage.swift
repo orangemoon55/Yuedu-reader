@@ -20,8 +20,24 @@ struct ExploreSourcePage: View {
     /// Opens a category that is a web page (a source's `java.startBrowser` link).
     let onNavigate: (String) -> Void
 
-    init(source: BookSource, onNavigate: @escaping (String) -> Void) {
+    private let layoutOverride: ExploreSourcePageLayout?
+    private let rankedSectionsFirst: Bool
+    private let onSearch: (() -> Void)?
+    private let onSwitchSource: (() -> Void)?
+
+    init(
+        source: BookSource,
+        layoutOverride: ExploreSourcePageLayout? = nil,
+        rankedSectionsFirst: Bool = false,
+        onSearch: (() -> Void)? = nil,
+        onSwitchSource: (() -> Void)? = nil,
+        onNavigate: @escaping (String) -> Void
+    ) {
         self.source = source
+        self.layoutOverride = layoutOverride
+        self.rankedSectionsFirst = rankedSectionsFirst
+        self.onSearch = onSearch
+        self.onSwitchSource = onSwitchSource
         self.onNavigate = onNavigate
         _discover = StateObject(wrappedValue: DiscoverViewModel(source: source))
     }
@@ -35,9 +51,13 @@ struct ExploreSourcePage: View {
 
     var body: some View {
         Group {
-            switch layout {
+            switch layoutOverride ?? layout {
             case .magazine:
-                DiscoverShowcaseView(discover: discover, onOpenPage: onNavigate)
+                DiscoverShowcaseView(
+                    discover: discover,
+                    rankedSectionsFirst: rankedSectionsFirst,
+                    onOpenPage: onNavigate
+                )
             case .list:
                 DiscoverListLayoutView(discover: discover, onOpenPage: onNavigate)
             }
@@ -47,12 +67,38 @@ struct ExploreSourcePage: View {
             .navigationTitle(currentSource.bookSourceName)
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showsDiscoverSettings = true } label: {
-                        Label(localized("發現頁設定"), systemImage: "gearshape")
+                if let onSearch, let onSwitchSource {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(localized("搜索"), action: onSearch)
+                            .accessibilityLabel(localized("源內搜索"))
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(localized("切換"), action: onSwitchSource)
+                            .accessibilityLabel(localized("切換來源配置"))
+                    }
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Button { showsDiscoverSettings = true } label: {
+                                Label(localized("發現頁設定"), systemImage: "gearshape")
+                            }
+                            if hasLogin {
+                                Button { showsLogin = true } label: {
+                                    Label(localized("登入"), systemImage: "person.crop.circle")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis").accessibilityHidden(true)
+                        }
+                        .accessibilityLabel(localized("更多"))
+                    }
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showsDiscoverSettings = true } label: {
+                            Label(localized("發現頁設定"), systemImage: "gearshape")
+                        }
                     }
                 }
-                if hasLogin {
+                if hasLogin, onSwitchSource == nil {
                     // The account in its own glass, apart from the page's settings.
                     #if compiler(>=6.2)
                     if #available(iOS 26.0, *) {

@@ -133,6 +133,23 @@ class BookSourceStore: @MainActor ObservableObject {
         return snapshot.withLock { $0.library }
     }
 
+    /// The small, Sendable subset needed to choose a discovery source. Filtering and sorting
+    /// are kept off the main actor; the selected source is looked up by indexed id afterwards.
+    nonisolated func discoverableSources() -> [DiscoverableBookSource] {
+        waitForRead()
+        let library = snapshot.withLock { $0.library }
+        return SourcePerfTrace.span(
+            "bookSources.discoverable",
+            "main=\(Thread.isMainThread) sources=\(library.count)",
+            thresholdMs: 1
+        ) {
+            library.lazy
+                .filter { $0.enabled && $0.enabledExplore && $0.exploreUrl.contains(where: { !$0.isWhitespace }) }
+                .map { DiscoverableBookSource(id: $0.id, name: $0.bookSourceName, url: $0.bookSourceUrl) }
+                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
+    }
+
     /// Replaces the whole library in memory, without saving — what assigning `sources` did
     /// before reads moved off the main actor.
     func replaceSources(_ newValue: [BookSource]) {

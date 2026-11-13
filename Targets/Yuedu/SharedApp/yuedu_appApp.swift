@@ -81,6 +81,7 @@ struct yuedu_appApp: App {
         // every store below reads from the new locations. A launch that touched a store
         // before this ran would come up with an empty shelf.
         StorageMigration.runIfNeeded()
+        BookshelfListPreferenceMigration.runIfNeeded()
         // Immediately after the migration and before anything else can log: every
         // `AppLogger` call from here on is captured for 設定 → 診斷與回報, and the
         // session record is what tells the next launch whether this one survived.

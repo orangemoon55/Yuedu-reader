@@ -10,6 +10,8 @@ import SwiftUI
 /// `docs/design.md` §10 — Discover archetype).
 struct DiscoverShowcaseView: View {
     @ObservedObject var discover: DiscoverViewModel
+    /// Places all vertical chart columns first, then the horizontal cover shelves.
+    var rankedSectionsFirst = false
     /// Opens a category that is a web page rather than a book list.
     var onOpenPage: ((String) -> Void)?
 
@@ -38,7 +40,8 @@ struct DiscoverShowcaseView: View {
                 } else if discover.sections.isEmpty {
                     DiscoverEmptyState(discover: discover)
                 } else {
-                    ForEach(discover.sections) { section in
+                    let sections = rankedSectionsFirst ? rankedSections + featuredSections : discover.sections
+                    ForEach(sections) { section in
                         if section.style == .ranked {
                             if section.id == firstRankedSectionId {
                                 DiscoverRankedSectionsCarousel(
@@ -78,6 +81,10 @@ struct DiscoverShowcaseView: View {
 
     private var rankedSections: [DiscoverShowcaseSection] {
         discover.sections.filter { $0.style == .ranked }
+    }
+
+    private var featuredSections: [DiscoverShowcaseSection] {
+        discover.sections.filter { $0.style != .ranked }
     }
 
     private var firstRankedSectionId: UUID? {

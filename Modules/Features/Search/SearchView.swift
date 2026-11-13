@@ -19,6 +19,10 @@ struct SearchView: View {
 @MainActor @Observable
 final class SearchTabNavigation {
     var path = NavigationPath()
+
+    func open(_ route: ExplorePush, store: BookStore) {
+        route.open(in: &path, store: store)
+    }
 }
 
 extension EnvironmentValues {
@@ -31,22 +35,46 @@ extension EnvironmentValues {
 /// on 探索; the card carousel is off here too (decision 27, extended to 搜索 after 5f-2).
 struct SearchTabRoot: View {
     @State private var navigation = SearchTabNavigation()
+    @State private var browserPresentation: BrowserPresentation?
+    @EnvironmentObject private var store: BookStore
+    let browser: BrowserState
+
+    private struct BrowserPresentation: Identifiable {
+        let id = UUID()
+        let entry: BrowserEntry
+    }
+
+    init(browser: BrowserState) {
+        self.browser = browser
+    }
 
     var body: some View {
         @Bindable var navigation = navigation
         NavigationStack(path: $navigation.path) {
-            SearchView(isTabRoot: true)
-                .remoteLibraryDestinations()
-                .publicLibraryDestinations()
+            SourceDiscoveryRoot { entry in
+                browserPresentation = BrowserPresentation(entry: entry)
+            }
+            .exploreRouteDestinations { entry in
+                browserPresentation = BrowserPresentation(entry: entry)
+            }
+            .remoteLibraryDestinations()
+            .publicLibraryDestinations()
         }
         .environment(\.searchTabNavigation, navigation)
+        .environment(\.explorePush) { route in navigation.open(route, store: store) }
         .environment(\.openPublicLibraryBooks) { [navigation] selection in
             if let book = selection.selectedBook { navigation.path.append(WorkDetailRoute(book)) }
+        }
+        .fullScreenCover(item: $browserPresentation) { presentation in
+            NavigationStack {
+                BrowserPage(browser: browser, entry: presentation.entry)
+            }
+            .environmentObject(store)
         }
     }
 }
 
 #Preview("搜索 tab") {
-    SearchTabRoot()
+    SearchTabRoot(browser: BrowserState())
         .environmentObject(BookStore())
 }

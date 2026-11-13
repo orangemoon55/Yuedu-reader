@@ -1,0 +1,51 @@
+name: 书架试用版 · TrollStore 云端构建
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: 新的主应用标识（不要使用原版标识）
+        required: true
+        default: com.local.readerpreview
+        type: string
+      display_name:
+        description: 桌面显示名称
+        required: true
+        default: 书架试用版
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 编译并生成真机测试 IPA
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - name: 获取所选分支的源码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 准备独立配置、真实编译并打包
+        env:
+          TEST_BUNDLE_ID: ${{ inputs.bundle_id }}
+          TEST_DISPLAY_NAME: ${{ inputs.display_name }}
+        run: bash scripts/build_trollstore_test.sh
+      - name: 保存成功生成的 IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 书架试用版-IPA-${{ github.run_id }}-${{ github.run_attempt }}
+          path: trollstore-output/*.ipa
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+      - name: 保存已过滤的构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 书架试用版-日志-${{ github.run_id }}-${{ github.run_attempt }}
+          path: trollstore-output/build.log
+          if-no-files-found: warn
+          retention-days: 7
