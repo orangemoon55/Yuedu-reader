@@ -17,6 +17,25 @@ struct LoginView: View {
     }
 
     var body: some View {
+        if PersonalBuildFeatures.isStandalone {
+            NavigationStack {
+                ContentUnavailableView(
+                    localized("帳號服務已停用"),
+                    systemImage: "person.crop.circle.badge.xmark",
+                    description: Text(localized("自用版無需登入。"))
+                )
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(localized("關閉")) { dismiss() }
+                    }
+                }
+            }
+        } else {
+            loginContent
+        }
+    }
+
+    private var loginContent: some View {
         NavigationStack {
             VStack(spacing: 30) {
                 VStack(alignment: .leading, spacing: 10) {

@@ -97,9 +97,11 @@ struct PaywallView: View {
                 }
             }
             .alert(localized("選擇購買方式"), isPresented: $showGuestPurchaseAlert) {
-                Button(localized("登入後購買")) {
-                    purchaseAfterLogin = true
-                    showLogin = true
+                if !PersonalBuildFeatures.isStandalone {
+                    Button(localized("登入後購買")) {
+                        purchaseAfterLogin = true
+                        showLogin = true
+                    }
                 }
                 Button(localized("直接購買")) {
                     purchaseAfterLogin = false
@@ -110,7 +112,9 @@ struct PaywallView: View {
                     purchaseAfterLogin = false
                 }
             } message: {
-                Text(localized("未登入時，會員只會跟隨本次購買使用的 Apple 帳號。登入後購買可綁定 Yuedu 帳號，切換 App Store 帳號後仍可使用。"))
+                Text(PersonalBuildFeatures.isStandalone
+                     ? localized("購買與恢復購買使用 Apple 帳號，自用版不提供閱讀帳號綁定。")
+                     : localized("未登入時，會員只會跟隨本次購買使用的 Apple 帳號。登入後購買可綁定 Yuedu 帳號，切換 App Store 帳號後仍可使用。"))
             }
             .alert(localized("TestFlight 版不支援購買"), isPresented: $store.isShowingTestFlightPurchaseNotice) {
                 Button(localized("好"), role: .cancel) {}

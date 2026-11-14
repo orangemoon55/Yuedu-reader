@@ -4498,4 +4498,8 @@
 "已調整順序" = "Reordered";
 "切換" = "Switch";
 "源內搜索" = "Search This Source";
+"帳號服務已停用" = "Account Services Disabled";
+"自用版無需登入。" = "No sign-in is required for this personal build.";
+"自用版已停用帳號服務" = "Account services are disabled in this personal build.";
+"購買與恢復購買使用 Apple 帳號，自用版不提供閱讀帳號綁定。" = "Purchases and restores use your Apple Account. Linking a reader account is unavailable in this personal build.";
 "請先匯入並啟用支援發現的書源" = "Import and enable a source with discovery first.";

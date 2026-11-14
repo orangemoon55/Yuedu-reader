@@ -293,8 +293,10 @@ struct yuedu_appApp: App {
                     }
                     // Bind the book store before the auth listener fires, so the
                     // first post-launch sync (triggered by the listener) sees it.
-                    FirestoreSyncManager.shared.bind(bookStore: bookStore)
-                    ICloudSyncManager.shared.bind(bookStore: bookStore)
+                    if !PersonalBuildFeatures.isStandalone {
+                        FirestoreSyncManager.shared.bind(bookStore: bookStore)
+                        ICloudSyncManager.shared.bind(bookStore: bookStore)
+                    }
                     SharedImportQueueDrainer.shared.bind(bookStore: bookStore)
                     WebDAVManager.shared.bind(bookStore: bookStore)
                     DiagnosticScale.publish(bookStore: bookStore, reason: "launch")
@@ -307,7 +309,9 @@ struct yuedu_appApp: App {
                         CacheManagementService(coverOwner: bookStore, retentionOwner: bookStore)
                     )
                     CacheAutoCleaner.shared.requestCheck(reason: "launch")
-                    _ = FirebaseAuthManager.shared
+                    if !PersonalBuildFeatures.isStandalone {
+                        _ = FirebaseAuthManager.shared
+                    }
                     Task {
                         await AppDependencies.live.offlineDownloadManager
                             .reconcileInterruptedDownloads(store: bookStore)
@@ -414,7 +418,8 @@ struct yuedu_appApp: App {
                     }
                 }
                 // Seamless iCloud: push/merge when leaving the app, in background time.
-                if newPhase == .background, GlobalSettings.shared.iCloudAutoSync {
+                if !PersonalBuildFeatures.isStandalone,
+                   newPhase == .background, GlobalSettings.shared.iCloudAutoSync {
                     ICloudSyncManager.shared.syncOnTheWayToTheBackground()
                 }
             }
@@ -440,7 +445,7 @@ struct yuedu_appApp: App {
     /// sync. `metadataFill` changes the shelf in the foreground too and is not ordered here.
     private func syncThenRefreshChapters(syncReason: String?) {
         Task {
-            if let syncReason {
+            if !PersonalBuildFeatures.isStandalone, let syncReason {
                 do {
                     try await ICloudSyncManager.shared.sync(reason: syncReason)
                 } catch {

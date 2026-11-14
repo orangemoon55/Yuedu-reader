@@ -65,15 +65,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
                 Form {
-                    Section {
-                        NavigationLink(destination: UserDetailView()) {
-                            AccountRowContent()
+                    if !PersonalBuildFeatures.isStandalone {
+                        Section {
+                            NavigationLink(destination: UserDetailView()) {
+                                AccountRowContent()
+                            }
+                            .accessibilityIdentifier("settings_account_row")
+                            // The first row measures the form's scroll for the title's fade.
+                            .rootTabTitleScrollAnchor()
                         }
-                        .accessibilityIdentifier("settings_account_row")
-                        // The first row measures the form's scroll for the title's fade.
-                        .rootTabTitleScrollAnchor()
+                        .interfaceSectionSurface()
                     }
-                    .interfaceSectionSurface()
 
                     // Grouped by what each is for (maintainer, 2026-10-27): 一般, 資源, 閱讀, 資料, 支援.
 
@@ -209,7 +211,7 @@ struct SettingsView: View {
                         DSSettingsRow(
                             icon: "arrow.triangle.2.circlepath.icloud",
                             title: localized("備份與同步"),
-                            detail: localized("iCloud、WebDAV"),
+                            detail: PersonalBuildFeatures.isStandalone ? localized("WebDAV 同步") : localized("iCloud、WebDAV"),
                             action: { showBackupSync = true }
                         )
 
@@ -241,14 +243,24 @@ struct SettingsView: View {
                     Section {
                         // 回饋中心 replaced 診斷與回報 (2026-10-15): reports, replies, and the
                         // diagnostic log viewer as its 診斷紀錄 row.
-                        NavigationLink {
-                            FeedbackCenterView()
-                        } label: {
-                            Label(localized("回饋中心"), systemImage: "exclamationmark.bubble")
-                                .foregroundColor(DSColor.textPrimary)
-                                .labelStyle(IconConsistentLabelStyle())
+                        if PersonalBuildFeatures.isStandalone {
+                            NavigationLink {
+                                DiagnosticsView()
+                            } label: {
+                                Label(localized("診斷紀錄"), systemImage: "stethoscope")
+                                    .foregroundColor(DSColor.textPrimary)
+                                    .labelStyle(IconConsistentLabelStyle())
+                            }
+                        } else {
+                            NavigationLink {
+                                FeedbackCenterView()
+                            } label: {
+                                Label(localized("回饋中心"), systemImage: "exclamationmark.bubble")
+                                    .foregroundColor(DSColor.textPrimary)
+                                    .labelStyle(IconConsistentLabelStyle())
+                            }
+                            .accessibilityIdentifier("settings_feedback_center")
                         }
-                        .accessibilityIdentifier("settings_feedback_center")
 
                         NavigationLink {
                             AboutSupportView(
@@ -304,7 +316,7 @@ struct SettingsView: View {
                 let arguments = ProcessInfo.processInfo.arguments
                 if arguments.contains("-open-diagnostics") {
                     autoOpenDiagnostics = true
-                } else if arguments.contains("-open-feedback-center") {
+                } else if !PersonalBuildFeatures.isStandalone, arguments.contains("-open-feedback-center") {
                     autoOpenFeedbackCenter = true
                 }
             }

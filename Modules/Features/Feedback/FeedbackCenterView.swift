@@ -9,49 +9,51 @@ struct FeedbackCenterView: View {
 
     var body: some View {
         Form {
-            Section {
-                NavigationLink {
-                    FeedbackComposeView()
-                } label: {
-                    Label {
-                        VStack(alignment: .leading, spacing: DSSpacing.xxs) {
-                            Text(localized("回饋與改進"))
-                                .foregroundStyle(DSColor.textPrimary)
-                            Text(localized("回報使用問題，與支援團隊溝通"))
-                                .font(DSFont.subheadline)
-                                .foregroundStyle(DSColor.textSecondary)
-                        }
-                    } icon: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                    .labelStyle(IconConsistentLabelStyle())
-                }
-                .accessibilityIdentifier("feedback_center_compose")
-
-                NavigationLink {
-                    FeedbackListView()
-                } label: {
-                    LabeledContent {
-                        if unreadCount > 0 {
-                            Text(unreadCount.formatted())
-                                .font(DSFont.caption.weight(.semibold))
-                                .foregroundStyle(DSColor.textOnFixedFill)
-                                .padding(.horizontal, DSSpacing.sm)
-                                .padding(.vertical, DSSpacing.xxs)
-                                .background(DSColor.destructive, in: Capsule())
-                                .accessibilityLabel(String(format: localized("%d 則未讀回覆"), unreadCount))
-                        }
+            if !PersonalBuildFeatures.isStandalone {
+                Section {
+                    NavigationLink {
+                        FeedbackComposeView()
                     } label: {
-                        SettingsRowLabel(localized("我的回饋"), systemImage: "bubble.left.and.text.bubble.right")
+                        Label {
+                            VStack(alignment: .leading, spacing: DSSpacing.xxs) {
+                                Text(localized("回饋與改進"))
+                                    .foregroundStyle(DSColor.textPrimary)
+                                Text(localized("回報使用問題，與支援團隊溝通"))
+                                    .font(DSFont.subheadline)
+                                    .foregroundStyle(DSColor.textSecondary)
+                            }
+                        } icon: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .labelStyle(IconConsistentLabelStyle())
+                    }
+                    .accessibilityIdentifier("feedback_center_compose")
+
+                    NavigationLink {
+                        FeedbackListView()
+                    } label: {
+                        LabeledContent {
+                            if unreadCount > 0 {
+                                Text(unreadCount.formatted())
+                                    .font(DSFont.caption.weight(.semibold))
+                                    .foregroundStyle(DSColor.textOnFixedFill)
+                                    .padding(.horizontal, DSSpacing.sm)
+                                    .padding(.vertical, DSSpacing.xxs)
+                                    .background(DSColor.destructive, in: Capsule())
+                                    .accessibilityLabel(String(format: localized("%d 則未讀回覆"), unreadCount))
+                            }
+                        } label: {
+                            SettingsRowLabel(localized("我的回饋"), systemImage: "bubble.left.and.text.bubble.right")
+                        }
+                    }
+                    .accessibilityIdentifier("feedback_center_list")
+
+                    Toggle(isOn: $screenshotPromptEnabled) {
+                        SettingsRowLabel(localized("截圖後顯示意見回饋入口"), systemImage: "camera.viewfinder")
                     }
                 }
-                .accessibilityIdentifier("feedback_center_list")
-
-                Toggle(isOn: $screenshotPromptEnabled) {
-                    SettingsRowLabel(localized("截圖後顯示意見回饋入口"), systemImage: "camera.viewfinder")
-                }
+                .interfaceSectionSurface()
             }
-            .interfaceSectionSurface()
 
             Section {
                 NavigationLink {
@@ -67,6 +69,7 @@ struct FeedbackCenterView: View {
         .navigationTitle(localized("回饋中心"))
         .toolbarTitleDisplayMode(.inline)
         .task {
+            guard !PersonalBuildFeatures.isStandalone else { return }
             // The badge follows the inbox while the page is open; a failure leaves it at
             // zero (the listener logs it, and 我的回饋 shows the error itself).
             do {

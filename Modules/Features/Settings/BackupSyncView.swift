@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct BackupSyncView: View {
-    @StateObject private var iCloudManager = ICloudSyncManager.shared
     @StateObject private var webDAVManager = WebDAVManager.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -9,14 +8,8 @@ struct BackupSyncView: View {
         NavigationStack {
             Form {
                 Section {
-                    NavigationLink {
-                        ICloudSyncView()
-                    } label: {
-                        syncRow(
-                            icon: "icloud.fill",
-                            title: localized("iCloud 同步"),
-                            detail: iCloudManager.statusTitle(isAppSignedIn: true)
-                        )
+                    if !PersonalBuildFeatures.isStandalone {
+                        ICloudBackupSyncRow()
                     }
 
                     NavigationLink {
@@ -48,9 +41,6 @@ struct BackupSyncView: View {
                     .accessibilityLabel(localized("關閉"))
                 }
             }
-            .task {
-                _ = await iCloudManager.refreshAccountStatus()
-            }
         }
     }
 
@@ -77,6 +67,35 @@ struct BackupSyncView: View {
                     .foregroundColor(DSColor.textSecondary)
                     .lineLimit(2)
             }
+        }
+    }
+}
+
+// Only constructed by the non-standalone branch, so opening WebDAV never
+// initializes a CloudKit container in standalone builds.
+private struct ICloudBackupSyncRow: View {
+    @StateObject private var manager = ICloudSyncManager.shared
+
+    var body: some View {
+        NavigationLink {
+            ICloudSyncView()
+        } label: {
+            HStack(spacing: DSSpacing.md) {
+                Image(systemName: "icloud.fill")
+                    .foregroundColor(DSColor.accent)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: DSSpacing.xs) {
+                    Text(localized("iCloud 同步"))
+                        .foregroundColor(DSColor.textPrimary)
+                    Text(manager.statusTitle(isAppSignedIn: true))
+                        .font(DSFont.caption)
+                        .foregroundColor(DSColor.textSecondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .task {
+            _ = await manager.refreshAccountStatus()
         }
     }
 }

@@ -140,6 +140,12 @@ def prepare():
         info["GIDClientID"] = config["CLIENT_ID"]
         info["CFBundleURLTypes"] = [{"CFBundleTypeRole": "Editor", "CFBundleURLSchemes": [config["REVERSED_CLIENT_ID"]]}]
     info["CFBundleDisplayName"] = name
+    info["ReaderStandalone"] = True
+    info["FirebaseDataCollectionDefaultEnabled"] = False
+    info["FirebaseCrashlyticsCollectionEnabled"] = False
+    info["FIREBASE_ANALYTICS_COLLECTION_ENABLED"] = False
+    info["FirebaseMessagingAutoInitEnabled"] = False
+    info["GatewayBaseURL"] = ""
     save(ROOT / "Info.plist", info)
     for relative, suffix in (("ShareExtension/Info.plist", " · 分享"), ("Widget/Info.plist", " · 小组件")):
         info = load(ROOT / relative)
@@ -203,7 +209,7 @@ def run(*args):
     return subprocess.check_output([str(x) for x in args], stderr=subprocess.STDOUT, text=True)
 
 
-def check_binary(path, strict_minimum=True):
+def check_binary(path):
     description = run("/usr/bin/file", "-b", path)
     need("Mach-O" in description, "目标可执行文件不是 Mach-O：" + path.name)
     arches = run("xcrun", "lipo", "-archs", path).split()
@@ -221,9 +227,8 @@ def check_binary(path, strict_minimum=True):
             minimum = re.search(r"\bversion ([0-9.]+)", block)
             need(minimum, "Mach-O 缺少最低 iOS 版本：" + path.name)
             minimums.append(minimum[1])
-    if strict_minimum:
-        need(minimums and all(version(v) <= (17, 0, 0) for v in minimums),
-             "Mach-O 最低系统版本高于 iOS 17.0 或无法确认：" + path.name)
+    need(minimums and all(version(v) <= (17, 0, 0) for v in minimums),
+         "Mach-O 最低系统版本高于 iOS 17.0 或无法确认：" + path.name + "，实际版本：" + ", ".join(minimums))
     print("真机二进制复核通过：" + path.name + "；最低 iOS " + ", ".join(minimums))
 
 
@@ -241,6 +246,11 @@ def package(source, path_file, output):
     payload.mkdir(parents=True)
     staged = payload / app.name
     run("/usr/bin/ditto", "--norsrc", app, staged)
+    from ipa_compatibility import clean_unused_stubs, validate, normalize_permissions
+    removed = clean_unused_stubs(staged)
+    print("已移除无代码且未被引用的 Xcode 占位框架：" + (", ".join(removed) or "无"))
+    normalize_permissions(staged)
+    print("严格验证真机二进制数量：" + str(validate(staged)))
     bundles = [staged] + sorted(staged.rglob("*.appex"))
     found = set()
     for bundle in bundles:
@@ -249,6 +259,9 @@ def package(source, path_file, output):
         suffix = next((s for s in ENTITLEMENTS if identifier == bid + s), None)
         need(suffix is not None and suffix not in found, "发现未识别或重复的应用/扩展 Bundle ID。")
         found.add(suffix)
+        need(info.get("CFBundlePackageType") == ("APPL" if suffix == "" else "XPC!"),
+             "应用或扩展的注册包类型缺失：" + bundle.name)
+        need(info.get("CFBundleInfoDictionaryVersion") == "6.0", "应用注册信息版本缺失：" + bundle.name)
         need(version(info.get("MinimumOSVersion")) == (17, 0, 0), "应用或扩展的最低 iOS 版本不再是 17.0。")
         exe = info.get("CFBundleExecutable")
         need(isinstance(exe, str) and Path(exe).name == exe and (bundle / exe).is_file(), "应用或扩展缺少真实可执行文件。")
@@ -267,7 +280,7 @@ def package(source, path_file, output):
             with path.open("rb") as stream:
                 header = stream.read(4)
             if header in magic:
-                check_binary(path, strict_minimum=False)
+                check_binary(path)
     nested = list(staged.rglob("*.framework")) + list(staged.rglob("*.dylib"))
     for path in sorted(nested, key=lambda p: len(p.parts), reverse=True):
         if not path.is_symlink():
@@ -278,11 +291,15 @@ def package(source, path_file, output):
         suffix = identifier[len(bid):]
         ent = load(ROOT / ENTITLEMENTS[suffix])
         need(ent.get("com.apple.security.application-groups") == ["group." + bid], "签名权限的 App Group 不一致。")
-        # 保留源 entitlements 的必要项；不伪造 Apple Team ID 或服务授权。
+        # 自用版停用账号、Apple 登录、推送及 CloudKit，只保留扩展共享组。
+        if load(staged / "Info.plist").get("ReaderStandalone"):
+            ent = {"com.apple.security.application-groups": ["group." + bid]}
         entfile = private_dir() / (bundle.name + ".entitlements")
         save(entfile, ent)
         run("/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", "--generate-entitlement-der", "--entitlements", entfile, bundle)
         run("/usr/bin/codesign", "--verify", "--strict", bundle)
+    normalize_permissions(staged)
+    payload.chmod(0o755)
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", staged)
     temporary = private_dir() / "已复核.ipa"
     run("/usr/bin/ditto", "-c", "-k", "--norsrc", "--keepParent", payload, temporary)

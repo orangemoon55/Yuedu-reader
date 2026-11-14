@@ -32,7 +32,7 @@ final class RSSNotificationManager: Sendable {
 
         registerCategories()
         UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .sound, .alert]) { granted, _ in
-            if granted {
+            if granted, !PersonalBuildFeatures.isStandalone {
                 DispatchQueue.main.async {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
@@ -189,7 +189,9 @@ final class RSSAppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserN
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        FirebaseApp.configure()
+        if !PersonalBuildFeatures.isStandalone {
+            FirebaseApp.configure()
+        }
         // Crash/diagnostics context must come up right after Firebase is configured,
         // so launch-time crashes and MetricKit payloads carry breadcrumbs.
         MetricKitDiagnosticReporter.shared.start()
@@ -223,6 +225,7 @@ final class RSSAppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserN
     // Apple, Google and email. Phone-number or web OAuth sign-in would need these forwarded
     // to Auth by hand (`setAPNSToken`, `canHandleNotification`, `canHandle(_:)`).
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         FeedbackPushRegistration.shared.didRegister(deviceToken: deviceToken)
     }
 
@@ -237,7 +240,8 @@ final class RSSAppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserN
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        if notification.request.content.userInfo[FeedbackNotificationPresenter.threadKey] is String {
+        if !PersonalBuildFeatures.isStandalone,
+           notification.request.content.userInfo[FeedbackNotificationPresenter.threadKey] is String {
             // An open 我的回饋 or conversation shows the news now, not at its next poll.
             Task { @MainActor in FeedbackService.shared.refreshOpenStreams() }
         }
@@ -249,6 +253,7 @@ final class RSSAppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserN
         didReceive response: UNNotificationResponse
     ) async {
         if let threadID = response.notification.request.content.userInfo[FeedbackNotificationPresenter.threadKey] as? String {
+            guard !PersonalBuildFeatures.isStandalone else { return }
             await MainActor.run { FeedbackNotificationPresenter.open(threadID: threadID) }
             return
         }

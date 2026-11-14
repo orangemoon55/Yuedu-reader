@@ -25,7 +25,7 @@ final class FeedbackScreenshotPrompt {
     private init() {}
 
     func start() {
-        guard observer == nil else { return }
+        guard !PersonalBuildFeatures.isStandalone, observer == nil else { return }
         observer = NotificationCenter.default.addObserver(
             forName: UIApplication.userDidTakeScreenshotNotification,
             object: nil,

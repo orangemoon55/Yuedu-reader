@@ -46,10 +46,14 @@ final class FirebaseAuthManager: ObservableObject {
     /// the owning account on the same route.
     private var pendingGatewayToken: String?
 
-    private let gateway = GatewayAuthProvider.shared
-    private let gatewayStore = GatewaySessionStore.shared
+    private lazy var gateway = GatewayAuthProvider.shared
+    private lazy var gatewayStore = GatewaySessionStore.shared
 
     private init() {
+        guard !PersonalBuildFeatures.isStandalone else {
+            apply(nil, route: nil)
+            return
+        }
         currentUser = Auth.auth().currentUser
 
         if !GatewayConfiguration.isConfigured, gatewayStore.hasSession {
@@ -579,6 +583,9 @@ final class FirebaseAuthManager: ObservableObject {
         operation: AccountOperation,
         _ body: (AuthRoute) async throws -> AccountUser
     ) async throws -> AccountUser {
+        guard !PersonalBuildFeatures.isStandalone else {
+            throw AuthFlowError.accountServicesDisabled
+        }
         #if DEBUG
         // A pinned integration build never falls back: switching routes after a
         // connectivity failure would let a direct success masquerade as a
@@ -818,6 +825,7 @@ final class FirebaseAuthManager: ObservableObject {
 }
 
 enum AuthFlowError: LocalizedError {
+    case accountServicesDisabled
     case missingGoogleIDToken
     case missingAppleNonce
     case missingAppleIDToken
@@ -836,6 +844,8 @@ enum AuthFlowError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .accountServicesDisabled:
+            return localized("自用版已停用帳號服務")
         case .missingGoogleIDToken:
             return localized("Google 登入缺少身份憑證")
         case .missingAppleNonce:

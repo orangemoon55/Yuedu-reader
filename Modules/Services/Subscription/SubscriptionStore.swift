@@ -194,7 +194,10 @@ final class SubscriptionStore: ObservableObject {
     private var loadedStorefrontID: String?
     private var productLoadGeneration = 0
     private let accountService = SubscriptionAccountService.shared
-    private let iCloudMirror = SubscriptionICloudMirror.shared
+    // Standalone installs have no CloudKit capability. Keep StoreKit and entitlement
+    // policies unchanged, treating the cloud mirror as unavailable in this build.
+    private let iCloudMirror: SubscriptionICloudMirror? =
+        PersonalBuildFeatures.isStandalone ? nil : .shared
     private let reviewStatus = SubscriptionReviewStatusService()
     /// Throttle for the fire-and-forget drop diagnostic: one report per
     /// process per 5 minutes, so a repeatedly-failing device cannot flood
@@ -608,7 +611,8 @@ final class SubscriptionStore: ObservableObject {
     /// mirror means "nothing to say" and leaves access alone; only a mirror the
     /// app itself cleared after an Apple revocation reports `false`.
     private func refreshICloudEntitlement() async {
-        guard let entitlement = await iCloudMirror.load() else { return }
+        guard let iCloudMirror,
+              let entitlement = await iCloudMirror.load() else { return }
         let isActive = entitlement.isActive()
         guard isActive != iCloudIsProActive else { return }
         iCloudIsProActive = isActive
@@ -629,6 +633,7 @@ final class SubscriptionStore: ObservableObject {
         expiresAt: Date?,
         signedTransaction: String?
     ) async {
+        guard let iCloudMirror else { return }
         switch SubscriptionICloudMirrorPolicy.action(
             ownedCount: owned.count,
             revokedCount: revokedCount
@@ -833,7 +838,7 @@ final class SubscriptionStore: ObservableObject {
             // "iCloud available and the mirror still had nothing" — the evidence
             // for whether users switch only the App Store account or the whole
             // Apple ID.
-            let iCloudAccountStatus = await self.iCloudMirror.accountStatusDescription()
+            let iCloudAccountStatus = await self.iCloudMirror?.accountStatusDescription() ?? "unavailable"
             // Built here, after the reads, so the dictionary handed to Firestore is a fresh
             // value rather than a variable this task shares with the code that started it.
             let data: [String: Any] = [

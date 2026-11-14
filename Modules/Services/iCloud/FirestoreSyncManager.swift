@@ -20,7 +20,7 @@ final class FirestoreSyncManager: ObservableObject {
 
     @Published private(set) var state: SyncState = .idle
 
-    private let db = Firestore.firestore()
+    private lazy var db = Firestore.firestore()
     private var cancellables = Set<AnyCancellable>()
     private var pushWorkItems: [String: Task<Void, Never>] = [:]
     private var pendingPositions: [String: SyncedReadingPosition] = [:]
@@ -43,6 +43,7 @@ final class FirestoreSyncManager: ObservableObject {
     static let dataSyncEnabled = false
 
     private init() {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         // The auth facade publishes its restored account to GlobalSettings in
         // init. Finish that construction before observing settings; otherwise
         // schedulePush re-enters FirebaseAuthManager.shared's dispatch_once.
@@ -69,7 +70,7 @@ final class FirestoreSyncManager: ObservableObject {
     }
 
     func bind(bookStore: BookStore) {
-        guard self.bookStore !== bookStore else { return }
+        guard !PersonalBuildFeatures.isStandalone, self.bookStore !== bookStore else { return }
         self.bookStore = bookStore
 
         bookStore.shelfPublisher
@@ -82,7 +83,7 @@ final class FirestoreSyncManager: ObservableObject {
 
     /// Pull remote state, then push local changes. Coalesces concurrent callers.
     func syncAfterSignIn() async {
-        guard FirebaseAuthManager.shared.isAuthenticated else { return }
+        guard !PersonalBuildFeatures.isStandalone, FirebaseAuthManager.shared.isAuthenticated else { return }
         guard !isSyncing else { return }
         isSyncing = true
         defer { isSyncing = false }
@@ -225,6 +226,7 @@ final class FirestoreSyncManager: ObservableObject {
 
     /// `textVersion`: the converted text the position indexes (`ConvertedTextVersions`).
     func scheduleReadingPositionPush(_ position: CoreTextReadingPosition, for bookId: String, textVersion: Int? = nil) {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         pendingPositions[bookId] = SyncedReadingPosition(position: position, textVersion: textVersion)
         schedulePush("position-\(bookId)") { [weak self] in
             guard let self, let pending = self.pendingPositions[bookId] else { return }

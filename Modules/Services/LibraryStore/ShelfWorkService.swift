@@ -553,7 +553,7 @@ enum ShelfWorkLaunchMerge {
             await ShelfWorkMerger(store: store, positionStore: AppDependencies.live.readingPositionStore)
                 .mergeDuplicates()
         }
-        guard GlobalSettings.shared.iCloudAutoSync else {
+        guard !PersonalBuildFeatures.isStandalone, GlobalSettings.shared.iCloudAutoSync else {
             // After the launch turn, so building the store never deletes anything under its caller.
             Task { @MainActor in await merge() }
             return
