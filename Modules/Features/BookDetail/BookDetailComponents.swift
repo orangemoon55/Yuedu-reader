@@ -442,7 +442,7 @@ struct BookDetailSourceGestures {
     var longPressLabel: (String) -> Void
 }
 
-private extension View {
+extension View {
     /// A tap and a long press on a piece of text, with the long press reachable from
     /// VoiceOver as a named action (a tap is the element's own activation).
     @ViewBuilder
