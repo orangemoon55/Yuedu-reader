@@ -260,20 +260,23 @@ struct OnlineBookView: View {
         return BookDetailScaffold(
             title: shown.name,
             compactAction: readAction,
-            onRefresh: { await loadTOC(forceRefresh: true) }
+            onRefresh: { await loadTOC(forceRefresh: true) },
+            heroTint: Color(red: 53 / 255, green: 65 / 255, blue: 75 / 255)
         ) {
-            BookDetailHero(
-                artworkShape: .book,
+            OnlineBookSourceHero(
                 cover: coverArtwork(shown),
                 title: shown.name,
                 author: shown.author,
                 meta: tags.joined(separator: " · "),
+                sourceName: BookSourceDisplayName.title(sourceName),
+                summary: sourceSummary,
                 primary: readAction,
                 secondary: shelfAction,
                 authorActions: sourceCallBacks == nil ? sourceLinks.authorActions(shown.author) : [],
                 sourceGestures: sourceCallBacks?.gestures,
                 links: linksGenres ? sourceLinks.links(for: tags) : [],
-                seriesFan: seriesFan
+                seriesFan: seriesFan,
+                onChooseSource: { showSourcePicker = true }
             )
         } content: {
             if let intro = shown.intro {
@@ -318,8 +321,6 @@ struct OnlineBookView: View {
                     }
                 )
             }
-            // 作品資訊 last: the first half serves reading and finding more (2026-10-12).
-            BookDetailInfoSection(items: infoItems)
         }
         .environment(\.locale, Locale(identifier: gs.localeIdentifier))
         .toolbar {
@@ -518,20 +519,15 @@ struct OnlineBookView: View {
         )
     }
 
-    private var infoItems: [BookDetailInfoItem] {
-        var items: [BookDetailInfoItem] = []
-        if !displayWordCount.isEmpty {
-            items.append(BookDetailInfoItem(
-                id: "wordCount", label: localized("字數"), value: displayWordCount
-            ))
-        }
+    private var sourceSummary: String {
+        var parts = [localized("線上")]
         if !chapters.isEmpty {
-            items.append(BookDetailInfoItem(
-                id: "chapters", label: localized("章節"), value: chapters.count.formatted()
-            ))
+            parts.append("\(chapters.count.formatted()) \(localized("章節"))")
         }
-        items.append(.source(name: sourceName) { showSourcePicker = true })
-        return items
+        if !displayWordCount.isEmpty {
+            parts.append(displayWordCount)
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// The runtime variables the next fetch, shelf add or reader open will carry.

@@ -309,23 +309,25 @@ struct AppearanceThemeWriteBackTests {
         fixture.reset(iconSize: 24, columns: 3)
         settings.rootTabVisibleIDs = RootTabItem.tabs.map(\.rawValue)
 
-        let a = Self.colourTheme("A")
+        var legacy = AppearanceThemeExtras()
+        legacy.visibleTabIDs = ["explore", "bookshelf", "library", "-library", "settings", "search"]
+        let a = Self.colourTheme("A", extras: legacy)
         let b = Self.colourTheme("B")
         settings.customAppearanceThemes.append(contentsOf: [a, b])
 
         settings.appearanceThemeID = a.id
+        #expect(settings.visibleRootTabs == [.explore, .bookshelf, .settings, .search])
         settings.rootTabVisibleIDs = [RootTabItem.bookshelf.rawValue]
         // 設定 is re-added by the sanitizer, and that sanitized value is what the theme
-        // records — a theme must not be able to store a bar the user cannot escape. 資源庫 is
-        // shown too: a list that does not name it predates it.
+        // records. Legacy 資源庫 ids and hidden markers cannot restore the removed tab.
         let stored = settings.customAppearanceThemes.first { $0.id == a.id }?.extras?.visibleTabIDs
-        #expect(stored == [RootTabItem.bookshelf.rawValue, RootTabItem.library.rawValue, RootTabItem.settings.rawValue])
+        #expect(stored == [RootTabItem.bookshelf.rawValue, RootTabItem.settings.rawValue])
 
         settings.appearanceThemeID = b.id
         #expect(settings.visibleRootTabs.count == RootTabItem.tabs.count)
 
         settings.appearanceThemeID = a.id
-        #expect(settings.visibleRootTabs == [.bookshelf, .library, .settings])
+        #expect(settings.visibleRootTabs == [.bookshelf, .settings])
 
         settings.appearanceThemeID = GlobalSettings.defaultAppearanceThemeID
         #expect(settings.visibleRootTabs.count == RootTabItem.tabs.count)

@@ -15,15 +15,12 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var id: String { rawValue }
 
-    /// The tabs drawn, in their default order: 探索・書架・資源庫・設定・搜尋 (decision 30; 搜尋
-    /// moved to the far right, 2026-10-16; 探索 first, and the app opens on it, 2026-10-25). The
-    /// reader can rearrange them (#92, `GlobalSettings.rootTabOrderIDs`); with no saved order
-    /// this is the order drawn. The saved visible list keeps this order regardless.
-    static let tabs: [RootTabItem] = [.explore, .bookshelf, .library, .settings, .search]
+    /// The four bottom entries for the personal reader. The library enum value stays
+    /// decodable for older preferences and themes, but is no longer offered as a tab.
+    static let tabs: [RootTabItem] = [.explore, .bookshelf, .settings, .search]
 
-    /// Tabs added after readers had saved which tabs they show. A saved list that does not name
-    /// one predates it, so the tab is shown; hiding it writes `hiddenMarker` into the list.
-    static let addedLater: [RootTabItem] = [.library]
+    /// No later-added tab should be automatically restored from older saved preferences.
+    static let addedLater: [RootTabItem] = []
 
     /// What a saved list holds for a tab in `addedLater` the reader hid.
     var hiddenMarker: String { "-" + rawValue }

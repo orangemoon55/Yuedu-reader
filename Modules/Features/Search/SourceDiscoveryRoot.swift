@@ -57,14 +57,32 @@ private struct DiscoverySourcePicker: View {
     let selectedURL: String?
     let choose: (DiscoverableBookSource) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var matches: [DiscoverableBookSource]
+
+    private struct SearchInput: Equatable {
+        let query: String
+        let sources: [DiscoverableBookSource]
+    }
+
+    init(
+        sources: [DiscoverableBookSource], selectedURL: String?,
+        choose: @escaping (DiscoverableBookSource) -> Void
+    ) {
+        self.sources = sources
+        self.selectedURL = selectedURL
+        self.choose = choose
+        _matches = State(initialValue: sources)
+    }
 
     var body: some View {
         NavigationStack {
-            List(sources) { source in
+            List(matches) { source in
                 Button { choose(source) } label: {
                     HStack(spacing: DSSpacing.md) {
-                        Text(source.name)
+                        Text(source.displayName)
                             .foregroundStyle(DSColor.textPrimary)
+                            .lineLimit(2)
                         Spacer()
                         if source.url == selectedURL {
                             Image(systemName: "checkmark")
@@ -75,6 +93,33 @@ private struct DiscoverySourcePicker: View {
                     .frame(minHeight: DSLayout.minimumTapTarget)
                 }
                 .accessibilityAddTraits(source.url == selectedURL ? .isSelected : [])
+            }
+            .searchable(
+                text: $query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: localized("搜尋來源配置名稱或網址")
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .scrollDismissesKeyboard(.interactively)
+            .overlay {
+                if matches.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ContentUnavailableView.search(text: query)
+                }
+            }
+            .task(id: SearchInput(query: query, sources: sources)) {
+                let snapshot = sources
+                let search = query
+                let work = Task.detached(priority: .userInitiated) {
+                    DiscoverySourceSearch.matching(snapshot, query: search)
+                }
+                let result = await withTaskCancellationHandler {
+                    await work.value
+                } onCancel: {
+                    work.cancel()
+                }
+                guard !Task.isCancelled else { return }
+                matches = result
             }
             .navigationTitle(localized("切換來源配置"))
             .toolbarTitleDisplayMode(.inline)

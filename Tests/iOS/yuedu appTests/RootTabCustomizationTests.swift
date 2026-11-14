@@ -16,7 +16,7 @@ struct RootTabCustomizationTests {
 
     @Test("at least one content tab remains visible")
     func atLeastOneContentTabRemainsVisible() {
-        // 資源庫 hidden too: a list naming none of it would show it (`libraryJoinsOldLists`).
+        // A removed 資源庫 marker does not count as a visible content tab.
         let ids = GlobalSettings.sanitizedRootTabVisibleIDs([
             RootTabItem.settings.rawValue,
             RootTabItem.library.hiddenMarker
@@ -38,51 +38,59 @@ struct RootTabCustomizationTests {
 
         #expect(ids == [
             RootTabItem.bookshelf.rawValue,
-            RootTabItem.library.rawValue,
             RootTabItem.settings.rawValue,
             RootTabItem.search.rawValue
         ])
     }
 
-    @Test("the tabs are 探索・書架・資源庫・設定・搜尋 (搜尋 last, 2026-10-16; 探索 first, 2026-10-25); RSS is no longer one (decision 30)")
+    @Test("the tabs are 探索・書架・設定・搜尋; 資源庫 and RSS are no longer tabs")
     func tabOrder() {
-        #expect(RootTabItem.tabs == [.explore, .bookshelf, .library, .settings, .search])
+        #expect(RootTabItem.tabs == [.explore, .bookshelf, .settings, .search])
+        #expect(RootTabItem.addedLater.isEmpty)
         #expect(GlobalSettings.defaultRootTabVisibleIDs == RootTabItem.tabs.map(\.rawValue))
     }
 
     @Test("A list saved with 書架 before 探索 and 搜尋 before 設定 is drawn in the current order")
     func oldOrderFollowsCurrentOrder() {
         let saved = GlobalSettings.sanitizedRootTabVisibleIDs(["bookshelf", "explore", "library", "search", "settings"])
-        #expect(saved == ["explore", "bookshelf", "library", "settings", "search"])
+        #expect(saved == ["explore", "bookshelf", "settings", "search"])
     }
 
-    @Test("A list saved before 資源庫 existed shows it; a shown or hidden RSS tab is dropped")
-    func libraryJoinsOldLists() {
-        let everything = GlobalSettings.sanitizedRootTabVisibleIDs(["bookshelf", "explore", "rss", "settings", "search"])
-        #expect(everything == ["explore", "bookshelf", "library", "settings", "search"])
-        let rssHidden = GlobalSettings.sanitizedRootTabVisibleIDs(["bookshelf", "explore", "settings", "search"])
-        #expect(rssHidden == ["explore", "bookshelf", "library", "settings", "search"])
+    @Test("legacy visible lists never restore 資源庫, whether shown, hidden or absent")
+    func libraryDoesNotRejoinOldLists() {
+        let lists = [
+            ["bookshelf", "explore", "rss", "settings", "search"],
+            ["bookshelf", "explore", "library", "search", "settings"],
+            ["bookshelf", "explore", "-library", "search", "settings"],
+            ["bookshelf", "explore", "library", "-library", "-rss", "search", "settings"]
+        ]
+        for list in lists {
+            let migrated = GlobalSettings.sanitizedRootTabVisibleIDs(list)
+            #expect(migrated == ["explore", "bookshelf", "settings", "search"])
+            #expect(GlobalSettings.sanitizedRootTabVisibleIDs(migrated) == migrated)
+        }
     }
 
-    @Test("Hiding 資源庫 is kept: the list remembers it was hidden, not that it never existed")
+    @Test("a removed 資源庫 tab cannot be restored by changing its visibility")
     @MainActor
-    func hidingLibrarySticks() {
+    func removedLibraryCannotBeShown() {
         let ids = GlobalSettings.sanitizedRootTabVisibleIDs(
             GlobalSettings.updatedRootTabVisibleIDs(["bookshelf", "explore", "library", "search", "settings"],
                                              setting: .library, visible: false))
         #expect(!ids.contains("library"))
-        #expect(GlobalSettings.sanitizedRootTabVisibleIDs(ids) == ids, "stable once hidden")
+        #expect(GlobalSettings.sanitizedRootTabVisibleIDs(ids) == ids, "stable once removed")
         let shown = GlobalSettings.sanitizedRootTabVisibleIDs(
             GlobalSettings.updatedRootTabVisibleIDs(ids, setting: .library, visible: true))
-        #expect(shown.contains("library"))
+        #expect(shown == ids)
     }
 
-    @Test("A custom RSS tab icon stays stored: its tab still decodes")
-    func rssIconAssetKept() {
-        let asset = RootTabIconAsset(tabID: "rss", slotRawValue: "light", fileName: "rss.png",
-                                     originalFileName: "rss.png", addedAt: Date())
-        #expect(asset.tab == .rss)
-        #expect(!RootTabItem.tabs.contains(.rss))
+    @Test("custom icons for removed tabs still decode", arguments: [RootTabItem.rss, .library])
+    func removedTabIconAssetsKept(tab: RootTabItem) {
+        let fileName = "\(tab.rawValue).png"
+        let asset = RootTabIconAsset(tabID: tab.rawValue, slotRawValue: "light", fileName: fileName,
+                                     originalFileName: fileName, addedAt: Date())
+        #expect(asset.tab == tab)
+        #expect(!RootTabItem.tabs.contains(tab))
     }
 
     @Test("tab icon size is clamped")

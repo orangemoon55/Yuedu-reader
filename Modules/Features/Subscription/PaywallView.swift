@@ -55,7 +55,9 @@ struct PaywallView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if justUnlocked || presentation != .offer {
+                if PersonalBuildFeatures.grantsLocalPremiumAccess {
+                    standaloneContent
+                } else if justUnlocked || presentation != .offer {
                     PaywallMemberPage(
                         celebrates: justUnlocked,
                         upgradedFromMonthly: upgradedFromMonthly,
@@ -70,7 +72,9 @@ struct PaywallView: View {
                     paywallContent
                 }
             }
-            .task { await store.loadProducts() }
+            .task {
+                if !PersonalBuildFeatures.isStandalone { await store.loadProducts() }
+            }
             .onChange(of: store.isProActive) { wasPro, isPro in
                 // Pro arrived while this sheet was open: a purchase here, an Ask to Buy
                 // approval, a restore, family sharing. An offer code celebrates once
@@ -132,6 +136,28 @@ struct PaywallView: View {
     private var memberPageUpgradeAction: (() -> Void)? {
         let upgrade: () -> Void = upgradeToLifetime
         return presentation == .upgradeFromMonthly && !justUnlocked ? upgrade : nil
+    }
+
+    private var standaloneContent: some View {
+        ContentUnavailableView {
+            Label(localized("本地高级功能已启用"), systemImage: "checkmark.seal")
+        } description: {
+            Text(localized("自用版已开放全部本地高级功能。AI 与在线语音服务需自行配置接口。"))
+        }
+        .background(PageBackgroundView(scope: .settings).ignoresSafeArea())
+        .pageBackgroundToolbar(for: .settings)
+        .navigationTitle(localized("本地高级功能"))
+        .toolbarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel(localized("關閉"))
+            }
+        }
     }
 
     private var paywallContent: some View {

@@ -25,7 +25,11 @@ struct DiscoverShowcaseView: View {
     }
 
     var body: some View {
-        let _ = rankedKeywords
+        let groups = DiscoverShowcaseLayout.groups(
+            sections: discover.sections,
+            rankedKeywords: ExploreSettings.decodeKeywords(rankedKeywords),
+            rankedFirst: rankedSectionsFirst
+        )
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DSSpacing.xl) {
                 if !discover.filters.isEmpty || (onOpenPage != nil && !pageItems.isEmpty) {
@@ -40,18 +44,15 @@ struct DiscoverShowcaseView: View {
                 } else if discover.sections.isEmpty {
                     DiscoverEmptyState(discover: discover)
                 } else {
-                    let sections = rankedSectionsFirst ? rankedSections + featuredSections : discover.sections
-                    ForEach(sections) { section in
-                        if section.style == .ranked {
-                            if section.id == firstRankedSectionId {
-                                DiscoverRankedSectionsCarousel(
-                                    sections: rankedSections,
-                                    source: discover.selectedSource,
-                                    onAppearLoad: { discover.loadSection($0) },
-                                    onRetry: { discover.retrySection($0) }
-                                )
-                            }
-                        } else {
+                    ForEach(groups) { group in
+                        if !group.charts.isEmpty {
+                            DiscoverRankedSectionsCarousel(
+                                sections: group.charts,
+                                source: discover.selectedSource,
+                                onAppearLoad: { discover.loadSection($0) },
+                                onRetry: { discover.retrySection($0) }
+                            )
+                        } else if let section = group.shelf {
                             DiscoverSectionView(
                                 section: section,
                                 source: discover.selectedSource,
@@ -79,17 +80,6 @@ struct DiscoverShowcaseView: View {
         .padding(.vertical, DSSpacing.xxl)
     }
 
-    private var rankedSections: [DiscoverShowcaseSection] {
-        discover.sections.filter { $0.style == .ranked }
-    }
-
-    private var featuredSections: [DiscoverShowcaseSection] {
-        discover.sections.filter { $0.style != .ranked }
-    }
-
-    private var firstRankedSectionId: UUID? {
-        rankedSections.first?.id
-    }
 }
 
 /// A source page with no categories to show, in either layout.

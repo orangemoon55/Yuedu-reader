@@ -49,6 +49,11 @@ struct ExploreSourcePage: View {
         !currentSource.loginUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var sourceTitle: String {
+        let name = BookSourceDisplayName.title(currentSource.bookSourceName)
+        return name.isEmpty ? localized("未命名來源配置") : name
+    }
+
     var body: some View {
         Group {
             switch layoutOverride ?? layout {
@@ -64,17 +69,32 @@ struct ExploreSourcePage: View {
         }
             .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
             .pageBackgroundToolbar(for: .explore)
-            .navigationTitle(currentSource.bookSourceName)
+            .navigationTitle(sourceTitle)
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(sourceTitle)
+                        .font(DSFont.headline)
+                        .foregroundStyle(DSColor.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityShowsLargeContentViewer {
+                            Text(sourceTitle)
+                        }
+                }
                 if let onSearch, let onSwitchSource {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button(localized("搜索"), action: onSearch)
-                            .accessibilityLabel(localized("源內搜索"))
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(localized("切換"), action: onSwitchSource)
-                            .accessibilityLabel(localized("切換來源配置"))
+                        HStack(spacing: DSSpacing.xs) {
+                            Button(localized("搜索"), action: onSearch)
+                                .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                                .accessibilityLabel(localized("源內搜索"))
+                            Button(localized("切換"), action: onSwitchSource)
+                                .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                                .accessibilityLabel(localized("切換來源配置"))
+                        }
+                        .font(DSFont.body.weight(.medium))
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     ToolbarItem(placement: .topBarLeading) {
                         Menu {

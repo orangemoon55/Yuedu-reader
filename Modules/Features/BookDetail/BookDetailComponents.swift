@@ -152,6 +152,8 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
     /// light and dark mode alike, as Infuse and VidHub draw a series' page; nil for the
     /// app's page background.
     var pageTint: Color?
+    /// Online book headers keep their source card and navigation bar in one dark tone.
+    var heroTint: Color?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -167,7 +169,7 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
     @State private var barInset: CGFloat = 0
 
     init(title: String, compactAction: BookDetailAction, onRefresh: (() async -> Void)? = nil,
-         heroUnderBars: Bool = false, pageTint: Color? = nil,
+         heroUnderBars: Bool = false, pageTint: Color? = nil, heroTint: Color? = nil,
          @ViewBuilder hero: () -> Hero, @ViewBuilder content: () -> Content,
          @ViewBuilder actions: () -> Actions) {
         self.title = title
@@ -175,6 +177,7 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
         self.onRefresh = onRefresh
         self.heroUnderBars = heroUnderBars
         self.pageTint = pageTint
+        self.heroTint = heroTint
         self.hero = hero()
         self.content = content()
         self.actions = actions()
@@ -216,6 +219,7 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
                 .pageBackgroundToolbar(for: .global)
                 // The bar's title and buttons over a tinted page are white too.
                 .toolbarColorScheme(pageTint == nil ? nil : .dark, for: .navigationBar)
+                .modifier(BookDetailHeroToolbarModifier(tint: heroScrolledAway ? nil : heroTint))
                 .toolbarTitleDisplayMode(.inline)
                 .hidesRootTabBar()
                 .toolbar {
@@ -261,7 +265,7 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
     }
 
     private var stack: some View {
-        VStack(spacing: DSSpacing.xl) {
+        VStack(spacing: heroTint == nil ? DSSpacing.xl : 0) {
             VStack(spacing: 0) {
                 if embedding != nil {
                     BookDetailCardHeader(hasActions: Actions.self != EmptyView.self) { actions }
@@ -276,6 +280,7 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
                     } action: { heroScrolledAway = $0 }
             }
             content
+                .padding(.top, heroTint == nil ? 0 : DSSpacing.xl)
                 .frame(maxWidth: embedding?.contentWidth ?? .infinity)
         }
         .padding(.bottom, DSSpacing.xxl)
@@ -284,11 +289,27 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
 
 extension BookDetailScaffold where Actions == EmptyView {
     init(title: String, compactAction: BookDetailAction, onRefresh: (() async -> Void)? = nil,
-         heroUnderBars: Bool = false, pageTint: Color? = nil,
+         heroUnderBars: Bool = false, pageTint: Color? = nil, heroTint: Color? = nil,
          @ViewBuilder hero: () -> Hero, @ViewBuilder content: () -> Content) {
         self.init(title: title, compactAction: compactAction, onRefresh: onRefresh,
-                  heroUnderBars: heroUnderBars, pageTint: pageTint, hero: hero, content: content,
+                  heroUnderBars: heroUnderBars, pageTint: pageTint, heroTint: heroTint, hero: hero, content: content,
                   actions: { EmptyView() })
+    }
+}
+
+private struct BookDetailHeroToolbarModifier: ViewModifier {
+    let tint: Color?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let tint {
+            content
+                .toolbarBackground(tint, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+        } else {
+            content
+        }
     }
 }
 

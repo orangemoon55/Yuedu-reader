@@ -4498,6 +4498,9 @@
 "已調整順序" = "Reordered";
 "切換" = "Switch";
 "源內搜索" = "Search This Source";
+"本地高级功能已启用" = "Local Advanced Features Enabled";
+"本地高级功能" = "Local Advanced Features";
+"自用版已开放全部本地高级功能。AI 与在线语音服务需自行配置接口。" = "All local advanced features are enabled. AI and online speech services require your own configuration.";
 "帳號服務已停用" = "Account Services Disabled";
 "自用版無需登入。" = "No sign-in is required for this personal build.";
 "自用版已停用帳號服務" = "Account services are disabled in this personal build.";

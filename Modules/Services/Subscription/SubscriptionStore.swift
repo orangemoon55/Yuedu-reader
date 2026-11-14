@@ -134,6 +134,7 @@ final class SubscriptionStore: ObservableObject {
     /// its purchases are Sandbox ones, which are free. It shows the TestFlight
     /// notice instead.
     func ensurePurchasesAllowed() async -> Bool {
+        guard !PersonalBuildFeatures.isStandalone else { return false }
         await resolveReviewStatusIfUnanswered()
         guard SubscriptionRuntimeEnvironment.purchaseMode == .ownEnvironment else {
             isShowingTestFlightPurchaseNotice = true
@@ -164,14 +165,16 @@ final class SubscriptionStore: ObservableObject {
     /// Mirrored into the iCloud account, which survives an App Store account
     /// switch. See `SubscriptionICloudMirror`.
     @Published private(set) var iCloudIsProActive: Bool = false
-    /// `true` while any Pro entitlement is active. Everything gates on this.
-    @Published private(set) var isProActive: Bool = false
-    /// `true` once launch has read every source of Pro (StoreKit, the account, the
-    /// iCloud mirror): from then on a false `isProActive` means no Pro, not "not read
+    /// Local capability gate: a standalone build grant or an active Pro entitlement.
+    /// Purchase/account/iCloud facts stay in their separate properties above.
+    @Published private(set) var isProActive: Bool = PersonalBuildFeatures.grantsLocalPremiumAccess
+    /// `true` immediately for a standalone local grant, otherwise once launch has
+    /// read every source of Pro (StoreKit, account, iCloud mirror). From then on a
+    /// false `isProActive` means no Pro, not "not read
     /// yet". `ContentView` shows the Pro look optimistically only before this — it
     /// used to do so whenever `isProActive` was false, which kept a user without Pro
     /// in their Pro theme for good.
-    @Published private(set) var hasResolvedEntitlements: Bool = false
+    @Published private(set) var hasResolvedEntitlements: Bool = PersonalBuildFeatures.grantsLocalPremiumAccess
     @Published private(set) var isLoadingProducts: Bool = false
     @Published private(set) var isPurchasing: Bool = false
     @Published private(set) var isRestoring: Bool = false
@@ -194,8 +197,8 @@ final class SubscriptionStore: ObservableObject {
     private var loadedStorefrontID: String?
     private var productLoadGeneration = 0
     private let accountService = SubscriptionAccountService.shared
-    // Standalone installs have no CloudKit capability. Keep StoreKit and entitlement
-    // policies unchanged, treating the cloud mirror as unavailable in this build.
+    // Standalone installs have no CloudKit capability and use a local build grant.
+    // Never read or write an iCloud purchase mirror for that grant.
     private let iCloudMirror: SubscriptionICloudMirror? =
         PersonalBuildFeatures.isStandalone ? nil : .shared
     private let reviewStatus = SubscriptionReviewStatusService()
@@ -224,6 +227,8 @@ final class SubscriptionStore: ObservableObject {
 
     /// Tests can exercise publication without starting StoreKit/network observers.
     init(observeTransactions: Bool = true) {
+        // Synchronous local access, with no StoreKit listener or entitlement tasks.
+        guard !PersonalBuildFeatures.grantsLocalPremiumAccess else { return }
         #if DEBUG
         // `-debug-force-pro`: a simulator launch has no StoreKit configuration, so this is
         // the only way to look at Pro-only screens there (e.g. Apple Books' action row with
@@ -260,9 +265,10 @@ final class SubscriptionStore: ObservableObject {
 
     // MARK: - Feature gating
 
-    /// The single entitlement gate. Coarse in v1: all features map to Pro.
+    /// Every local feature accepts the standalone build grant; external services
+    /// still require their own credentials and authorization.
     func hasAccess(_ feature: PremiumFeature) -> Bool {
-        isProActive
+        PersonalBuildFeatures.grantsLocalPremiumAccess || isProActive
     }
 
     /// What the paywall shows right now: the offer, or its member page and whether
@@ -309,6 +315,7 @@ final class SubscriptionStore: ObservableObject {
     // MARK: - Product loading
 
     func loadProducts() async {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         Self.subscriptionLog.notice("Products load requested")
         let storefront = await Storefront.current
         await loadProducts(forStorefrontID: storefront?.id, forceReload: false)
@@ -324,6 +331,7 @@ final class SubscriptionStore: ObservableObject {
     /// fed itself about 5,000 times a second until the system killed the app some 90
     /// seconds after launch, on every launch from Xcode.
     func reloadProductsIfStorefrontChanged() async {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         // Never loaded: the paywall loads them, for the storefront current then.
         guard let loadedStorefrontID else { return }
         guard let currentID = await Storefront.current?.id,
@@ -501,6 +509,7 @@ final class SubscriptionStore: ObservableObject {
 
     /// Restores by syncing with the App Store, then re-reading entitlements.
     func restore() async {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         guard !isRestoring else { return }
         isRestoring = true
         lastErrorMessage = nil
@@ -538,6 +547,10 @@ final class SubscriptionStore: ObservableObject {
 
     /// Recomputes the entitlement from `Transaction.currentEntitlements`.
     func refreshEntitlements() async {
+        if PersonalBuildFeatures.grantsLocalPremiumAccess {
+            recomputeEntitlement()
+            return
+        }
         // Every entitlement path funnels through here, including purchase and the
         // `Transaction.updates` listener. The environment must be resolved before
         // `mirrorToICloud` writes, or an unresolved suffix would file a TestFlight
@@ -583,6 +596,10 @@ final class SubscriptionStore: ObservableObject {
 
     /// Call only after Firebase has been configured (app active/auth callbacks).
     func refreshAllEntitlements() async {
+        if PersonalBuildFeatures.grantsLocalPremiumAccess {
+            recomputeEntitlement()
+            return
+        }
         await resolveRunningEnvironment()
         // Before the reads: the answer decides which slots they read.
         await refreshReviewStatus()
@@ -686,6 +703,10 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func authenticationDidChange(isAuthenticated: Bool) async {
+        if PersonalBuildFeatures.grantsLocalPremiumAccess {
+            recomputeEntitlement()
+            return
+        }
         if !isAuthenticated {
             accountIsProActive = false
             accountProductIDs = nil
@@ -717,6 +738,7 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func deleteCurrentAccountSubscriptionData() async throws {
+        guard !PersonalBuildFeatures.isStandalone else { return }
         try await accountService.deleteAccountData()
         accountIsProActive = false
         accountProductIDs = nil
@@ -776,6 +798,13 @@ final class SubscriptionStore: ObservableObject {
     }
 
     private func recomputeEntitlement() {
+        // A local build grant never changes purchase facts, paid-history caches,
+        // or server entitlements, and must survive auth/foreground/TestFlight updates.
+        if PersonalBuildFeatures.grantsLocalPremiumAccess {
+            if !isProActive { isProActive = true }
+            if !hasResolvedEntitlements { hasResolvedEntitlements = true }
+            return
+        }
         let hasPurchase = ProProduct.allCases.contains { purchasedProductIDs.contains($0.rawValue) }
         if storeKitIsProActive != hasPurchase { storeKitIsProActive = hasPurchase }
         #if DEBUG
