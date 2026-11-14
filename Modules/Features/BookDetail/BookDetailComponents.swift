@@ -219,7 +219,7 @@ struct BookDetailScaffold<Hero: View, Content: View, Actions: View>: View {
                 .pageBackgroundToolbar(for: .global)
                 // The bar's title and buttons over a tinted page are white too.
                 .toolbarColorScheme(pageTint == nil ? nil : .dark, for: .navigationBar)
-                .modifier(BookDetailHeroToolbarModifier(tint: heroScrolledAway ? nil : heroTint))
+                .modifier(BookDetailHeroToolbarModifier(tint: heroTint, isActive: !heroScrolledAway))
                 .toolbarTitleDisplayMode(.inline)
                 .hidesRootTabBar()
                 .toolbar {
@@ -299,14 +299,16 @@ extension BookDetailScaffold where Actions == EmptyView {
 
 private struct BookDetailHeroToolbarModifier: ViewModifier {
     let tint: Color?
+    let isActive: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if let tint {
+            // Keep the scroll view's identity when the hero crosses the navigation bar.
             content
-                .toolbarBackground(tint, for: .navigationBar)
+                .toolbarBackground(isActive ? tint : DSColor.background, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbarColorScheme(isActive ? .dark : nil, for: .navigationBar)
         } else {
             content
         }
