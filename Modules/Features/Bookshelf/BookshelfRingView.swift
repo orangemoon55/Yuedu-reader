@@ -192,8 +192,10 @@ struct BookshelfRingView: View {
     }
 
     private func open(_ book: ReadingBook) {
+        // Capture the tapped artwork before stopping/snap-aligning the rotor.
+        let tapped = coverSources.tappedCover(for: book.id)
         motion.confirmReading()
-        coverSources.open(book, onOpen: onOpen)
+        onOpen(book, tapped)
     }
 
     private func performContextAction(_ book: ReadingBook, _ action: BookshelfBookContextAction) {
@@ -295,7 +297,10 @@ private struct BookshelfRingRotor: View {
                         coverFrame: coverSources.box(for: book.id),
                         onCoverFrameChange: { onCoverFrameChange(book, $0) },
                         onTint: { coverTints[book.id] = $0 },
-                        onSelect: { motion.select(slot, reduceMotion: reduceMotion) },
+                        onSelect: {
+                            guard motion.canOpenSector else { return }
+                            onOpen(book)
+                        },
                         onContextAction: { onContextAction(book, $0) }
                     )
                     // Only the position changes. No parent rotation, counter-rotation,

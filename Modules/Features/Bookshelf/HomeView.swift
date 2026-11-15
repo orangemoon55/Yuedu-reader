@@ -272,7 +272,7 @@ struct HomeView: View {
     @State private var showAIPaywall = false
     @ObservedObject private var subscription = SubscriptionStore.shared
     @AppStorage("bookLayoutIsGrid") private var isGridMode = false
-    @AppStorage("bookshelfRingMode") private var isRingMode = false
+    @AppStorage("bookshelfRingMode") private var isRingMode = true
     @AppStorage("bookshelfFattenedBookIDs") private var fattenedBookIDsData = Data()
     @AppStorage(BookSortOrder.storageKey) private var sortOrder = BookSortOrder.manual.rawValue
     @Environment(\.horizontalSizeClass) private var sizeClass
