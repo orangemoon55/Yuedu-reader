@@ -4523,3 +4523,6 @@
 "傳統書架" = "Classic Bookshelf";
 "更多設定" = "More Settings";
 "版本資訊與政策協議" = "Version Information and Policies";
+"已完成 %1$d / %2$d 個書源 · %3$d 張封面" = "%1$d / %2$d sources complete · %3$d covers";
+"請先安裝並啟用支援搜索的書源，或從相簿選一張圖片。" = "Install and enable sources that support search, or choose a photo.";
+"可以從相簿選一張圖片，或更換書源後重試。" = "Choose a photo or try other book sources.";

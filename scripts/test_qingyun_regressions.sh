@@ -13,6 +13,14 @@ finish() {
   if [[ -f "$PRIVATE/result.xcresult/Info.plist" ]]; then
     ditto -c -k --norsrc --keepParent "$PRIVATE/result.xcresult" trollstore-output/regressions.xcresult.zip || true
   fi
+  if [[ -n "${DEST:-}" ]]; then
+    local container_path
+    container_path="$(xcrun simctl get_app_container "${DEST#id=}" com.local.qingyun data 2>/dev/null || true)"
+    if [[ -d "$container_path/tmp/qingyun-layout-preview" ]]; then
+      mkdir -p trollstore-output/layout-preview
+      ditto "$container_path/tmp/qingyun-layout-preview" trollstore-output/layout-preview
+    fi
+  fi
   rm -f GoogleService-Info.plist
   rm -rf "$PRIVATE"
   exit "$status"
@@ -28,6 +36,11 @@ xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
   -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
   -only-testing:'yuedu appTests/BookshelfRingTests' \
+  -only-testing:'yuedu appTests/BookshelfRingPresentationTests' \
+  -only-testing:'yuedu appTests/BookshelfRingLayoutTests' \
+  -only-testing:'yuedu appTests/BookshelfCyberGearTests' \
+  -only-testing:'yuedu appTests/DiscoverySourcePinsTests' \
+  -only-testing:'yuedu appTests/OnlineCoverSourceSearchTests' \
   -only-testing:'yuedu appTests/ChapterListOrderTests' \
   -only-testing:'yuedu appTests/ReaderCardTransitionMathTests' \
   -only-testing:'yuedu appTests/ReaderNavigationOpeningGateTests' \

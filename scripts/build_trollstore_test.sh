@@ -73,4 +73,4 @@ python3 scripts/prepare_trollstore_test.py locate "$PRIVATE/settings.json" "$PRI
 printf '%s\n' '正在进行完整 iOS 真机 Debug 配置编译（Swift -Osize / C -Os），编译错误将立即终止。' >&3
 xcodebuild "${ARGS[@]}" build
 printf '%s\n' '编译命令成功，开始复核 Mach-O、最低系统版本和嵌套签名。' >&3
-python3 scripts/prepare_trollstore_test.py package "$PRIVATE/settings.json" "$PRIVATE/app-path.txt" "$OUT/Qingyun-v8.ipa"
+python3 scripts/prepare_trollstore_test.py package "$PRIVATE/settings.json" "$PRIVATE/app-path.txt" "$OUT/Qingyun-1.0.1.ipa"

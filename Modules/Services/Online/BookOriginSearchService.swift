@@ -212,14 +212,13 @@ enum BookOriginSearchService {
                         }
                     )
                 } catch {
-                    // A failed source still answers nil (its slot goes to the next source),
-                    // but the reason is logged so a device can tell "failed" from "slow".
+                    // An untrusted URL or script error can contain headers, cookies or
+                    // credentials. Log only the source's opaque identity, never the error body.
                     // Cancellation is the timeout or the caller stopping, not a failure.
                     if !(error is CancellationError) && !Task.isCancelled {
                         AppLogger.network(
                             "⟐ origin search failed",
-                            error: error,
-                            context: ["source": source.bookSourceName, "url": source.bookSourceUrl]
+                            context: ["sourceId": source.id.uuidString]
                         )
                     }
                     return nil

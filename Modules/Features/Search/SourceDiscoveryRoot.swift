@@ -59,6 +59,12 @@ private struct DiscoverySourcePicker: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var matches: [DiscoverableBookSource]
+    @State private var pins = DiscoverySourcePins()
+    @State private var showsPinConfirmation = false
+
+    private var pinActionTitle: String {
+        localized(pins.pendingChange?.shouldPin == false ? "取消置頂" : "置頂")
+    }
 
     private struct SearchInput: Equatable {
         let query: String
@@ -77,9 +83,14 @@ private struct DiscoverySourcePicker: View {
 
     var body: some View {
         NavigationStack {
-            List(matches) { source in
+            List(pins.ordered(matches)) { source in
                 Button { choose(source) } label: {
                     HStack(spacing: DSSpacing.md) {
+                        if pins.isPinned(source.id) {
+                            Image(systemName: "pin.fill")
+                                .foregroundStyle(DSColor.accent)
+                                .accessibilityLabel(localized("置頂"))
+                        }
                         Text(source.displayName)
                             .foregroundStyle(DSColor.textPrimary)
                             .lineLimit(2)
@@ -93,6 +104,29 @@ private struct DiscoverySourcePicker: View {
                     .frame(minHeight: DSLayout.minimumTapTarget)
                 }
                 .accessibilityAddTraits(source.url == selectedURL ? .isSelected : [])
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        pins.requestChange(for: source.id)
+                        showsPinConfirmation = true
+                    } label: {
+                        Label(
+                            localized(pins.isPinned(source.id) ? "取消置頂" : "置頂"),
+                            systemImage: pins.isPinned(source.id) ? "pin.slash" : "pin"
+                        )
+                    }
+                    .tint(DSColor.accent)
+                }
+            }
+            .alert(pinActionTitle, isPresented: $showsPinConfirmation) {
+                Button(pinActionTitle) {
+                    pins.confirmPendingChange(availableIDs: Set(sources.map(\.id)))
+                }
+                Button(localized("取消"), role: .cancel) {
+                    pins.cancelPendingChange()
+                }
+            } message: {
+                // Show only the display name, never the source's URL or credentials.
+                Text(sources.first { $0.id == pins.pendingChange?.sourceID }?.displayName ?? "")
             }
             .searchable(
                 text: $query,

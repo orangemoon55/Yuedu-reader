@@ -132,6 +132,7 @@ struct PageBackgroundView: View {
 
 private struct ThemedAppSurfaceModifier: ViewModifier {
     let scope: AppearancePageBackgroundScope
+    var showsArtwork = true
     @Bindable private var gs = GlobalSettings.shared
     @ObservedObject private var subscriptionStore = SubscriptionStore.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -147,7 +148,7 @@ private struct ThemedAppSurfaceModifier: ViewModifier {
     /// screen it had pushed. Branch inside `.background` instead.
     /// (The two theme-less branches this replaced were already byte-identical.)
     func body(content: Content) -> some View {
-        let slice = self.slice
+        let slice = showsArtwork ? self.slice : nil
         return content
             .scrollContentBackground(.hidden)
             .background {
@@ -203,8 +204,8 @@ extension View {
     /// hidden so the background shows through the nav-bar region. A no-op when
     /// no theme is active and no page background is configured. Apply directly
     /// on the `Form`/`List`.
-    func themedAppSurface(for scope: AppearancePageBackgroundScope = .global) -> some View {
-        modifier(ThemedAppSurfaceModifier(scope: scope))
+    func themedAppSurface(for scope: AppearancePageBackgroundScope = .global, showsArtwork: Bool = true) -> some View {
+        modifier(ThemedAppSurfaceModifier(scope: scope, showsArtwork: showsArtwork))
     }
 
     /// Hides the navigation bar's default material when a page background or app

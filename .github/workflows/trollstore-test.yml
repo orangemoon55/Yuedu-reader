@@ -46,6 +46,7 @@ jobs:
           path: |
             trollstore-output/regressions.log
             trollstore-output/regressions.xcresult.zip
+            trollstore-output/layout-preview/
           if-no-files-found: warn
           retention-days: 7
   build:

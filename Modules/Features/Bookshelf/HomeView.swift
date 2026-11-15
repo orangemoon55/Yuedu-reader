@@ -676,7 +676,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .themedAppSurface(for: .bookshelf)
+            .themedAppSurface(for: .bookshelf, showsArtwork: !isRingMode || editMode == .active)
             .animation(DSAnimation.standard, value: store.books.isEmpty)
             .rootTabTitle(localized("書架"), onScroll: .fadesTitle)
             .toolbar { shelfToolbar(addsBooks: true) }
