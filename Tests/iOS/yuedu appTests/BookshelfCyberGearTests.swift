@@ -41,13 +41,6 @@ struct BookshelfCyberGearTests {
             renderer.scale = 2
             let image = try #require(renderer.cgImage)
             #expect(image.width == 640 && image.height == 640)
-            #if targetEnvironment(simulator)
-            let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("qingyun-layout-preview")
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let data = try #require(UIImage(cgImage: image).pngData())
-            try data.write(to: directory.appendingPathComponent("cyber-gear-\(spinning).png"), options: .atomic)
-            #endif
         }
     }
 }

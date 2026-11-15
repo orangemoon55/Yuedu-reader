@@ -7,6 +7,7 @@ struct BookshelfCyberGear: View {
     let colorScheme: ColorScheme
     var isSpinning = false
     var selectedSlot = 0
+    var isDrawing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var pulse: Double = 0

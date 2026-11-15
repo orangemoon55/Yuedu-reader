@@ -48,8 +48,26 @@ struct BookshelfRingSectorArtwork: View {
 /// The centre is an opaque brand badge, independent of rotor angle and book tint.
 struct BookshelfRingCenterBadge: View {
     let diameter: CGFloat
+    var onDraw: (() -> Void)? = nil
 
     var body: some View {
+        Group {
+            if let onDraw {
+                Button(action: onDraw) {
+                    badge
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(localized("书架抽签"))
+                .accessibilityHint(localized("随机推荐一本书"))
+            } else {
+                badge
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .accessibilityIdentifier("bookshelf.ring.centerIcon")
+    }
+
+    private var badge: some View {
         Image("YueduAppIcon")
             .resizable()
             .scaledToFill()
@@ -58,8 +76,6 @@ struct BookshelfRingCenterBadge: View {
             .clipShape(Circle())
             .overlay { Circle().stroke(Color.white.opacity(0.75), lineWidth: 1) }
             .shadow(color: .black.opacity(0.16), radius: 2, y: 1)
-            .allowsHitTesting(false)
             .accessibilityHidden(true)
-            .accessibilityIdentifier("bookshelf.ring.centerIcon")
     }
 }
