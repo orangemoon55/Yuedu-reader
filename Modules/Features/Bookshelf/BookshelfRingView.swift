@@ -260,7 +260,7 @@ private struct BookshelfRingRotor: View {
             let diameter = min(proxy.size.width, proxy.size.height)
             let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
             let step = BookshelfRingGeometry.step(count: books.count)
-            let coverWidth = min(BookshelfRingPalette.coverSize.width, diameter * (books.count >= 7 ? 0.137 : 0.153))
+            let coverWidth = min(BookshelfRingPalette.coverSize.width, diameter * (books.count >= 9 ? 0.125 : (books.count >= 7 ? 0.137 : 0.153)))
             let tileSize = CGSize(width: coverWidth, height: coverWidth * 1.4)
             let angle = motion.rotation
             ZStack {
