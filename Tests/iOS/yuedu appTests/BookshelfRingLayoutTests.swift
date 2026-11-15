@@ -92,7 +92,7 @@ struct BookshelfRingLayoutTests {
     func fourSectorArtworkClipsCovers() throws {
         let covers = [UIColor.red, .green, .blue, .yellow].map { solid($0) }
         let artwork = ZStack {
-            Color.magenta
+            Color(uiColor: .magenta)
             ForEach(0..<4) { slot in
                 BookshelfRingSectorArtwork(image: covers[slot], slot: slot, count: 4,
                     diameter: 320, rotation: 0, isSelected: false, colorScheme: .light)

@@ -37,7 +37,6 @@ struct BookshelfCyberGearTests {
         for spinning in [false, true] {
             let view = BookshelfCyberGear(diameter: 320, rotation: 35, colorScheme: .light,
                                          isSpinning: spinning, selectedSlot: 2)
-                .environment(\.accessibilityReduceMotion, true)
             let renderer = ImageRenderer(content: view)
             renderer.scale = 2
             let image = try #require(renderer.cgImage)
