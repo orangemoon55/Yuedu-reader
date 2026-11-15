@@ -7,7 +7,9 @@ struct ReaderQuickPageTurnChip: View {
     let action: () -> Void
 
     private var fill: Color { selected ? DSColor.accent : DSColor.neutralControlFill }
-    private var ink: Color { selected ? DSColor.textOnAccent : DSColor.textPrimary }
+    private var ink: AnyShapeStyle {
+        selected ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textPrimary)
+    }
     private var border: Color { selected ? .clear : DSColor.separator }
 
     var body: some View {
@@ -16,14 +18,14 @@ struct ReaderQuickPageTurnChip: View {
                 .font(DSFont.subheadline.weight(.medium))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .foregroundColor(ink)
+                .foregroundStyle(ink)
                 .padding(.horizontal, DSSpacing.md)
                 .frame(minHeight: DSLayout.readerQuickPanelTopControlHeight)
                 .background(fill, in: Capsule())
                 .overlay(Capsule().strokeBorder(border, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? AccessibilityTraits.isSelected : AccessibilityTraits())
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("reader.pageTurnStyle.\(option.rawValue)")
     }
 }
