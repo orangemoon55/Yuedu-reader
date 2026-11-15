@@ -1,0 +1,14 @@
+{
+  "name": "轻云出岫",
+  "shape": "云起书山",
+  "palette": "月夜苍岚",
+  "bundleID": "com.local.qingyun",
+  "iconSHA256": "5883b232ee913bf11bb746ce108ba9608a1c38005d62e936f6045a5e1f3fa533",
+  "assetSHA256": {
+    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "6b0b7b818e80606ee078ecc691ae09c34ec134f081e2198772209294ec7a46e6",
+    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "8d9800b5c6bdb15ba3b5ac888865c6a536f41dc956ac95edd13276ef31df2eaf",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "6b0b7b818e80606ee078ecc691ae09c34ec134f081e2198772209294ec7a46e6",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "8d9800b5c6bdb15ba3b5ac888865c6a536f41dc956ac95edd13276ef31df2eaf",
+    "YueduLogo.imageset/YueduLogo.png": "5883b232ee913bf11bb746ce108ba9608a1c38005d62e936f6045a5e1f3fa533"
+  }
+}

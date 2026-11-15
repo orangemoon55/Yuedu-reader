@@ -3089,6 +3089,13 @@
 "服務名稱" = "Service Name";
 
 "未附書中引用" = "No Book Citations";
+"去底部" = "Go to Latest Chapter";
+"目前在讀" = "Currently Reading";
+"尚未開始" = "Not Started";
+"暫無章節資訊" = "Chapter Information Unavailable";
+"翻開一頁，讓心慢下來。" = "Open a page and slow down.";
+"打開書籍詳情頁" = "Open Book Details";
+"更多書籍" = "More Books";
 "捲到最新" = "Scroll to Latest";
 "建立中…" = "Building…";
 "人物關係圖" = "Relationship Map";

@@ -2869,7 +2869,7 @@ struct ReaderView: View {
             }
         }
         .sheet(isPresented: $showTOC) {
-            AdaptiveSheetContainer(maxWidth: DSLayout.readableListWidth) {
+            AdaptiveSheetContainer(maxWidth: DSLayout.readableListWidth * 4 / 3) {
                 ReaderTOCView(
                     chapters: chapters.map { chapter in
                         var display = chapter
@@ -2878,7 +2878,6 @@ struct ReaderView: View {
                         return display
                     },
                     bookTitle: book?.title ?? "",
-                    bookID: book?.id,
                     currentPage: currentPage,
                     totalPages: renderedPageCount,
                     tocLayoutMode: .from(writingMode: bookDirection.principalMode),

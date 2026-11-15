@@ -100,6 +100,20 @@ struct ChapterListOrderTests {
         #expect(ReaderTOCScrollTarget.row(currentIndex: 1, in: shown) == nil)
     }
 
+    @Test("go to bottom selects the newest readable row without reordering chapters")
+    func latestChapterTarget() {
+        let chapters = [
+            Self.chapter(10, "第一章"),
+            Self.chapter(30, "第二章"),
+            Self.chapter(40, "第三卷"),
+        ]
+        #expect(ReaderTOCScrollTarget.latest(in: chapters) == 30)
+        #expect(chapters.map(\.index) == [10, 30, 40])
+        #expect(ReaderTOCScrollTarget.latest(in: []) == nil)
+        #expect(ReaderTOCScrollTarget.latest(in: [Self.chapter(90, "第一章")]) == 90)
+        #expect(ReaderTOCScrollTarget.latest(in: [Self.chapter(7, "第一卷")]) == 7)
+    }
+
     // MARK: Per-book memory
 
     @Test("倒序 is remembered per book, and a book without an id remembers nothing")

@@ -259,7 +259,7 @@ struct SettingsView: View {
                             )
                         } label: {
                             HStack {
-                                Label(localized("關於 Yuedu Reader"), systemImage: "info.circle.fill")
+                                Label("关于 \(PersonalBuildFeatures.appDisplayName)", systemImage: "info.circle.fill")
                                     .foregroundColor(DSColor.textPrimary)
                                     .labelStyle(IconConsistentLabelStyle())
                                 Spacer(minLength: 12)
@@ -396,7 +396,7 @@ private struct AboutSupportView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
 
-                    Text(localized("閱讀"))
+                    Text(PersonalBuildFeatures.appDisplayName)
                         .font(DSFont.title3.weight(.semibold))
                         .foregroundStyle(DSColor.textPrimary)
 
@@ -512,7 +512,7 @@ private struct AboutSupportView: View {
             .interfaceSectionSurface()
         }
         .softScrollEdges()
-        .navigationTitle(localized("關於 Yuedu Reader"))
+        .navigationTitle("关于 \(PersonalBuildFeatures.appDisplayName)")
         .toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .settings)
     }

@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """仅使用 Python 标准库；配置修改只发生在云端临时 checkout。"""
 import base64
-import binascii
+import hashlib
 import json
 import os
 from pathlib import Path
 import plistlib
 import re
 import shutil
+import stat
 import struct
 import subprocess
 import sys
+import zipfile
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +22,20 @@ ENTITLEMENTS = {
     "": "Resources/Yuedu-Reader.entitlements",
     ".shareextension": "ShareExtension/Yuedu-Reader-ShareExtension.entitlements",
     ".widget": "Widget/Yuedu-Reader-Widget.entitlements",
+}
+# 与 build_trollstore_test.sh 同步；必须保留 Debug，避免执行 Crashlytics 上传阶段。
+BUILD_REQUIREMENTS = {
+    "CONFIGURATION": "Debug",
+    "ENABLE_DEBUG_DYLIB": "NO",
+    "SWIFT_OPTIMIZATION_LEVEL": "-Osize",
+    "GCC_OPTIMIZATION_LEVEL": "s",
+    "DEAD_CODE_STRIPPING": "YES",
+    "MTL_ENABLE_DEBUG_INFO": "NO",
+    "SWIFT_REFLECTION_METADATA_LEVEL": "all",
+    "COPY_PHASE_STRIP": "NO",
+    "STRIP_INSTALLED_PRODUCT": "NO",
+    "STRIP_STYLE": "debugging",
+    "STRIP_SWIFT_SYMBOLS": "NO",
 }
 
 
@@ -47,8 +63,8 @@ def cloud_only():
 
 
 def identity():
-    bid = os.environ.get("TEST_BUNDLE_ID", "com.local.readerpreview")
-    name = os.environ.get("TEST_DISPLAY_NAME", "书架试用版")
+    bid = os.environ.get("TEST_BUNDLE_ID", "com.local.qingyun")
+    name = os.environ.get("TEST_DISPLAY_NAME", "轻云出岫")
     need(re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+){2,}", bid)
          and len(bid) <= 150 and not bid.lower().startswith(OLD.lower()),
          "新的 Bundle ID 格式不正确，或仍在原应用标识命名空间下。")
@@ -78,30 +94,34 @@ def firebase(bid):
     return data
 
 
-def make_icon(directory):
-    # 原创几何书籍图标：不使用第三方图片，不含透明通道。
-    directory.mkdir(parents=True, exist_ok=True)
-    size = 1024
-    rows = bytearray()
-    for y in range(size):
-        rows.append(0)
-        for x in range(size):
-            color = (30, 65, 78)
-            if 210 <= x <= 494 and 240 <= y <= 780:
-                color = (246, 236, 209)
-            if 530 <= x <= 814 and 240 <= y <= 780:
-                color = (246, 236, 209)
-            if ((260 <= x <= 444) or (580 <= x <= 764)) and any(a <= y <= a + 12 for a in (350, 440, 530, 620)):
-                color = (107, 146, 151)
-            rows.extend(color)
-    def chunk(kind, value):
-        return struct.pack(">I", len(value)) + kind + value + struct.pack(">I", zlib.crc32(kind + value) & 0xFFFFFFFF)
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
-    png += chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b"")
-    (directory / "Preview.png").write_bytes(png)
-    (directory / "Contents.json").write_text(json.dumps({
-        "images": [{"filename": "Preview.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
-        "info": {"author": "xcode", "version": 1}}, indent=2), encoding="utf-8")
+def verify_brand_icon():
+    # 使用已确认的「云起书山 · 月夜苍岚」资源，避免云端准备阶段覆盖用户图标。
+    brand = json.loads((ROOT / "scripts/qingyun_branding.json").read_text(encoding="utf-8"))
+    need(brand.get("name") == "轻云出岫" and brand.get("palette") == "月夜苍岚",
+         "应用品牌清单不匹配。")
+    assets = ROOT / "Resources/Assets.xcassets"
+    directory = assets / "AppIcon.appiconset"
+    manifest = json.loads((directory / "Contents.json").read_text(encoding="utf-8"))
+    images = manifest.get("images", [])
+    need(images, "应用图标资源为空。")
+    for image in images:
+        filename = image.get("filename", "")
+        need(filename and Path(filename).name == filename, "应用图标文件名无效。")
+        png = (directory / filename).read_bytes()
+        need(png[:16] == b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" and len(png) > 33,
+             "应用图标不是有效 PNG。")
+        width, height, depth, color = struct.unpack(">IIBB", png[16:26])
+        need((width, height, depth, color) == (1024, 1024, 8, 2),
+             "应用图标须为 1024×1024、不透明的 RGB PNG。")
+        need(hashlib.sha256(png).hexdigest() == brand.get("iconSHA256"),
+             "应用图标与确认的月夜苍岚原图不一致。")
+    for filename, expected in brand.get("assetSHA256", {}).items():
+        path = assets / filename
+        need(path.resolve().is_relative_to(assets.resolve()) and path.is_file(),
+             "应用内品牌资源缺失或路径无效。")
+        need(hashlib.sha256(path.read_bytes()).hexdigest() == expected,
+             "应用内图标资源校验失败：" + filename)
+    print("品牌资源复核通过：轻云出岫 · 云起书山 · 月夜苍岚。")
 
 
 def prepare():
@@ -115,9 +135,9 @@ def prepare():
     changed, names = re.subn(r'INFOPLIST_KEY_CFBundleDisplayName\s*=\s*"[^"]*";',
                             lambda _: 'INFOPLIST_KEY_CFBundleDisplayName = "' + name + '";', changed)
     need(names == 2, "主应用显示名称配置已变化。")
-    changed, icons = re.subn(r"ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;",
-                            "ASSETCATALOG_COMPILER_APPICON_NAME = PreviewIcon;", changed)
-    need(icons == 2, "主应用图标配置已变化。")
+    need(len(re.findall(r"ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;", changed)) == 2,
+         "主应用图标配置已变化。")
+    verify_brand_icon()
     need(re.findall(r"IPHONEOS_DEPLOYMENT_TARGET\s*=\s*[^;]+", original)
          == re.findall(r"IPHONEOS_DEPLOYMENT_TARGET\s*=\s*[^;]+", changed), "部署目标意外变化。")
     PROJECT.write_text(changed, encoding="utf-8")
@@ -140,6 +160,7 @@ def prepare():
         info["GIDClientID"] = config["CLIENT_ID"]
         info["CFBundleURLTypes"] = [{"CFBundleTypeRole": "Editor", "CFBundleURLSchemes": [config["REVERSED_CLIENT_ID"]]}]
     info["CFBundleDisplayName"] = name
+    info["CFBundleName"] = name
     info["ReaderStandalone"] = True
     info["FirebaseDataCollectionDefaultEnabled"] = False
     info["FirebaseCrashlyticsCollectionEnabled"] = False
@@ -160,7 +181,7 @@ def prepare():
         text = re.sub(r'("?CFBundleDisplayName"?\s*=\s*)"(?:[^"\\]|\\.)*"',
                       lambda m: m[1] + '"' + display + '"', text)
         path.write_text(text, encoding="utf-8")
-    make_icon(ROOT / "Resources/Assets.xcassets/PreviewIcon.appiconset")
+    verify_brand_icon()
     save(ROOT / "GoogleService-Info.plist", config)
     (ROOT / "GoogleService-Info.plist").chmod(0o600)
     print("配置准备完成：新 Bundle ID、共享组、桌面名称、独立图标及 Google 回调已同步；未修改部署目标或付费逻辑。")
@@ -186,11 +207,21 @@ def settings(path):
     return [item["buildSettings"] for item in data if isinstance(item, dict) and "buildSettings" in item]
 
 
+def check_build_settings(actual):
+    need(actual, "缺少自用版构建设置。")
+    for item in actual:
+        for key, expected in BUILD_REQUIREMENTS.items():
+            need(item.get(key) == expected,
+                 "自用版构建设置不一致：" + key + "，预期 " + expected)
+
+
 def locate(source, destination):
     bid, _ = identity()
     matches = [s for s in settings(source) if s.get("PRODUCT_BUNDLE_IDENTIFIER") == bid and s.get("WRAPPER_EXTENSION") == "app"]
     need(len(matches) == 1, "构建设置中无法唯一定位新主应用。")
     item = matches[0]
+    check_build_settings([s for s in settings(source)
+                          if s.get("PRODUCT_BUNDLE_IDENTIFIER") in {bid + suffix for suffix in ENTITLEMENTS}])
     need(item.get("BUILT_PRODUCTS_DIR") and item.get("WRAPPER_NAME"), "构建设置缺少 BUILT_PRODUCTS_DIR 或 WRAPPER_NAME。")
     need(Path(item["WRAPPER_NAME"]).name == item["WRAPPER_NAME"] and item["WRAPPER_NAME"].endswith(".app"), "应用包装目录无效。")
     app = Path(item["BUILT_PRODUCTS_DIR"]) / item["WRAPPER_NAME"]
@@ -232,20 +263,122 @@ def check_binary(path):
     print("真机二进制复核通过：" + path.name + "；最低 iOS " + ", ".join(minimums))
 
 
+def payload_entries(payload):
+    """不跟随目录链接；只接受指向当前 Payload 内已存在资源的相对链接。"""
+    payload = Path(payload)
+    need(payload.is_dir() and not payload.is_symlink() and payload.name == "Payload",
+         "IPA 根目录必须为真实 Payload 目录。")
+    root = payload.resolve()
+    entries = [payload]
+    for directory, directories, files in os.walk(payload, followlinks=False):
+        entries.extend(Path(directory) / name for name in sorted(directories + files))
+    for path in entries:
+        mode = path.lstat().st_mode
+        need(stat.S_ISREG(mode) or stat.S_ISDIR(mode) or stat.S_ISLNK(mode),
+             "Payload 含不支持的特殊文件：" + str(path.relative_to(payload)))
+        if stat.S_ISLNK(mode):
+            target = os.readlink(path)
+            need(target and not os.path.isabs(target), "Payload 含绝对路径符号链接。")
+            try:
+                resolved = path.resolve(strict=True)
+            except (OSError, RuntimeError):
+                raise ValueError("Payload 含悬空或循环符号链接。") from None
+            need(resolved.is_relative_to(root), "Payload 符号链接指向应用目录之外。")
+        # ditto --norsrc 应已抑制 AppleDouble；异常残留时拒绝而非误删资源。
+        need(not any(part == "__MACOSX" or part.startswith("._")
+                     for part in path.relative_to(payload).parts),
+             "Payload 含 AppleDouble 元数据，停止打包。")
+    return sorted(entries, key=lambda path: path.relative_to(payload.parent).as_posix())
+
+
+def strip_debug_symbols(app):
+    """仅处理已识别的已链接 Mach-O；保留运行时符号、ObjC 及 Swift 反射信息。"""
+    from ipa_compatibility import binaries, inspect_binary
+    images = list(binaries(app))
+    # MH_EXECUTE / MH_DYLIB / MH_BUNDLE；先检查全体，遇到未知类型不猜测处理。
+    for path, slices in images:
+        need(all(item["kind"] in {2, 6, 8} for item in slices),
+             "不支持 strip 的 Mach-O 文件类型：" + str(path.relative_to(app)))
+    before = sum(path.stat().st_size for path, _ in images)
+    for path, slices in images:
+        original = path.stat().st_size
+        run("xcrun", "strip", "-S", path)
+        # load commands / 依赖 / 平台 / 代码段信息应保持一致，仅符号表数量可减少。
+        stripped = inspect_binary(path)
+        need([{key: value for key, value in item.items() if key != "symbols"} for item in slices]
+             == [{key: value for key, value in item.items() if key != "symbols"} for item in stripped],
+             "strip 意外改变 Mach-O 运行信息：" + path.name)
+        print("Mach-O strip -S：" + str(path.relative_to(app)) + "；"
+              + str(original) + " -> " + str(path.stat().st_size) + " 字节")
+    after = sum(path.stat().st_size for path, _ in images)
+    print(f"Mach-O 合计（{len(images)} 个）：{before} -> {after} 字节；减少 {before - after} 字节。")
+    return before, after
+
+
+def write_ipa(payload, destination):
+    """精确写入 Payload 树，保留 Unix 类型/权限和安全符号链接，逐项核对并验 CRC。"""
+    payload = Path(payload)
+    entries = payload_entries(payload)
+    expected = {}
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED,
+                         compresslevel=9, allowZip64=True, strict_timestamps=False) as archive:
+        for path in entries:
+            mode = path.lstat().st_mode
+            name = path.relative_to(payload.parent).as_posix()
+            if stat.S_ISDIR(mode):
+                name += "/"
+            # from_file 会跟随 symlink，目录链接会被误加斜杠；单独记录其真实类型。
+            info = (zipfile.ZipInfo(name) if stat.S_ISLNK(mode) else
+                    zipfile.ZipInfo.from_file(path, arcname=name, strict_timestamps=False))
+            info.create_system = 3
+            info.external_attr = (mode & 0xffff) << 16
+            if stat.S_ISDIR(mode):
+                info.external_attr |= 0x10
+            if stat.S_ISLNK(mode):
+                data = os.fsencode(os.readlink(path))
+                archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+                size = len(data)
+            elif stat.S_ISDIR(mode):
+                archive.writestr(info, b"", compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+                size = 0
+            else:
+                # ZipFile.write 使用归档的 level 9，并以流式方式处理大体积程序。
+                archive.write(path, arcname=name, compress_type=zipfile.ZIP_DEFLATED)
+                size = path.stat().st_size
+            expected[name] = (mode & 0xffff, size)
+    with zipfile.ZipFile(destination) as archive:
+        members = archive.infolist()
+        need(len(members) == len(expected) and {item.filename for item in members} == set(expected),
+             "IPA 归档树与 Payload 不一致。")
+        for item in members:
+            need(item.create_system == 3
+                 and (item.external_attr >> 16, item.file_size) == expected[item.filename]
+                 and item.compress_type == zipfile.ZIP_DEFLATED,
+                 "IPA 文件类型、权限或大小校验失败：" + item.filename)
+        need(archive.testzip() is None, "IPA ZIP CRC 完整性验证失败。")
+    uncompressed = sum(size for _, size in expected.values())
+    compressed = Path(destination).stat().st_size
+    print(f"Payload 未压缩 {uncompressed} 字节；IPA DEFLATE level 9 后 {compressed} 字节。")
+    return uncompressed, compressed
+
+
 def package(source, path_file, output):
     cloud_only()
     bid, _ = identity()
     app = Path(Path(path_file).read_text(encoding="utf-8"))
     need(app.is_dir() and app.suffix == ".app", "完整编译没有生成真实 .app，停止打包。")
     need(app.resolve().is_relative_to(private_dir().resolve()), "应用路径超出私有构建目录。")
-    # 同时检查设置未被另一个 configuration 或目标污染。
+    # 与 locate 和 xcodebuild ARGS 一致，防止配置切换后误打包或恢复 -Onone。
     actual = [s for s in settings(source) if s.get("PRODUCT_BUNDLE_IDENTIFIER") == bid]
-    need(len(actual) == 1 and actual[0].get("CONFIGURATION") == "Debug", "打包配置不是预期的 Debug。")
+    need(len(actual) == 1, "无法唯一定位主应用构建设置。")
+    check_build_settings([s for s in settings(source)
+                          if s.get("PRODUCT_BUNDLE_IDENTIFIER") in {bid + suffix for suffix in ENTITLEMENTS}])
     stage = private_dir() / "打包"
     payload = stage / "Payload"
     payload.mkdir(parents=True)
     staged = payload / app.name
     run("/usr/bin/ditto", "--norsrc", app, staged)
+    payload_entries(payload)  # 先拒绝不安全链接，后续检查和 strip 不得触及 Payload 外部。
     from ipa_compatibility import clean_unused_stubs, validate, normalize_permissions
     removed = clean_unused_stubs(staged)
     print("已移除无代码且未被引用的 Xcode 占位框架：" + (", ".join(removed) or "无"))
@@ -281,6 +414,9 @@ def package(source, path_file, output):
                 header = stream.read(4)
             if header in magic:
                 check_binary(path)
+    # 此后才允许签名；所有真实 Mach-O（包括扩展和嵌套框架）仅移除调试符号。
+    strip_debug_symbols(staged)
+    print("strip 后严格验证真机二进制数量：" + str(validate(staged)))
     nested = list(staged.rglob("*.framework")) + list(staged.rglob("*.dylib"))
     for path in sorted(nested, key=lambda p: len(p.parts), reverse=True):
         if not path.is_symlink():
@@ -302,10 +438,8 @@ def package(source, path_file, output):
     payload.chmod(0o755)
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", staged)
     temporary = private_dir() / "已复核.ipa"
-    run("/usr/bin/ditto", "-c", "-k", "--norsrc", "--keepParent", payload, temporary)
-    import zipfile
+    write_ipa(payload, temporary)
     with zipfile.ZipFile(temporary) as archive:
-        need(archive.testzip() is None, "IPA ZIP 完整性验证失败。")
         need(f"Payload/{app.name}/Info.plist" in archive.namelist(), "IPA 缺少 Payload 应用目录。")
     shutil.copyfile(temporary, output)
     print("IPA 已由真实编译产物生成并完成 ad-hoc 签名复核；不代表已经真机安装或获得 Apple 云服务授权。")

@@ -198,11 +198,11 @@ private enum BookshelfImportPresentationRoute: Hashable {
     case calibreWireless
 }
 
-private extension View {
+extension View {
     /// Same frames, at the same moments, as the `GeometryReader` + preference it replaces —
     /// in window coordinates, empty ones ignored — written to `box` instead of to state.
     /// What the cover draws goes to `box` too, so a tap lifts exactly that.
-    func reportBookshelfCoverFrame(into box: BookshelfCoverFrameBox, onChange: ((CGRect) -> Void)?) -> some View {
+    func reportBookshelfCoverFrame(into box: BookshelfCoverFrameBox, onChange: ((CGRect) -> Void)?, onImage: ((UIImage) -> Void)? = nil) -> some View {
         onGeometryChange(for: CGRect.self) { proxy in
             proxy.frame(in: .global)
         } action: { frame in
@@ -211,7 +211,10 @@ private extension View {
             onChange?(frame)
         }
         .environment(\.bookshelfDrawnCoverObserver) { [weak box] drawn in box?.drawnCover = drawn }
-        .environment(\.coverImageObserver) { [weak box] image in box?.catalogImage = image }
+        .environment(\.coverImageObserver) { [weak box] image in
+            box?.catalogImage = image
+            onImage?(image)
+        }
     }
 }
 
@@ -284,6 +287,8 @@ struct HomeView: View {
         switch action {
         case .open:
             openBook(book, from: activePage, tapped: nil)
+        case .showDetail:
+            showWorkDetail(for: book)
         case .searchCover:
             searchingCoverForBook = book
         case .toggleFatten:
@@ -637,8 +642,32 @@ struct HomeView: View {
                             books: sortedBooks(inGroup: nil),
                             colorScheme: colorScheme,
                             isFattened: { isFattenedBookIDs.contains($0) },
-                            onOpen: { book in openBook(book, from: .all, tapped: nil) },
-                            onContextAction: { book, action in performBookContextAction(book, action) }
+                            chapterContext: { book in
+                                let positionStore = appDependencies.readingPositionStore
+                                let chapterStore = store
+                                let id = book.id
+                                let usesTextPosition: Bool
+                                switch book.resolvedPipelineKind {
+                                case .manga, .fixedPage, .audio, .video: usesTextPosition = false
+                                default: usesTextPosition = true
+                                }
+                                let (chapters, position) = await Task.detached(priority: .userInitiated) {
+                                    (chapterStore.chapters(for: id) ?? [],
+                                     usesTextPosition ? positionStore.loadSync(for: id.uuidString) : nil)
+                                }.value
+                                return BookshelfRingChapterContext(book: book, chapters: chapters, textPosition: position)
+                            },
+                            onOpen: { book, tapped in openBook(book, from: .all, tapped: tapped) },
+                            onCoverFrameChange: { book, frame in
+                                readerGeometryStore.update(frame, for: book.id, onPage: .all)
+                            },
+                            onContextAction: { book, action in performBookContextAction(book, action) },
+                            onShowMore: {
+                                selectedGroup = ""
+                                openedFolder = nil
+                                isRingMode = false
+                                isGridMode = false
+                            }
                         )
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                     } else {
@@ -2030,6 +2059,7 @@ struct BookRow: View {
                         book: book,
                         isFattened: isFattened,
                         onOpen: openBook,
+                        onShowDetail: { onContextAction?(.showDetail) },
                         onSearchCover: { onContextAction?(.searchCover) },
                         onToggleFatten: { onContextAction?(.toggleFatten) },
                         onDelete: onDelete
@@ -2366,6 +2396,7 @@ struct BookGridCell: View {
                 book: book,
                 isFattened: isFattened,
                 onOpen: { activate() },
+                onShowDetail: { onContextAction?(.showDetail) },
                 onSearchCover: { onContextAction?(.searchCover) },
                 onToggleFatten: { onContextAction?(.toggleFatten) },
                 onDelete: onDelete

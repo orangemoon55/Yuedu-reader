@@ -17,7 +17,7 @@ struct OnboardingWelcomePage: View {
                 AppIconImage(size: DSLayout.onboardingAppIconSize)
                     .modifier(entrance(0))
                 // The app's name as 關於 gives it.
-                Text(localized("閱讀"))
+                Text(PersonalBuildFeatures.appDisplayName)
                     .font(DSFont.onboardingAppName)
                     .foregroundStyle(DSColor.textPrimary)
                     .accessibilityAddTraits(.isHeader)

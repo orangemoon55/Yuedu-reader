@@ -1,4 +1,4 @@
-name: 书架试用版 · TrollStore 云端构建
+name: 轻云出岫 · 自用版云端构建
 
 on:
   workflow_dispatch:
@@ -6,18 +6,42 @@ on:
       bundle_id:
         description: 新的主应用标识（不要使用原版标识）
         required: true
-        default: com.local.readerpreview
+        default: com.local.qingyun
         type: string
       display_name:
         description: 桌面显示名称
         required: true
-        default: 书架试用版
+        default: 轻云出岫
         type: string
 
 permissions:
   contents: read
 
 jobs:
+  regressions:
+    name: 核查圆盘、目录和阅读退出回归
+    runs-on: xcode-27
+    timeout-minutes: 55
+    steps:
+      - name: 获取所选分支源码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 运行定向 iOS 模拟器测试
+        env:
+          TEST_BUNDLE_ID: ${{ inputs.bundle_id }}
+          TEST_DISPLAY_NAME: ${{ inputs.display_name }}
+        run: bash scripts/test_qingyun_regressions.sh
+      - name: 保存回归日志和结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 轻云出岫-回归-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            trollstore-output/regressions.log
+            trollstore-output/regressions.xcresult.zip
+          if-no-files-found: warn
+          retention-days: 7
   build:
     name: 编译并生成真机测试 IPA
     runs-on: xcode-27
@@ -36,7 +60,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: 书架试用版-IPA-${{ github.run_id }}-${{ github.run_attempt }}
+          name: 轻云出岫-IPA-${{ github.run_id }}-${{ github.run_attempt }}
           path: trollstore-output/*.ipa
           if-no-files-found: error
           retention-days: 3
@@ -45,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 书架试用版-日志-${{ github.run_id }}-${{ github.run_attempt }}
+          name: 轻云出岫-日志-${{ github.run_id }}-${{ github.run_attempt }}
           path: trollstore-output/build.log
           if-no-files-found: warn
           retention-days: 7

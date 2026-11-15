@@ -393,6 +393,39 @@ struct ReaderCardTransitionMathTests {
         #expect(fallback.resolveGeometry() == nil)
     }
 
+    @Test("card closing requires a drawable cover and a live landing frame")
+    @MainActor
+    func cardCloseRequiresArtworkAndLiveGeometry() {
+        let frame = CGRect(x: 20, y: 40, width: 90, height: 135)
+        let image = UIGraphicsImageRenderer(size: frame.size).image { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(origin: .zero, size: frame.size))
+        }
+        #expect(!ReaderTransitionSource.fallback(bookID: UUID()).canAnimateCardClose)
+        #expect(!ReaderTransitionSource(bookID: UUID(), frameProvider: { frame }).canAnimateCardClose)
+        #expect(!ReaderTransitionSource(bookID: UUID(), frame: frame, snapshot: image).canAnimateCardClose)
+        #expect(!ReaderTransitionSource(bookID: UUID(), frameProvider: { frame }, snapshot: UIImage()).canAnimateCardClose)
+        #expect(ReaderTransitionSource(bookID: UUID(), frameProvider: { frame }, snapshot: image).canAnimateCardClose)
+    }
+
+    @Test("a removed source cover cannot close toward its stale tap-time frame")
+    @MainActor
+    func cardCloseRejectsLostLandingFrame() {
+        let frame = CGRect(x: 20, y: 40, width: 90, height: 135)
+        let image = UIGraphicsImageRenderer(size: frame.size).image { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(origin: .zero, size: frame.size))
+        }
+        var liveFrame: CGRect? = frame
+        let source = ReaderTransitionSource(
+            bookID: UUID(), frame: frame, frameProvider: { liveFrame }, snapshot: image
+        )
+        #expect(source.canAnimateCardClose)
+        liveFrame = nil
+        #expect(!source.canAnimateCardClose)
+        #expect(source.resolvedFrame() == frame)
+    }
+
     @Test("live source frame wins over the tap-time fallback frame")
     @MainActor
     func liveSourceFrameResolution() {

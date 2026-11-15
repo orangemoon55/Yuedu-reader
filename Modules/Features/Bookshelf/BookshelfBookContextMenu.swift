@@ -2,6 +2,7 @@ import SwiftUI
 
 enum BookshelfBookContextAction {
     case open
+    case showDetail
     case searchCover
     case toggleFatten
     case delete
@@ -11,6 +12,7 @@ struct BookshelfBookContextMenu: View {
     let book: ReadingBook
     var isFattened = false
     let onOpen: () -> Void
+    let onShowDetail: () -> Void
     let onSearchCover: () -> Void
     let onToggleFatten: () -> Void
     let onDelete: () -> Void
@@ -18,6 +20,9 @@ struct BookshelfBookContextMenu: View {
     var body: some View {
         Button(action: onOpen) {
             Label(localized("打開"), systemImage: "book")
+        }
+        Button(action: onShowDetail) {
+            Label(localized("打開書籍詳情頁"), systemImage: "info.circle")
         }
         Button(action: onSearchCover) {
             Label(localized("搜索網絡封面"), systemImage: "photo.on.rectangle.angled")
