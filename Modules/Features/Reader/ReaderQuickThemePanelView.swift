@@ -271,33 +271,12 @@ struct ReaderQuickThemePanelView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: DSSpacing.sm) {
                     ForEach(ReaderQuickPageTurnOption.allCases) { option in
-                        Button {
-                            onSelectPageTurnOption(option)
-                        } label: {
-                            HStack(spacing: DSSpacing.xs) {
-                                Image(systemName: option.iconName)
-                                    .accessibilityHidden(true)
-                                Text(localized(pageTurnTitleKey(for: option)))
-                                    .lineLimit(1)
-                            }
-                            .font(DSFont.subheadline.weight(.medium))
-                            .fixedSize(horizontal: true, vertical: false)
-                            .padding(.horizontal, DSSpacing.md)
-                            .frame(minHeight: DSLayout.readerQuickPanelTopControlHeight)
-                            .foregroundStyle(pageTurnOption == option ? DSColor.textOnAccent : DSColor.textPrimary)
-                            .background {
-                                Capsule().fill(pageTurnOption == option ? DSColor.accent : DSColor.neutralControlFill)
-                            }
-                            .overlay {
-                                Capsule().strokeBorder(
-                                    pageTurnOption == option ? Color.clear : DSColor.separator,
-                                    lineWidth: 1
-                                )
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(pageTurnOption == option ? .isSelected : [])
-                        .accessibilityIdentifier("reader.pageTurnStyle.\\(option.rawValue)")
+                        ReaderQuickPageTurnChip(
+                            option: option,
+                            title: localized(pageTurnTitleKey(for: option)),
+                            selected: pageTurnOption == option,
+                            action: { onSelectPageTurnOption(option) }
+                        )
                     }
                 }
                 .padding(.vertical, DSSpacing.xs)
