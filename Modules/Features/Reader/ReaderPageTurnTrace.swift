@@ -50,6 +50,7 @@ final class ReaderPageTurnTrace: NSObject {
         case .curl: style = "curl"
         case .slide: style = "slide"
         case .cover: style = "cover"
+        case .ripple: style = "ripple"
         case .none: style = "none"
         }
     }
@@ -167,6 +168,19 @@ final class ReaderPageTurnTrace: NSObject {
     func speedUp(to clockSpeed: Float) {
         guard isEnabled else { return }
         signposter.emitEvent("SpeedUp", "clock=\(String(format: "%.2f", clockSpeed), privacy: .public)")
+    }
+
+    func beginOverlaySwipe(from: Int, to: Int) -> Interval? {
+        begin("SwipeTurn", "style=\(style) from=\(from) to=\(to) overlay=1")
+    }
+
+    func overlaySwipeLift(velocity: CGFloat, cancelled: Bool) {
+        guard isEnabled else { return }
+        signposter.emitEvent("SwipeLift", "style=\(self.style, privacy: .public) vx=\(Int(velocity)) cancelled=\(cancelled ? 1 : 0)")
+    }
+
+    func endOverlaySwipe(_ interval: Interval?, committed: Bool, landed: Int) {
+        end(interval, "completed=\(committed ? 1 : 0) landed=\(landed)")
     }
 
     // MARK: - Turns UIKit drives

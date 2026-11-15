@@ -118,17 +118,23 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         tap.cancelsTouchesInView = false
         pvc.view.addGestureRecognizer(tap)
 
-        // cover mode: add custom pan gesture + overlay
-        if adapterDescriptor.usesCoverOverlay {
+        // Ripple keeps cover ready as a texture/device fallback, sharing one horizontal pan.
+        if adapterDescriptor.usesCoverOverlay || adapterDescriptor.usesRippleOverlay {
             context.coordinator.setupCoverOverlay(on: pvc.view)
+            if adapterDescriptor.usesRippleOverlay {
+                context.coordinator.setupRippleOverlay(on: pvc.view)
+            }
             context.coordinator.coverPageViewController = pvc
             let pan = UIPanGestureRecognizer(
                 target: context.coordinator,
                 action: #selector(Coordinator.handleCoverPan(_:))
             )
             pan.maximumNumberOfTouches = 1
+            pan.delegate = context.coordinator
+            context.coordinator.coverPageTurnPanGesture = pan
             pvc.view.addGestureRecognizer(pan)
         }
+        context.coordinator.prefetchPages(around: initialPage)
         if adapterDescriptor.usesInstantPan {
             context.coordinator.instantPanPageViewController = pvc
             let pan = UIPanGestureRecognizer(
@@ -186,6 +192,10 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
     /// `.began` here; the controller then takes no more touches and has no data source to lose.
     static func dismantleUIViewController(_ uiViewController: UIPageViewController, coordinator: Coordinator) {
         for recognizer in uiViewController.gestureRecognizers {
+            recognizer.isEnabled = false
+        }
+        coordinator.cancelOverlayTransitions()
+        for recognizer in uiViewController.view.gestureRecognizers ?? [] {
             recognizer.isEnabled = false
         }
         uiViewController.view.isUserInteractionEnabled = false
@@ -361,22 +371,6 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
                 )
             }
 
-            if pageTurnStyle == .cover {
-                traceCommand("cover")
-                if shouldAnimate {
-                    context.coordinator.animateCoverTransition(
-                        from: visiblePage,
-                        to: target,
-                        direction: direction,
-                        on: uiViewController
-                    )
-                } else if !context.coordinator.isAnimatingTransition {
-                    let targetVC = context.coordinator.displayViewController(for: target)
-                    _ = context.coordinator.setPage(targetVC, on: uiViewController, direction: direction, layoutNow: true)
-                }
-                return
-            }
-
             if shouldAnimate {
                 let effects = context.coordinator.requestPageTransition(
                     to: target,
@@ -506,6 +500,42 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         private let coverDimView = UIView()
         private let coverShadowView = UIView()
         private let coverIncomingImageView = UIImageView()
+        private var rippleOverlayView: ReaderRipplePageTurnView?
+        private var rippleIsActive = false
+        private var rippleProgress: CGFloat = 0
+        private var rippleOrigin = CGPoint(x: 0.5, y: 0.5)
+        private var rippleAxis = SIMD2<Float>(1, 0)
+        private var rippleDisplayLink: CADisplayLink?
+        private struct RippleSettle {
+            var elapsed: TimeInterval = 0
+            var lastTimestamp: CFTimeInterval
+            let duration: TimeInterval
+            let start: CGFloat
+            let end: CGFloat
+            let programmatic: Bool
+            var speed: Float
+        }
+        private var rippleSettle: RippleSettle?
+        private var rippleCompletion: (() -> Void)?
+        private var overlayGestureOwnsTransition = false
+        private var overlayIsDismantled = false
+        private var overlayPanRejected = false
+        private var overlayUsesReleaseSlide = false
+        private var overlaySwipeTrace: ReaderPageTurnTrace.Interval?
+        private var overlayStartTarget: ReaderPageTurnTarget?
+        private var overlayEngineID: ObjectIdentifier?
+        private var overlayRenderSize: CGSize = .zero
+        private var overlayPageCount = 0
+        private struct OverlayPageStamp {
+            let material: NSAttributedString?
+            let location: Int?
+            let length: Int?
+        }
+        private var overlayPageStamps: [Int: OverlayPageStamp] = [:]
+        private var overlayTheme: ReaderTheme?
+        private var overlaySpread = false
+        private var overlayBarsRevision: UInt = 0
+        weak var coverPageTurnPanGesture: UIPanGestureRecognizer?
         private var coverTarget: ReaderPageTurnTarget?
         private var coverDirection: ReaderCoverTurnDirection?
         /// Version of the last ReaderPageTurnCommand this coordinator executed.
@@ -589,12 +619,22 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         private weak var callbackEngineObject: AnyObject?
         private var callbackEngineIdentifier: ObjectIdentifier?
 
+        private var fallbackTransitionQueue = ReaderPageTransitionQueue()
+
         var isPageTransitioning: Bool {
-            sessionCoordinator?.isPageTransitioning ?? false
+            sessionCoordinator?.isPageTransitioning ?? fallbackTransitionQueue.isTransitioning
         }
 
         var pageTurnDestination: ReaderPageTurnTarget? {
-            sessionCoordinator?.pageTurnDestination
+            sessionCoordinator?.pageTurnDestination ?? fallbackTransitionQueue.destination
+        }
+
+        private func beginOverlayInteractiveTransition(target: ReaderPageTurnTarget?) {
+            if let sessionCoordinator {
+                sessionCoordinator.beginInteractivePageTransition(target: target)
+            } else {
+                fallbackTransitionQueue.beginInteractiveTransition(target: target)
+            }
         }
 
         private var curlBackPageColor: UIColor {
@@ -1190,6 +1230,7 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         }
 
         isolated deinit {
+            rippleDisplayLink?.invalidate()
             clearEngineCallbacks()
         }
 
@@ -1444,7 +1485,9 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
                 }
                 let leftImage = fixedLayoutPair.leftPage.flatMap { currentEngine.renderSnapshot(forPage: $0) }
                 let rightImage = fixedLayoutPair.rightPage.flatMap { currentEngine.renderSnapshot(forPage: $0) }
-                guard leftImage != nil || rightImage != nil else { return nil }
+                guard (fixedLayoutPair.leftPage == nil || leftImage != nil),
+                      (fixedLayoutPair.rightPage == nil || rightImage != nil),
+                      leftImage != nil || rightImage != nil else { return nil }
                 let reference = leftImage ?? rightImage!
                 let pageWidth = reference.size.width
                 let pageHeight = max(leftImage?.size.height ?? reference.size.height, rightImage?.size.height ?? reference.size.height)
@@ -1641,10 +1684,11 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
 
         @discardableResult
         func requestPageTransition(to target: ReaderPageTurnTarget, visible: ReaderPageTurnTarget) -> [ReaderEffect] {
-            sessionCoordinator?.send(.pageTurnRequested(
-                target: target,
-                visible: visible
-            )) ?? [.requestPageTransition(target)]
+            if let sessionCoordinator {
+                return sessionCoordinator.send(.pageTurnRequested(target: target, visible: visible))
+            }
+            return fallbackTransitionQueue.requestTransition(to: target, visible: visible) == .startImmediately
+                ? [.requestPageTransition(target)] : []
         }
 
         func warmUpNext(currentGlobalPage: Int) {
@@ -1685,7 +1729,7 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
                     // animation of lag ever accumulates (Legado's abort-and-restart
                     // feel, within UIPageViewController's no-abort constraint).
                     // Cover keeps its own overlay animator path; .none stays instant.
-                    let shouldAnimate = pageTurnStyle == .slide || pageTurnStyle == .curl
+                    let shouldAnimate = pageTurnStyle != .none
                     performProgrammaticTransition(
                         on: pageViewController,
                         to: target,
@@ -1705,14 +1749,20 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
             on pageViewController: UIPageViewController,
             showing visiblePage: Int
         ) {
-            guard let sessionCoordinator else { return }
             let shown = ReaderPageTurnTarget(
                 page: visiblePage,
                 position: turnsByPosition
                     ? readingPage(of: pageViewController).flatMap(committedReadingPosition(of:))
                     : nil
             )
-            let effects = sessionCoordinator.send(.pageTransitionSettled(visible: shown))
+            let effects: [ReaderEffect]
+            if let sessionCoordinator {
+                effects = sessionCoordinator.send(.pageTransitionSettled(visible: shown))
+            } else {
+                let queued = fallbackTransitionQueue.transitionFinished(showing: shown)
+                effects = [.warmUpNext(currentGlobalPage: shown.page)]
+                    + (queued.map { [.requestPageTransition($0)] } ?? [])
+            }
             guard !effects.isEmpty else { return }
             if effects.contains(where: { if case .requestPageTransition = $0 { true } else { false } }) {
                 pageTurnTrace.queueChained(visible: visiblePage)
@@ -1723,8 +1773,9 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
             // settling the just-finished scroll. Hop to the next runloop so the page view
             // controller fully unwinds before the queued transition begins. (State was
             // already advanced synchronously by `send(.pageTransitionSettled:)` above.)
-            DispatchQueue.main.async { [weak self] in
-                self?.applyTransitionEffects(effects, on: pageViewController, showing: visiblePage)
+            DispatchQueue.main.async { [weak self, weak pageViewController] in
+                guard let self, let pageViewController, !self.overlayIsDismantled else { return }
+                self.applyTransitionEffects(effects, on: pageViewController, showing: visiblePage)
             }
         }
 
@@ -1736,6 +1787,10 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
             animated: Bool,
             chained: Bool = false
         ) {
+            if animated && (pagingAdapter.usesCoverOverlay || pagingAdapter.usesRippleOverlay) {
+                animateCoverTransition(from: visiblePage, to: target, direction: direction, on: pageViewController, chained: chained)
+                return
+            }
             let targetPage = target.page
             let turnTrace = pageTurnTrace.beginTapTurn(
                 from: visiblePage, to: targetPage, speed: activeTurnSpeed,
@@ -2275,7 +2330,7 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
             let interactiveTarget = turnsByPosition
                 ? pendingPosition.flatMap(turnTarget(at:))
                 : pendingPosition.flatMap { currentEngine.pageIndex(for: $0) }.map(ReaderPageTurnTarget.page)
-            sessionCoordinator?.beginInteractivePageTransition(target: interactiveTarget)
+            beginOverlayInteractiveTransition(target: interactiveTarget)
             // The page beyond the one coming in belongs to the next swipe. UIKit builds
             // it the moment this turn lands, and a fast reader is already dragging again
             // ~15ms later (2026-10-05 trace): a render started on landing finished
@@ -2364,6 +2419,219 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
             } else {
                 continueQueuedTransitionIfNeeded(on: pvc, showing: vc.globalPageIndex)
             }
+        }
+
+        // MARK: - Ripple overlay
+
+        func setupRippleOverlay(on view: UIView) {
+            let ripple = ReaderRipplePageTurnView()
+            ripple.frame = view.bounds
+            ripple.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            ripple.isHidden = true
+            ripple.alpha = 1
+            view.addSubview(ripple)
+            ripple.detachRenderer()
+            rippleOverlayView = ripple
+        }
+
+        private func prepareOverlayStamp(from start: ReaderPageTurnTarget, to target: ReaderPageTurnTarget) {
+            overlayStartTarget = start
+            overlayEngineID = ObjectIdentifier(currentEngine as AnyObject)
+            overlayRenderSize = currentEngine.renderSize
+            overlayPageCount = currentEngine.totalPages
+            overlayTheme = currentTheme
+            overlaySpread = isDoublePageSpread
+            overlayBarsRevision = lastAppliedPageBarsRevision
+            overlayPageStamps.removeAll()
+            for page in [start.page, target.page] {
+                for index in page..<(page + pageStride) where index < currentEngine.totalPages {
+                    let local = currentEngine.localPosition(for: index)
+                    let layout = currentEngine.layouts[local.spineIndex]
+                    let range = layout.flatMap { $0.pageRanges.indices.contains(local.localPage) ? $0.pageRanges[local.localPage] : nil }
+                    overlayPageStamps[index] = OverlayPageStamp(
+                        material: layout?.attributedString, location: range?.location, length: range?.length
+                    )
+                }
+            }
+        }
+
+        private func overlayStampIsCurrent(on pvc: UIPageViewController, target: ReaderPageTurnTarget) -> Bool {
+            guard overlayEngineID == ObjectIdentifier(currentEngine as AnyObject),
+                  overlayRenderSize == currentEngine.renderSize,
+                  overlayTheme == currentTheme, overlaySpread == isDoublePageSpread,
+                  overlayBarsRevision == lastAppliedPageBarsRevision,
+                  let start = overlayStartTarget,
+                  let shown = readingPage(of: pvc) as? (any PageIndexProviding & UIViewController),
+                  turnTarget(showing: shown).isSamePage(as: start) else { return false }
+            let old = renumbered(start)
+            let new = renumbered(target)
+            guard old.page >= 0, new.page >= 0, old.page < currentEngine.totalPages,
+                  new.page < currentEngine.totalPages else { return false }
+            if start.position == nil || target.position == nil {
+                guard overlayPageCount == currentEngine.totalPages else { return false }
+            }
+            for pair in [(start.page, old.page), (target.page, new.page)] {
+                for offset in 0..<pageStride {
+                    guard let stamp = overlayPageStamps[pair.0 + offset] else { continue }
+                    let page = pair.1 + offset
+                    guard page >= 0, page < currentEngine.totalPages else { return false }
+                    let local = currentEngine.localPosition(for: page)
+                    let layout = currentEngine.layouts[local.spineIndex]
+                    let range = layout.flatMap { $0.pageRanges.indices.contains(local.localPage) ? $0.pageRanges[local.localPage] : nil }
+                    guard stamp.material === layout?.attributedString,
+                          stamp.location == range?.location, stamp.length == range?.length else { return false }
+                }
+            }
+            return true
+        }
+
+        private func preparePageOverlay(
+            oldImage: UIImage?, newImage: UIImage?, motion: ReaderCoverPageMotion,
+            originY: CGFloat, in view: UIView
+        ) -> Bool {
+            guard let oldImage, let newImage else { return false }
+            if pagingAdapter.usesRippleOverlay, !isDoublePageSpread,
+               fixedLayoutPairingProvider == nil, rippleOverlayView == nil {
+                setupRippleOverlay(on: view)
+            }
+            if pagingAdapter.usesRippleOverlay, !isDoublePageSpread,
+               fixedLayoutPairingProvider == nil, view.window != nil,
+               let ripple = rippleOverlayView, ripple.isRendererAvailable {
+                // Shader's positive side is `newPage`; swapping the pair lets the
+                // front travel from the touched edge while logical progress stays 0...1.
+                if ripple.setPages(oldPage: newImage, newPage: oldImage) {
+                    rippleOrigin = motion.rippleOrigin(verticalPosition: originY)
+                    rippleAxis = motion.rippleShaderAxis
+                    rippleIsActive = true
+                    rippleProgress = 0
+                    coverOverlayView.isHidden = true
+                    ripple.frame = view.bounds
+                    view.bringSubviewToFront(ripple)
+                    ripple.alpha = 1
+                    ripple.isHidden = false
+                    ripple.attachRenderer()
+                    updatePageOverlay(progress: 0, motion: motion, in: view)
+                    return true
+                }
+                releaseRippleOverlay()
+                AppLogger.render("[FlipTrace] ripple texture unavailable; falling back to cover")
+            }
+            coverOverlayView.frame = view.bounds
+            coverCurrentImageView.frame = view.bounds
+            view.bringSubviewToFront(coverOverlayView)
+            if motion.direction == .forward {
+                coverCurrentImageView.image = newImage
+                setupIncomingView(snapshot: oldImage, motion: motion, in: view)
+            } else {
+                coverCurrentImageView.image = oldImage
+                setupIncomingView(snapshot: newImage, motion: motion, in: view)
+            }
+            showCoverOverlay()
+            updatePageOverlay(progress: 0, motion: motion, in: view)
+            return true
+        }
+
+        private func updatePageOverlay(progress: CGFloat, motion: ReaderCoverPageMotion, in view: UIView) {
+            rippleProgress = min(max(progress, 0), 1)
+            if rippleIsActive {
+                rippleOverlayView?.update(
+                    progress: motion.rippleShaderProgress(rippleProgress),
+                    origin: rippleOrigin, direction: rippleAxis,
+                    waveform: ReaderRippleWaveform(amplitude: rippleProgress > 0 && rippleProgress < 1 ? 0.018 : 0)
+                )
+                return
+            }
+            let x = motion.interactiveX(progress: rippleProgress, width: max(view.bounds.width, 1))
+            coverIncomingImageView.frame.origin.x = x
+            coverShadowView.frame.origin.x = x
+            coverDimView.frame = coverCurrentImageView.bounds
+            coverDimView.alpha = (motion.direction == .backward ? rippleProgress : 1 - rippleProgress)
+                * GestureConstants.maxDimmingAlpha
+        }
+
+        private func releaseRippleOverlay() {
+            rippleOverlayView?.isHidden = true
+            rippleOverlayView?.detachRenderer()
+            // setPages(nil,nil) clears the active textures. Its bounded renderer
+            // cache is released too: the view is recreated lazily on the next turn.
+            _ = rippleOverlayView?.setPages(oldPage: nil, newPage: nil)
+            rippleOverlayView?.removeFromSuperview()
+            rippleOverlayView = nil
+            rippleIsActive = false
+        }
+
+        private func settleRipple(
+            to progress: CGFloat, duration: TimeInterval, programmatic: Bool,
+            completion: @escaping () -> Void
+        ) {
+            rippleDisplayLink?.invalidate()
+            rippleCompletion = completion
+            rippleSettle = RippleSettle(
+                lastTimestamp: CACurrentMediaTime(), duration: duration,
+                start: rippleProgress, end: progress, programmatic: programmatic,
+                speed: programmatic ? activeTurnSpeed : 1
+            )
+            let link = DisplayLinkProxy.displayLink(
+                target: self, selector: #selector(tickRipple(_:)),
+                preferredFPS: ReaderSlideTurnAnimation.frameRateRange
+            )
+            rippleDisplayLink = link
+            link.add(to: .main, forMode: .common)
+        }
+
+        @objc private func tickRipple(_ link: CADisplayLink) {
+            guard var settle = rippleSettle, let direction = coverDirection,
+                  let view = coverPageViewController?.view else {
+                cancelOverlayTransitions()
+                return
+            }
+            if settle.programmatic {
+                let newSpeed = max(settle.speed, activeTurnSpeed)
+                if newSpeed > settle.speed { pageTurnTrace.speedUp(to: newSpeed) }
+                settle.speed = newSpeed
+            }
+            let timestamp = CACurrentMediaTime()
+            settle.elapsed += max(0, timestamp - settle.lastTimestamp) * Double(settle.speed)
+            settle.lastTimestamp = timestamp
+            let t = min(settle.elapsed / max(settle.duration, 0.001), 1)
+            let eased = 1 - pow(1 - t, 3)
+            updatePageOverlay(
+                progress: settle.start + (settle.end - settle.start) * CGFloat(eased),
+                motion: ReaderCoverPageMotion(direction: direction, isRTL: isRTL), in: view
+            )
+            rippleSettle = settle
+            guard t >= 1 else { return }
+            link.invalidate()
+            rippleDisplayLink = nil
+            rippleSettle = nil
+            let completion = rippleCompletion
+            rippleCompletion = nil
+            completion?()
+        }
+
+        fileprivate func cancelOverlayTransitions() {
+            overlayIsDismantled = true
+            guard pagingAdapter.usesCoverOverlay || pagingAdapter.usesRippleOverlay else { return }
+            coverPageTurnPanGesture?.isEnabled = false
+            rippleDisplayLink?.invalidate()
+            rippleDisplayLink = nil
+            rippleSettle = nil
+            rippleCompletion = nil
+            endRetimableTurn()
+            coverOverlayView.layer.removeAllAnimations()
+            coverIncomingImageView.layer.removeAllAnimations()
+            coverShadowView.layer.removeAllAnimations()
+            coverDimView.layer.removeAllAnimations()
+            releaseRippleOverlay()
+            resetCoverOverlay()
+            if overlayGestureOwnsTransition {
+                overlayGestureOwnsTransition = false
+                stackWriteGate.endGesture()
+            }
+            stackWriteGate.reset()
+            sessionCoordinator?.resetPageTransitionQueue()
+            fallbackTransitionQueue.reset()
+            turnFrameRate.end()
         }
 
         // MARK: - Cover overlay setup
@@ -2480,142 +2748,146 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         }
 
         @objc func handleCoverPan(_ gesture: UIPanGestureRecognizer) {
-            guard let view = gesture.view else { return }
-            if gesture.state == .began && isAnimatingTransition {
-                gesture.state = .cancelled
+            guard !overlayIsDismantled, let view = gesture.view, let pvc = coverPageViewController else { return }
+            if gesture.state == .began {
+                guard !isStackWriteBlocked, !isPageTransitioning else {
+                    gesture.state = .cancelled
+                    return
+                }
+                resetCoverOverlay()
+                overlayPanRejected = false
                 return
             }
             let width = max(view.bounds.width, 1)
             let translationX = gesture.translation(in: view).x
             let velocityX = gesture.velocity(in: view).x
-
             switch gesture.state {
-            case .began:
-                coverTarget = nil
-                coverDirection = nil
-                // Cancel any previous in-flight animation; don't show overlay until direction is confirmed.
-                coverOverlayView.layer.removeAllAnimations()
-                coverIncomingImageView.layer.removeAllAnimations()
-                coverDimView.layer.removeAllAnimations()
-                coverDimView.alpha = 0
-
             case .changed:
+                guard !overlayPanRejected else { return }
                 if coverTarget == nil {
-                    guard let turnDirection = ReaderCoverPageMotion.direction(
-                        for: translationX,
-                        threshold: GestureConstants.initialTranslationThreshold,
-                        isRTL: isRTL
+                    guard let direction = ReaderCoverPageMotion.direction(
+                        for: translationX, threshold: GestureConstants.initialTranslationThreshold, isRTL: isRTL
                     ) else { return }
-                    let motion = ReaderCoverPageMotion(direction: turnDirection, isRTL: isRTL)
-                    // From the page on screen, by position, as every other turn steps.
-                    guard let visible = coverPageViewController.flatMap(readingPage(of:))
-                            as? (any PageIndexProviding & UIViewController) else { return }
-                    let visibleTarget = turnTarget(showing: visible)
-                    let startPage = visibleTarget.page
-
-                    if turnDirection == .forward,
-                       let target = turnTarget(.forward, from: visibleTarget) {
-                        coverDirection = turnDirection
-                        guard let targetSnapshot = renderSnapshot(for: target) else {
-                            let targetVC = displayViewController(for: target)
-                            if isPlaceholderDisplay(targetVC) {
-                                pendingNavigation = PendingNavigation(target: target.position.map(NavigationTarget.position) ?? .page(target.page))
-                                AppLogger.render("[FlipTrace] coverInteractive forward blocked placeholder targetPage=\(target.page) position=\(target.position.map { "\($0)" } ?? "nil")")
-                            }
+                    // Only the direction-confirmation event can read page images or upload textures.
+                    overlayPanRejected = true
+                    guard !isStackWriteBlocked, !isPageTransitioning,
+                          let visible = readingPage(of: pvc) as? (any PageIndexProviding & UIViewController)
+                    else { return }
+                    let start = turnTarget(showing: visible)
+                    guard let target = turnTarget(direction == .forward ? .forward : .backward, from: start),
+                          target.page >= 0, target.page < currentEngine.totalPages,
+                          !target.isSamePage(as: start) else { return }
+                    let motion = ReaderCoverPageMotion(direction: direction, isRTL: isRTL)
+                    prepareOverlayStamp(from: start, to: target)
+                    let oldImage = renderSnapshotForDisplayPage(start.page)
+                    let newImage = renderSnapshot(for: target)
+                    let hasOverlay = preparePageOverlay(
+                        oldImage: oldImage, newImage: newImage, motion: motion,
+                        originY: gesture.location(in: view).y / max(view.bounds.height, 1), in: view
+                    )
+                    // Providers without snapshots (notably fixed layout) still accept
+                    // the swipe and play the ordinary slide fallback on release.
+                    if !hasOverlay {
+                        guard !isPlaceholderDisplay(displayViewController(for: target)) else {
+                            resetCoverOverlay()
                             return
                         }
-                        coverTarget = target
-                        coverOverlayView.frame = view.bounds
-                        coverCurrentImageView.frame = view.bounds
-                        showCoverOverlay()
-                        setupForwardOutgoing(currentPageSnapshot: startPage, newPageImage: targetSnapshot, motion: motion, in: view)
-                    } else if turnDirection == .backward,
-                              let target = turnTarget(.backward, from: visibleTarget) {
-                        // Don't start animation if snapshot is not ready (chapter not loaded).
-                        guard let targetSnapshot = renderSnapshot(for: target) else { return }
-                        coverDirection = turnDirection
-                        coverTarget = target
-                        coverOverlayView.frame = view.bounds
-                        coverCurrentImageView.frame = view.bounds
-                        coverCurrentImageView.image = renderSnapshotForDisplayPage(startPage)
-                        showCoverOverlay()
-                        setupIncomingView(snapshot: targetSnapshot, motion: motion, in: view)
+                        overlayUsesReleaseSlide = true
                     }
-                    if coverTarget != nil { onUserPageTurnBegan() }
+                    guard overlayStampIsCurrent(on: pvc, target: target) else {
+                        resetCoverOverlay()
+                        return
+                    }
+                    overlayPanRejected = false
+                    coverTarget = target
+                    coverDirection = direction
+                    overlayGestureOwnsTransition = true
+                    stackWriteGate.beginGesture()
+                    beginOverlayInteractiveTransition(target: target)
+                    turnFrameRate.begin()
+                    overlaySwipeTrace = pageTurnTrace.beginOverlaySwipe(from: start.page, to: target.page)
+                    onUserPageTurnBegan()
+                    prefetchPages(around: target.page)
                 }
-                guard coverTarget != nil, let coverDirection else { return }
-                let motion = ReaderCoverPageMotion(direction: coverDirection, isRTL: isRTL)
-                let rawProgress = min(motion.dragProgress(translationX: translationX, width: width), 0.999)
-                let newX = motion.interactiveX(progress: rawProgress, width: width)
-                coverIncomingImageView.frame.origin.x = newX
-                coverShadowView.frame.origin.x = newX
-                if coverDirection == .backward {
-                    coverDimView.frame = coverCurrentImageView.bounds
-                    coverDimView.alpha = rawProgress * GestureConstants.maxDimmingAlpha
-                } else if coverDirection == .forward {
-                    coverDimView.frame = coverCurrentImageView.bounds
-                    coverDimView.alpha = (1 - rawProgress) * GestureConstants.maxDimmingAlpha
-                }
-
-            case .ended, .cancelled, .failed:
-                guard let target = coverTarget, let coverDirection else {
-                    resetCoverOverlay()
-                    return
-                }
-                let motion = ReaderCoverPageMotion(direction: coverDirection, isRTL: isRTL)
-                let shouldCommit = motion.shouldCommit(
-                    translationX: translationX,
-                    velocityX: velocityX,
-                    width: width
+                guard coverTarget != nil, let direction = coverDirection else { return }
+                updatePageOverlay(
+                    progress: ReaderCoverPageMotion(direction: direction, isRTL: isRTL)
+                        .dragProgress(translationX: translationX, width: width),
+                    motion: ReaderCoverPageMotion(direction: direction, isRTL: isRTL), in: view
                 )
+            case .ended, .cancelled, .failed:
+                guard let target = coverTarget, let direction = coverDirection,
+                      overlayGestureOwnsTransition else { return }
+                let motion = ReaderCoverPageMotion(direction: direction, isRTL: isRTL)
+                let commit = gesture.state == .ended && motion.shouldCommit(
+                    translationX: translationX, velocityX: velocityX, width: width
+                )
+                pageTurnTrace.overlaySwipeLift(velocity: velocityX, cancelled: gesture.state != .ended)
                 beginAnimatedTransition()
-
-                let destX = motion.settledX(width: width, shouldCommit: shouldCommit)
-                UIView.animate(
-                    withDuration: ReaderCoverPageMotion.settleDuration,
-                    delay: 0,
-                    usingSpringWithDamping: 1,
-                    initialSpringVelocity: ReaderCoverPageMotion.settleSpringVelocity(
-                        currentX: coverIncomingImageView.frame.origin.x,
-                        destinationX: destX,
-                        velocityX: velocityX
-                    ),
-                    options: []
-                ) {
-                    self.coverIncomingImageView.frame.origin.x = destX
-                    self.coverShadowView.frame.origin.x = destX
-                    if coverDirection == .backward {
-                        self.coverDimView.alpha = shouldCommit ? GestureConstants.maxDimmingAlpha : 0
-                    } else if coverDirection == .forward {
-                        self.coverDimView.alpha = shouldCommit ? 0 : GestureConstants.maxDimmingAlpha
-                    }
-                } completion: { _ in
-                    if shouldCommit {
-                        var settledPosition: CoreTextReadingPosition?
-                        // Set the real VC immediately so updateUIViewController returns early, avoiding double animation.
+                stackWriteGate.endGesture()
+                overlayGestureOwnsTransition = false
+                var releaseSlideController: UIViewController?
+                let finish = { [weak self, weak pvc] in
+                    guard let self, let pvc, !self.overlayIsDismantled else { return }
+                    var landed = (self.readingPage(of: pvc) as? any PageIndexProviding)?.globalPageIndex ?? self.currentPage
+                    var committed = false
+                    if let controller = releaseSlideController {
+                        landed = self.syncStablePosition(afterShowing: controller, notifyFallback: true, readerDriven: true) ?? landed
+                        self.prefetchPages(around: landed)
+                        committed = true
+                    } else if commit, self.overlayStampIsCurrent(on: pvc, target: target) {
                         let landing = self.renumbered(target)
-                        if let pvc = self.coverPageViewController {
-                            let realVC = self.displayViewController(for: landing)
-                            AppLogger.render("[FlipTrace] coverInteractive commit targetPage=\(landing.page) realType=\(type(of: realVC))")
+                        let realVC = self.displayViewController(for: landing)
+                        if !self.isPlaceholderDisplay(realVC) {
                             self.applyPlaybackHighlight(to: realVC)
-                            pvc.setViewControllers([realVC], direction: .forward, animated: false)
+                            pvc.setViewControllers(self.viewControllerStack(startingWith: realVC), direction: .forward, animated: false)
                             pvc.view.layoutIfNeeded()
-                            self.captureStablePosition(from: realVC, readerDriven: true)
-                            settledPosition = self.readingPosition(from: realVC)
+                            landed = self.syncStablePosition(afterShowing: realVC, notifyFallback: true, readerDriven: true) ?? landing.page
+                            self.prefetchPages(around: landed)
+                            committed = true
                         }
-                        self.publishCurrentPage(
-                            landing.page,
-                            position: settledPosition,
-                            notify: true
-                        )
-                        self.warmUpNext(currentGlobalPage: landing.page)
                     }
+                    self.pageTurnTrace.endOverlaySwipe(self.overlaySwipeTrace, committed: committed, landed: landed)
+                    self.overlaySwipeTrace = nil
                     self.resetCoverOverlay()
-                    if let pvc = self.coverPageViewController {
-                        self.endAnimatedTransition(on: pvc)
-                    }
+                    self.continueQueuedTransitionIfNeeded(on: pvc, showing: landed)
+                    self.endAnimatedTransition(on: pvc)
+                    self.turnFrameRate.end()
                 }
-
+                if overlayUsesReleaseSlide {
+                    guard commit, overlayStampIsCurrent(on: pvc, target: target) else { finish(); return }
+                    let landing = renumbered(target)
+                    let controller = displayViewController(for: landing)
+                    guard !isPlaceholderDisplay(controller) else { finish(); return }
+                    releaseSlideController = controller
+                    applyPlaybackHighlight(to: controller)
+                    let navigationDirection: UIPageViewController.NavigationDirection =
+                        (direction == .forward) != isRTL ? .forward : .reverse
+                    CATransaction.begin()
+                    CATransaction.setCompletionBlock { finish() }
+                    pvc.view.layer.add(
+                        ReaderSlideTurnAnimation.pushTransition(direction: navigationDirection, speed: 1),
+                        forKey: Self.slideTransitionKey
+                    )
+                    pvc.setViewControllers(viewControllerStack(startingWith: controller), direction: navigationDirection, animated: false)
+                    pvc.view.layoutIfNeeded()
+                    CATransaction.commit()
+                } else if rippleIsActive {
+                    settleRipple(to: commit ? 1 : 0, duration: ReaderCoverPageMotion.settleDuration, programmatic: false, completion: finish)
+                } else {
+                    let destX = motion.settledX(width: width, shouldCommit: commit)
+                    UIView.animate(
+                        withDuration: ReaderCoverPageMotion.settleDuration, delay: 0,
+                        usingSpringWithDamping: 1,
+                        initialSpringVelocity: ReaderCoverPageMotion.settleSpringVelocity(
+                            currentX: coverIncomingImageView.frame.origin.x, destinationX: destX, velocityX: velocityX
+                        ), options: []
+                    ) {
+                        self.coverIncomingImageView.frame.origin.x = destX
+                        self.coverShadowView.frame.origin.x = destX
+                        self.coverDimView.alpha = (direction == .backward ? (commit ? 1 : 0) : (commit ? 0 : 1)) * GestureConstants.maxDimmingAlpha
+                    } completion: { _ in finish() }
+                }
             default:
                 break
             }
@@ -2627,98 +2899,103 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
             from oldPage: Int,
             to target: ReaderPageTurnTarget,
             direction: UIPageViewController.NavigationDirection,
-            on pvc: UIPageViewController
+            on pvc: UIPageViewController,
+            chained: Bool = false
         ) {
-            guard !isAnimatingTransition else { return }
-            guard let view = pvc.view else { return }
-            
-            // Boundary protection
-            let total = currentEngine.totalPages
-            guard target.page >= 0, total == 0 || target.page < total else {
-                resetCoverOverlay()
+            guard !overlayIsDismantled, !isStackWriteBlocked else { return }
+            let trace = pageTurnTrace.beginTapTurn(
+                from: oldPage, to: target.page, speed: activeTurnSpeed, animated: true, chained: chained
+            )
+            guard target.page >= 0, target.page < currentEngine.totalPages,
+                  let visible = readingPage(of: pvc) as? (any PageIndexProviding & UIViewController) else {
+                pageTurnTrace.endTapTurn(trace, landed: oldPage)
+                continueQueuedTransitionIfNeeded(on: pvc, showing: oldPage)
                 return
             }
-            let targetSnapshot = renderSnapshot(for: target)
-            if targetSnapshot == nil {
-                let targetVC = displayViewController(for: target)
-                if isPlaceholderDisplay(targetVC) {
-                    pendingNavigation = PendingNavigation(target: target.position.map(NavigationTarget.position) ?? .page(target.page))
-                    AppLogger.render("[FlipTrace] coverProgrammatic blocked placeholder targetPage=\(target.page) position=\(target.position.map { "\($0)" } ?? "nil")")
-                    return
-                }
-            }
-            
-            beginAnimatedTransition()
-            let width = max(view.bounds.width, 1)
-
-            // Clean up any lingering animation state.
-            coverOverlayView.layer.removeAllAnimations()
-            coverIncomingImageView.layer.removeAllAnimations()
-            coverShadowView.layer.removeAllAnimations()
-            coverDimView.layer.removeAllAnimations()
-
-            coverOverlayView.frame = view.bounds
-            coverCurrentImageView.frame = view.bounds
-            showCoverOverlay()
-
-            let turnDirection: ReaderCoverTurnDirection = target.page >= oldPage ? .forward : .backward
+            let start = turnTarget(showing: visible)
+            let turnDirection: ReaderCoverTurnDirection = (direction == .forward) != isRTL ? .forward : .backward
             let motion = ReaderCoverPageMotion(direction: turnDirection, isRTL: isRTL)
-
-            // The turn lands on its target. It used to land on the page-number binding,
-            // which the tap had set to the visible index ± 1: an index past the chapters
-            // laid out names whichever chapter the estimates put there.
-            let land = {
-                let landing = self.renumbered(target)
-                let realVC = self.displayViewController(for: landing)
-                AppLogger.render("[FlipTrace] coverProgrammatic \(turnDirection) landing=\(landing.page) realType=\(type(of: realVC))")
-                self.applyPlaybackHighlight(to: realVC)
-                pvc.setViewControllers([realVC], direction: direction, animated: false)
-                pvc.view.layoutIfNeeded()
-
-                self.captureStablePosition(from: realVC, readerDriven: true)
-                self.publishCurrentPage(
-                    landing.page,
-                    position: self.readingPosition(from: realVC),
-                    notify: true
-                )
-                self.warmUpNext(currentGlobalPage: landing.page)
-
+            let buildTrace = pageTurnTrace.beginBuild(to: target.page)
+            let realVC = displayViewController(for: target)
+            guard !isPlaceholderDisplay(realVC), !target.isSamePage(as: start) else {
+                pageTurnTrace.endStep(buildTrace)
+                pageTurnTrace.endTapTurn(trace, landed: oldPage)
+                continueQueuedTransitionIfNeeded(on: pvc, showing: oldPage)
+                return
+            }
+            prepareOverlayStamp(from: start, to: target)
+            let oldImage = renderSnapshotForDisplayPage(start.page)
+            let newImage = renderSnapshot(for: target)
+            pageTurnTrace.endStep(buildTrace)
+            guard overlayStampIsCurrent(on: pvc, target: target) else {
+                resetCoverOverlay()
+                pageTurnTrace.endTapTurn(trace, landed: oldPage)
+                continueQueuedTransitionIfNeeded(on: pvc, showing: oldPage)
+                return
+            }
+            coverTarget = target
+            coverDirection = turnDirection
+            let view = pvc.view!
+            let startTrace = pageTurnTrace.beginStart(to: target.page)
+            defer { pageTurnTrace.endStep(startTrace) }
+            beginAnimatedTransition()
+            turnFrameRate.begin()
+            let finish = { [weak self, weak pvc] in
+                guard let self, let pvc, !self.overlayIsDismantled else { return }
+                var landed = oldPage
+                if self.overlayStampIsCurrent(on: pvc, target: target) {
+                    let landing = self.renumbered(target)
+                    let controller = self.displayViewController(for: landing)
+                    if !self.isPlaceholderDisplay(controller) {
+                        self.applyPlaybackHighlight(to: controller)
+                        pvc.setViewControllers(self.viewControllerStack(startingWith: controller), direction: direction, animated: false)
+                        pvc.view.layoutIfNeeded()
+                        landed = self.syncStablePosition(afterShowing: controller, notifyFallback: true, readerDriven: true) ?? landing.page
+                        self.prefetchPages(around: landed)
+                    }
+                }
+                self.endRetimableTurn()
                 self.resetCoverOverlay()
+                self.continueQueuedTransitionIfNeeded(on: pvc, showing: landed)
                 self.endAnimatedTransition(on: pvc)
+                self.turnFrameRate.end()
+                self.pageTurnTrace.endTapTurn(trace, landed: landed)
             }
-
-            if turnDirection == .forward {
-                setupForwardOutgoing(currentPageSnapshot: oldPage, newPageImage: targetSnapshot, motion: motion, in: view)
-                coverDimView.alpha = 0.35
-                beginRetimableTurn(on: coverOverlayView.layer, builtInSpeed: activeTurnSpeed)
-                UIView.animate(withDuration: 0.25 / Double(activeTurnSpeed), delay: 0, options: [.curveEaseOut]) {
-                    let destX = motion.settledX(width: width, shouldCommit: true)
-                    self.coverIncomingImageView.frame.origin.x = destX
-                    self.coverShadowView.frame.origin.x = destX
-                    self.coverDimView.alpha = 0
-                } completion: { _ in
-                    self.endRetimableTurn()
-                    land()
+            defer { prefetchPages(around: target.page) }
+            if preparePageOverlay(oldImage: oldImage, newImage: newImage, motion: motion, originY: 0.5, in: view) {
+                if rippleIsActive {
+                    settleRipple(to: 1, duration: 0.25, programmatic: true, completion: finish)
+                } else {
+                    beginRetimableTurn(on: coverOverlayView.layer, builtInSpeed: activeTurnSpeed)
+                    UIView.animate(withDuration: 0.25 / Double(activeTurnSpeed), delay: 0, options: [.curveEaseOut]) {
+                        let x = motion.settledX(width: max(view.bounds.width, 1), shouldCommit: true)
+                        self.coverIncomingImageView.frame.origin.x = x
+                        self.coverShadowView.frame.origin.x = x
+                        self.coverDimView.alpha = turnDirection == .backward ? GestureConstants.maxDimmingAlpha : 0
+                    } completion: { _ in finish() }
                 }
-            } else {
-                guard let targetSnapshot else {
-                    AppLogger.render("[FlipTrace] coverProgrammatic backward snapshotMiss targetPage=\(target.page)")
-                    land()
-                    return
-                }
-                coverCurrentImageView.image = renderSnapshotForDisplayPage(oldPage)
-                setupIncomingView(snapshot: targetSnapshot, motion: motion, in: view)
-                beginRetimableTurn(on: coverOverlayView.layer, builtInSpeed: activeTurnSpeed)
-                UIView.animate(withDuration: 0.25 / Double(activeTurnSpeed), delay: 0, options: [.curveEaseOut]) {
-                    let destX = motion.settledX(width: width, shouldCommit: true)
-                    self.coverIncomingImageView.frame.origin.x = destX
-                    self.coverShadowView.frame.origin.x = destX
-                    self.coverDimView.alpha = 0.3
-                } completion: { _ in
-                    self.endRetimableTurn()
-                    land()
-                }
+                return
             }
+            // Fixed-layout providers may not supply images. Keep a visible push
+            // transition over the real controller rather than silently switching pages.
+            AppLogger.render("[FlipTrace] overlay snapshot unavailable; falling back to slide")
+            applyPlaybackHighlight(to: realVC)
+            CATransaction.begin()
+            CATransaction.setCompletionBlock { [weak self, weak pvc] in
+                guard let self, let pvc, !self.overlayIsDismantled else { return }
+                self.endRetimableTurn()
+                let landed = self.syncStablePosition(afterShowing: realVC, notifyFallback: true, readerDriven: true) ?? target.page
+                self.resetCoverOverlay()
+                self.continueQueuedTransitionIfNeeded(on: pvc, showing: landed)
+                self.endAnimatedTransition(on: pvc)
+                self.turnFrameRate.end()
+                self.pageTurnTrace.endTapTurn(trace, landed: landed)
+            }
+            beginRetimableTurn(on: pvc.view.layer, builtInSpeed: activeTurnSpeed)
+            pvc.view.layer.add(ReaderSlideTurnAnimation.pushTransition(direction: direction, speed: activeTurnSpeed), forKey: Self.slideTransitionKey)
+            pvc.setViewControllers(viewControllerStack(startingWith: realVC), direction: direction, animated: false)
+            pvc.view.layoutIfNeeded()
+            CATransaction.commit()
         }
 
         private func showCurrentSnapshot(page: Int, on view: UIView) {
@@ -2768,6 +3045,11 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         }
 
         private func resetCoverOverlay() {
+            releaseRippleOverlay()
+            overlayUsesReleaseSlide = false
+            overlayStartTarget = nil
+            overlayPageStamps.removeAll()
+            overlayTheme = nil
             coverOverlayView.isHidden = true
             coverCurrentImageView.frame.origin.x = 0
             coverCurrentImageView.image = nil
@@ -3077,6 +3359,12 @@ struct CoreTextPageEngineView: UIViewControllerRepresentable {
         // MARK: - UIGestureRecognizerDelegate (swipe-up exit / pull-down bookmark)
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            if gestureRecognizer === coverPageTurnPanGesture {
+                guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
+                      let view = pan.view, !isStackWriteBlocked, !isPageTransitioning else { return false }
+                let velocity = pan.velocity(in: view)
+                return abs(velocity.x) > abs(velocity.y)
+            }
             if gestureRecognizer === pullDownBookmarkPanGesture {
                 guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
                       let view = pan.view,

@@ -495,6 +495,7 @@ extension ReaderView {
         case .slide: return .slide
         case .cover: return .cover
         case .curl: return .curl
+        case .ripple: return .ripple
         case .none: return .fastFade
         }
     }
@@ -510,6 +511,9 @@ extension ReaderView {
         case .curl:
             settings.scrollMode = false
             settings.pageTurnStyle = .curl
+        case .ripple:
+            settings.scrollMode = false
+            settings.pageTurnStyle = .ripple
         case .fastFade:
             settings.scrollMode = false
             settings.pageTurnStyle = .none

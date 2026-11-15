@@ -26,7 +26,7 @@ struct ReadingStatsStoreTests {
 
     @Test("store loads sessions recorded to an injected file URL")
     @MainActor
-    func storePersistsSessionsToInjectedFileURL() throws {
+    func storePersistsSessionsToInjectedFileURL() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(
@@ -47,6 +47,7 @@ struct ReadingStatsStoreTests {
 
         let writer = ReadingStatsStore(fileURL: fileURL)
         writer.recordSession(session)
+        await ReadingStatsStore.queuedWritesLanded()
 
         let reader = ReadingStatsStore(fileURL: fileURL)
         #expect(reader.sessions.map(\.id) == [session.id])

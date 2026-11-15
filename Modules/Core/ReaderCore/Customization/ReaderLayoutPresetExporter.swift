@@ -48,6 +48,8 @@ enum ReaderLayoutPresetExporter {
         case .slide: return 0
         case .cover: return 1
         case .curl: return 2
+        // legado has no ripple animation; never misrepresent it as curl.
+        case .ripple: return -1
         // legado has no "no animation" value; the importer maps anything else to
         // `nil` and leaves the receiving device's own choice alone.
         case .none: return -1

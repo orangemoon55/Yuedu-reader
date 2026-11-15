@@ -97,6 +97,7 @@ struct ReaderView: View {
     @State var pageTurnVersion: UInt = 0
     @State var showBars = false
     @State var showSettings = false
+    @State var readerSettingsInitialSection: ReaderSettingsInitialSection = .all
     @State private var readerSettingsDeferredPresentation =
         DismissalSequencedPresentation<ReaderSettingsDeferredPresentationRoute>()
     @State private var readerStyleImportRoute: ReaderStyleImportRoute?
@@ -2421,7 +2422,7 @@ struct ReaderView: View {
             if !settings.followSystemBrightness {
                 readerWindow.screen?.brightness = CGFloat(systemBrightness)
             }
-            saveProgress()
+            saveProgress(notifyLibraryViews: readerNavigator?.isClosingForReader != true)
             finishReadingStatsSession()
             restoreFixedLayoutOrientationPreference()
             // Same invariant as the pagination guard above: while TTS is narrating, the
@@ -2782,38 +2783,26 @@ struct ReaderView: View {
                         showTouchZoneEditor = true
                     },
                     onOpenStyleImporter: requestFirstLevelReaderStyleImporter,
-                    onOpenPaywall: readerSettingsPaywallAction
+                    onOpenPaywall: readerSettingsPaywallAction,
+                    initialSection: readerSettingsInitialSection
                 )
             }
         }
         .sheet(isPresented: $showQuickThemePanel, onDismiss: presentDeferredQuickPanelRoute) {
             ReaderQuickThemePanelView(
-                fontSize: Binding(
-                    get: { fontSize },
-                    set: { fontSize = $0 }
-                ),
-                readerTheme: Binding(
-                    get: { readerTheme },
-                    set: { readerTheme = $0 }
-                ),
+                fontSize: Binding(get: { fontSize }, set: { fontSize = $0 }),
+                readerTheme: Binding(get: { readerTheme }, set: { readerTheme = $0 }),
                 pageTurnOption: quickPageTurnOption,
                 isVerticalWritingMode: bookDirection.principalMode.isVertical,
+                usesPublicationFontDefault: book?.resolvedPipelineKind == .epub,
+                readerWindowCanHoldSpread: ReaderSpreadPolicy.windowCanHoldSpread(viewportSize: readerViewportSize),
+                readerCapabilities: readerCapabilities,
+                allowsUserSelectedReaderFont: book?.allowsUserSelectedReaderFont == true,
+                allowsVerticalWritingMode: (book ?? snapshotBook)?.allowsVerticalWritingMode == true,
+                hasParagraphReviews: currentBookHasParagraphReviews,
                 onSelectPageTurnOption: { applyQuickPageTurnOption($0) },
-                onStartAutoRead: {
-                    // The whole flow: enter the mode, put every surface away, and
-                    // leave the reader on the page. From here the only control is
-                    // the footer pill, which starts collapsed and opens on tap.
-                    enterAutoRead()
-                    showAutoReadPanel = false
-                    setReaderChromeVisible(false)
-                    showQuickThemePanel = false
-                },
-                onCustomize: {
-                    quickPanelDeferredRoute = .settings
-                    showQuickThemePanel = false
-                },
-                onOpenPaywall: { feature in
-                    quickPanelDeferredRoute = .paywall(feature)
+                onSelectRoute: {
+                    quickPanelDeferredRoute = $0
                     showQuickThemePanel = false
                 }
             )
@@ -3217,9 +3206,40 @@ struct ReaderView: View {
     private func presentDeferredQuickPanelRoute() {
         guard let route = quickPanelDeferredRoute else { return }
         quickPanelDeferredRoute = nil
+        selectQuickPanelRoute(route)
+    }
+
+    private func selectQuickPanelRoute(_ route: ReaderQuickPanelRoute) {
         switch route {
         case .settings:
+            readerSettingsInitialSection = .all
             showSettings = true
+        case .display, .spacing, .headerFooter, .decoration, .chapterTitleStyle, .commentBubble:
+            readerSettingsInitialSection = switch route {
+            case .display: .text
+            case .spacing: .spacing
+            case .headerFooter: .headerFooter
+            case .decoration, .commentBubble: .decoration
+            case .chapterTitleStyle: .chapterTitleStyle
+            default: .all
+            }
+            showSettings = true
+        case .tableOfContents:
+            showTOC = true
+        case .bookmarks:
+            showBookmarkList = true
+        case .readingAloud:
+            handleListeningAction()
+        case .autoRead:
+            enterAutoRead()
+            showAutoReadPanel = false
+            setReaderChromeVisible(false)
+        case .touchZoneEditor:
+            guard subscriptionStore.isProActive, !effectiveScrollMode else { return }
+            setReaderChromeVisible(false)
+            showTouchZoneEditor = true
+        case .styleImporter(let styleRoute):
+            readerStyleImportRoute = styleRoute
         case .paywall(let feature):
             paywallFeature = feature
         }

@@ -88,7 +88,9 @@ final class ReaderNavigationTransitionDriver: NSObject {
     /// first-page work happens with the card still at rest instead of inside
     /// the animation window. Nil (the default) starts the animation at once.
     var contentReadyGate: (@MainActor () async -> Void)?
+    var onInteractivePopBegan: () -> Void = {}
     var onInteractivePopCompleted: () -> Void = {}
+    var onInteractivePopCancelled: () -> Void = {}
     var onPopTransitionCompleted: (Bool) -> Void = { _ in }
     var onPushTransitionCompleted: (Bool) -> Void = { _ in }
     var onNavigationTransitionSettled: () -> Void = {}
@@ -297,6 +299,7 @@ final class ReaderNavigationTransitionDriver: NSObject {
             expectedToViewController = navigationController.viewControllers.dropLast().last
             isInteractivePopInFlight = true
             interactionIsSettling = false
+            onInteractivePopBegan()
 
             guard navigationController.popViewController(animated: true) != nil else {
                 AppLogger.info("⟐ reader-nav edge pop rejected: popViewController returned nil")
@@ -306,6 +309,8 @@ final class ReaderNavigationTransitionDriver: NSObject {
                 expectedToViewController = nil
                 isInteractivePopInFlight = false
                 interactionIsSettling = false
+                interactionController = nil
+                onPopTransitionCompleted(false)
                 return
             }
             AppLogger.info("⟐ reader-nav interactive pop began")
@@ -394,6 +399,8 @@ final class ReaderNavigationTransitionDriver: NSObject {
             if wasInteractive {
                 if completed {
                     onInteractivePopCompleted()
+                } else {
+                    onInteractivePopCancelled()
                 }
             } else {
                 onPopTransitionCompleted(completed)

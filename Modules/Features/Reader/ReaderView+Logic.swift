@@ -480,7 +480,7 @@ extension ReaderView {
         )
     }
 
-    func autoSaveProgress(force: Bool = false) {
+    func autoSaveProgress(force: Bool = false, notifyLibraryViews: Bool? = nil) {
         guard ReaderProgressSyncPolicy.canPublishIndexPosition(
             isTXT: book?.resolvedPipelineKind == .txt, indexReady: txtIndexReady
         ) else { return }
@@ -504,7 +504,12 @@ extension ReaderView {
             }
             // Preserve the actual character position in the library summary;
             // chapter-only progress would move the summary backwards at exit.
-            session.synchronizeLibraryProgress(to: store, bookId: bookId, forceSave: force) { position in
+            session.synchronizeLibraryProgress(
+                to: store,
+                bookId: bookId,
+                forceSave: force,
+                notifyLibraryViews: notifyLibraryViews
+            ) { position in
                 engine.totalProgress(forSpine: position.spineIndex, charOffset: position.charOffset)
             }
             notifySourceSaveRead(isPageTurn: !force)
@@ -531,11 +536,16 @@ extension ReaderView {
         AppLogger.render(
             "autoSave coreText page=\(candidatePage) spine=\(spineIndex) charOffset=\(charOffset) pct=\(String(format: "%.6f", normalized))"
         )
-        store.updatePosition(bookId: bookId, position: normalized, forceSave: force)
+        store.updatePosition(
+            bookId: bookId,
+            position: normalized,
+            forceSave: force,
+            notifyLibraryViews: notifyLibraryViews ?? force
+        )
         notifySourceSaveRead(isPageTurn: !force)
     }
 
-    func saveProgress() {
+    func saveProgress(notifyLibraryViews: Bool = true) {
         guard ReaderProgressSyncPolicy.canPublishIndexPosition(
             isTXT: book?.resolvedPipelineKind == .txt, indexReady: txtIndexReady
         ) else { return }
@@ -546,7 +556,7 @@ extension ReaderView {
         let wasRestoring = isRestoringPosition
         AppLogger.render("saveProgress begin wasRestoring=\(wasRestoring)")
         isRestoringPosition = false
-        autoSaveProgress(force: true)
+        autoSaveProgress(force: true, notifyLibraryViews: notifyLibraryViews)
         isRestoringPosition = wasRestoring
         saveCalibreProgress()
         if let navigator = readerSessionCoordinator?.navigator {

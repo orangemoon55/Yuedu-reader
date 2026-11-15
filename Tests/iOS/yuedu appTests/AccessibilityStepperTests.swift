@@ -184,8 +184,7 @@ struct StepperRowVoiceOverTests {
                 pageTurnOption: .curl,
                 isVerticalWritingMode: false,
                 onSelectPageTurnOption: { _ in },
-                onStartAutoRead: {},
-                onCustomize: {}
+                onSelectRoute: { _ in }
             )
         }
     }

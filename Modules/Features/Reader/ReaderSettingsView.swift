@@ -3,6 +3,28 @@ import Combine
 import SwiftUI
 import UIKit
 
+enum ReaderSettingsInitialSection: Hashable {
+    case all
+    case text
+    case spacing
+    case headerFooter
+    case decoration
+    case chapterTitleStyle
+    case commentBubble
+
+    var titleKey: String {
+        switch self {
+        case .all: "閱讀設定"
+        case .text: "顯示設定"
+        case .spacing: "間距"
+        case .headerFooter: "頁首頁尾與標題"
+        case .decoration: "閱讀裝飾"
+        case .chapterTitleStyle: "章節標題樣式"
+        case .commentBubble: "氣泡設定"
+        }
+    }
+}
+
 struct ReaderSettingsView: View {
     @Binding var fontSize: CGFloat
     @Binding var theme: ReaderTheme
@@ -29,6 +51,8 @@ struct ReaderSettingsView: View {
     /// above do — a sheet asked for from inside this sheet can be dropped there. Nil where
     /// this view presents it itself.
     var onOpenPaywall: ((PremiumFeature) -> Void)?
+    var initialSection: ReaderSettingsInitialSection = .all
+    var usesParentNavigation = false
 
     @StateObject private var readerConfig = ReaderConfig.shared
     @Bindable private var settings = GlobalSettings.shared
@@ -68,7 +92,7 @@ struct ReaderSettingsView: View {
     private let defaultPageMarginV: CGFloat = 16
 
     var body: some View {
-        NavigationStack {
+        ReaderSettingsNavigationHost(usesParent: usesParentNavigation) {
             VStack(spacing: 0) {
                 previewPanel
                 Divider()
@@ -78,34 +102,40 @@ struct ReaderSettingsView: View {
                 // reaches for them. 排版生效範圍 comes first because it decides where every
                 // change below is kept.
                 Form {
-                    scopeSection
-
-                    if supportsUserFont || supportsFontSize {
-                        textSection
+                    if initialSection == .all || initialSection == .text || initialSection == .spacing {
+                        scopeSection
                     }
 
-                    if supportsSpacing || supportsLineHeight {
-                        layoutSection
+                    if initialSection == .all || initialSection == .text {
+                        if supportsUserFont || supportsFontSize { textSection }
                     }
 
-                    headerFooterSection
-
-                    // Pro sections stay in view without Pro, locked: a reader has to see a
-                    // feature where it would be used to want it (2026-09-27).
-                    readerDecorationSection
-
-                    if showsPagingSection {
-                        pagingSection
+                    if initialSection == .all || initialSection == .spacing {
+                        if supportsSpacing || supportsLineHeight { layoutSection }
                     }
 
-                    brightnessSection
+                    if initialSection == .all || initialSection == .headerFooter {
+                        headerFooterSection
+                    }
 
-                    readerSettingsBackupSection
+                    if initialSection == .chapterTitleStyle, supportsLineHeight {
+                        ChapterTitleStyleSettingsView()
+                    }
+
+                    if initialSection == .all || initialSection == .decoration || initialSection == .commentBubble {
+                        readerDecorationSection
+                    }
+
+                    if initialSection == .all {
+                        if showsPagingSection { pagingSection }
+                        brightnessSection
+                        readerSettingsBackupSection
+                    }
                 }
                 .softScrollEdges()
             }
             .themedAppSurface(for: .settings)
-            .navigationTitle(localized("閱讀設定"))
+            .navigationTitle(localized(initialSection.titleKey))
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

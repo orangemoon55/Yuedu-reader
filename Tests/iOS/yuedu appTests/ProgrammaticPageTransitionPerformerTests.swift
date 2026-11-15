@@ -50,6 +50,7 @@ struct ProgrammaticPageTransitionPerformerTests {
         #expect(!ReaderSlideTurnAnimation.runsTimedPush(pageTurnStyle: .slide, animated: false))
         #expect(!ReaderSlideTurnAnimation.runsTimedPush(pageTurnStyle: .curl, animated: true))
         #expect(!ReaderSlideTurnAnimation.runsTimedPush(pageTurnStyle: .cover, animated: true))
+        #expect(!ReaderSlideTurnAnimation.runsTimedPush(pageTurnStyle: .ripple, animated: true))
         #expect(!ReaderSlideTurnAnimation.runsTimedPush(pageTurnStyle: .none, animated: true))
     }
 

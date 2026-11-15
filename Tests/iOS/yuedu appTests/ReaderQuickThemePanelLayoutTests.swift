@@ -21,7 +21,7 @@ final class ReaderQuickThemePanelLayoutTests: XCTestCase {
                 ReaderQuickThemePanelView(
                     fontSize: .constant(18), readerTheme: .constant(.white),
                     pageTurnOption: .fastFade, isVerticalWritingMode: false,
-                    onSelectPageTurnOption: { _ in }, onStartAutoRead: {}, onCustomize: {}
+                    onSelectPageTurnOption: { _ in }, onSelectRoute: { _ in }
                 )
                 .environment(\.dynamicTypeSize, .large)
                 .onPreferenceChange(ReaderQuickPanelContentHeightKey.self) { measuredHeight = $0 }

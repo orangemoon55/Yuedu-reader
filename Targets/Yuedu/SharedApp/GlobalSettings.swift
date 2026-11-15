@@ -45,6 +45,7 @@ enum PageTurnStyle: String, CaseIterable {
     case slide = "滑動"
     case cover = "覆蓋翻頁"
     case curl = "仿真翻書"
+    case ripple = "波纹"
     case none = "無動畫"
 }
 

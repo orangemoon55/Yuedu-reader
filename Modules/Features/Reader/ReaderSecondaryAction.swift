@@ -66,8 +66,21 @@ enum ReaderModernBookCardRoute: Hashable {
 /// it came from is still dismissing. Recording the request and running it from the
 /// panel's real `onDismiss` is the contract in
 /// `Technotes/iOS17MenuModalPresentation.md`.
-enum ReaderQuickPanelRoute: Hashable {
+enum ReaderQuickPanelRoute: Hashable, Identifiable {
     case settings
-    /// A locked control in the panel (導入圖片背景 without Pro).
+    case display
+    case spacing
+    case tableOfContents
+    case bookmarks
+    case readingAloud
+    case autoRead
+    case chapterTitleStyle
+    case headerFooter
+    case commentBubble
+    case decoration
     case paywall(PremiumFeature)
+    case touchZoneEditor
+    case styleImporter(ReaderStyleImportRoute)
+
+    var id: Self { self }
 }

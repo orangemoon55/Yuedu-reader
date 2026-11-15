@@ -5,6 +5,7 @@ enum ReaderQuickPageTurnOption: String, CaseIterable, Identifiable, Hashable {
     case slide
     case cover
     case curl
+    case ripple
     case fastFade
     case scroll
 
@@ -14,7 +15,8 @@ enum ReaderQuickPageTurnOption: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .slide: return "Slide"
         case .cover: return "覆蓋翻頁"
-        case .curl: return "Curl"
+        case .curl: return "仿真翻書"
+        case .ripple: return "波纹"
         case .fastFade: return "Fast Fade"
         case .scroll: return "Scroll"
         }
@@ -25,6 +27,7 @@ enum ReaderQuickPageTurnOption: String, CaseIterable, Identifiable, Hashable {
         case .slide: return "arrow.left.square"
         case .cover: return "square.on.square"
         case .curl: return "doc"
+        case .ripple: return "water.waves"
         case .fastFade: return "bolt.square"
         case .scroll: return "doc.plaintext"
         }
@@ -47,19 +50,21 @@ struct ReaderQuickThemePanelView: View {
     @Binding var readerTheme: ReaderTheme
     let pageTurnOption: ReaderQuickPageTurnOption
     let isVerticalWritingMode: Bool
+    var usesPublicationFontDefault = false
+    var readerWindowCanHoldSpread = false
+    var readerCapabilities: ReaderCapabilities = .reflowableText
+    var allowsUserSelectedReaderFont = false
+    var allowsVerticalWritingMode = false
+    var hasParagraphReviews = false
     let onSelectPageTurnOption: (ReaderQuickPageTurnOption) -> Void
-    /// Enters auto-read mode and puts every surface away. It is only an entry:
-    /// once running, the footer pill is the single route to the speed and the exit.
-    let onStartAutoRead: () -> Void
-    let onCustomize: () -> Void
-    /// A locked control asked for the paywall. The reader closes this sheet and presents
-    /// it from its own `onDismiss`, as it does for 自訂 — never a sheet on top of this one.
-    var onOpenPaywall: ((PremiumFeature) -> Void)? = nil
+    var onSelectRoute: (ReaderQuickPanelRoute) -> Void = { _ in }
 
     @Bindable private var settings = GlobalSettings.shared
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     /// The saved-background page pushed in this panel's own navigation.
     @State private var backgroundEditor: ReaderBackgroundEditorRoute?
+    @State private var quickSettingsDestination: ReaderQuickPanelRoute?
     /// Measured height of the panel's own content, so the sheet is exactly as tall
     /// as what it holds. A fixed detent left a band of dead space under the last
     /// row whenever the content came out shorter than the constant.
@@ -77,16 +82,14 @@ struct ReaderQuickThemePanelView: View {
             // sizes that content is taller than any detent.
             ScrollView {
                 VStack(alignment: .leading, spacing: DSSpacing.lg) {
-                    typeAndPageTurnRow
-                    brightnessSlider
-                    readingBackgroundRow
-                        .padding(.bottom, DSSpacing.lg)
-                    // Only under 綁定閱讀主題: without it the reader follows the device by
-                    // itself and there is nothing to switch (the user's call, 2026-09-30).
-                    if settings.appearanceBindReaderTheme {
-                        followSystemAppearanceToggle
+                    HStack(spacing: DSSpacing.md) {
+                        fontSizeStepper
+                        fontChoiceMenu
                     }
-                    quickActionRow
+                    readingBackgroundRow
+                    pageTurnStyleRow
+                        .padding(.bottom, DSSpacing.xs)
+                    quickActionGrid
                 }
                 .padding(.horizontal, DSSpacing.xl)
                 .padding(.top, DSSpacing.xl)
@@ -116,6 +119,22 @@ struct ReaderQuickThemePanelView: View {
             // reader flicks away, and a navigation chrome on top of it ate height
             // the controls could use.
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $quickSettingsDestination) { route in
+                ReaderQuickThemeSettingsDestination(
+                    route: route,
+                    fontSize: $fontSize,
+                    theme: $readerTheme,
+                    initialSection: settingsSection(for: route),
+                    readerWindowCanHoldSpread: readerWindowCanHoldSpread,
+                    capabilities: readerCapabilities,
+                    allowsUserSelectedReaderFont: allowsUserSelectedReaderFont,
+                    usesPublicationFontDefault: usesPublicationFontDefault,
+                    isVerticalWritingMode: isVerticalWritingMode,
+                    allowsVerticalWritingMode: allowsVerticalWritingMode,
+                    hasParagraphReviews: hasParagraphReviews,
+                    onSelectRoute: { selectTool($0) }
+                )
+            }
             .navigationDestination(item: $backgroundEditor) { route in
                 ReaderCustomBackgroundEditorView(
                     original: route.backgroundID.flatMap(settings.readerCustomBackground(id:)),
@@ -128,7 +147,7 @@ struct ReaderQuickThemePanelView: View {
                         backgroundEditor = nil
                     },
                     onDelete: { backgroundEditor = nil },
-                    onRequestPaywall: { onOpenPaywall?($0) }
+                    onRequestPaywall: { onSelectRoute(.paywall($0)) }
                 )
             }
         }
@@ -149,24 +168,13 @@ struct ReaderQuickThemePanelView: View {
         // Our measurement already includes the panel's complete bottom padding.
         // The saved-background page is a whole form, not a row of controls: the panel
         // opens to full height while it is up, and goes back to fitting its content.
-        .presentationDetents(backgroundEditor == nil
+        .presentationDetents(backgroundEditor == nil && quickSettingsDestination == nil
             ? [.height(max(DSLayout.minimumTapTarget, contentHeight - bottomSafeAreaInset))]
             : [.large])
         .presentationDragIndicator(.visible)
     }
 
     // MARK: - 字級 + 翻頁
-
-    /// One row for the two things a reader reaches for mid-page. They used to sit
-    /// apart with the page-turn style behind an icon-only `Menu` — a glyph that
-    /// never said which style was active.
-    private var typeAndPageTurnRow: some View {
-        HStack(spacing: DSSpacing.md) {
-            fontSizeStepper
-            pageTurnMenu
-                .frame(width: DSLayout.readerQuickPanelTopMenuWidth)
-        }
-    }
 
     /// 小 A ── 現在的字級 ── 大 A, in one capsule.
     ///
@@ -203,48 +211,99 @@ struct ReaderQuickThemePanelView: View {
         )
     }
 
-    /// A `Menu` behind a capsule button.
-    ///
-    /// The menu is the stock control for picking one of several styles; what
-    /// changed from the icon-only version is the label — it now says which style
-    /// is active, so the reader does not have to open it to find out.
-    private var pageTurnMenu: some View {
+    private var fontChoiceMenu: some View {
         Menu {
-            Picker(
-                localized("翻頁"),
-                selection: Binding(
-                    get: { pageTurnOption },
-                    set: { onSelectPageTurnOption($0) }
+            Button {
+                settings.selectedReaderFontPostScript = nil
+            } label: {
+                Label(
+                    localized(bookUsesPublicationFont ? "書籍預設字體" : "系統字體"),
+                    systemImage: settings.selectedReaderFontPostScript == nil ? "checkmark" : "textformat"
                 )
-            ) {
-                ForEach(ReaderQuickPageTurnOption.allCases) { option in
-                    Label(
-                        localized(pageTurnTitleKey(for: option)),
-                        systemImage: option.iconName
-                    )
-                    .font(DSFont.body)
-                    .tag(option)
+            }
+            if !settings.userFonts.isEmpty {
+                Divider()
+                ForEach(settings.userFonts, id: \.id) { font in
+                    Button {
+                        settings.selectedReaderFontPostScript = font.postScriptName
+                    } label: {
+                        Label(
+                            font.displayName,
+                            systemImage: settings.selectedReaderFontPostScript == font.postScriptName ? "checkmark" : "textformat"
+                        )
+                    }
                 }
             }
         } label: {
             HStack(spacing: DSSpacing.xs) {
-                Text(localized(pageTurnTitleKey(for: pageTurnOption)))
+                Text(selectedFontName)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(DSFont.footnote)
-                    .accessibilityHidden(true)
             }
             .font(DSFont.subheadline)
             .foregroundStyle(DSColor.textPrimary)
-            .padding(.horizontal, DSSpacing.sm)
             .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
+            .padding(.horizontal, DSSpacing.md)
             .background(DSColor.neutralControlFill, in: Capsule())
-            .shadow(color: DSColor.shadow, radius: 6, y: 1)
-            .contentShape(Capsule())
+            .overlay(Capsule().strokeBorder(DSColor.separator, lineWidth: 1))
         }
-        .accessibilityLabel(localized("翻頁"))
-        .accessibilityValue(localized(pageTurnTitleKey(for: pageTurnOption)))
+        .accessibilityLabel(localized("字體"))
+        .accessibilityValue(selectedFontName)
+    }
+
+    private var bookUsesPublicationFont: Bool { usesPublicationFontDefault }
+
+    private var selectedFontName: String {
+        if let selected = settings.selectedReaderFontPostScript,
+           let font = settings.userFonts.first(where: { $0.postScriptName == selected }) {
+            return font.displayName
+        }
+        return localized(bookUsesPublicationFont ? "書籍預設字體" : "系統字體")
+    }
+
+    private var pageTurnStyleRow: some View {
+        VStack(alignment: .leading, spacing: DSSpacing.sm) {
+            Text(localized("翻頁"))
+                .font(DSFont.footnote)
+                .foregroundStyle(DSColor.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DSSpacing.sm) {
+                    ForEach(ReaderQuickPageTurnOption.allCases) { option in
+                        Button {
+                            onSelectPageTurnOption(option)
+                        } label: {
+                            HStack(spacing: DSSpacing.xs) {
+                                Image(systemName: option.iconName)
+                                    .accessibilityHidden(true)
+                                Text(localized(pageTurnTitleKey(for: option)))
+                                    .lineLimit(1)
+                            }
+                            .font(DSFont.subheadline.weight(.medium))
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.horizontal, DSSpacing.md)
+                            .frame(minHeight: DSLayout.readerQuickPanelTopControlHeight)
+                            .foregroundStyle(pageTurnOption == option ? DSColor.textOnAccent : DSColor.textPrimary)
+                            .background {
+                                Capsule().fill(pageTurnOption == option ? DSColor.accent : DSColor.neutralControlFill)
+                            }
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    pageTurnOption == option ? Color.clear : DSColor.separator,
+                                    lineWidth: 1
+                                )
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(pageTurnOption == option ? .isSelected : [])
+                        .accessibilityIdentifier("reader.pageTurnStyle.\\(option.rawValue)")
+                    }
+                }
+                .padding(.vertical, DSSpacing.xs)
+            }
+            .scrollClipDisabled()
+        }
     }
 
     /// One half of the A / A stepper. `.buttonRepeatBehavior(.enabled)` makes
@@ -442,23 +501,46 @@ struct ReaderQuickThemePanelView: View {
     /// 自動閱讀 comes first — that is where every reader that ships this feature
     /// puts it, and until now this app had no entry for it at all: the controller
     /// and its panel were both complete, but nothing ever set `showAutoReadPanel`.
-    private var quickActionRow: some View {
-        HStack(spacing: DSSpacing.md) {
-            Button {
-                onStartAutoRead()
-            } label: {
-                Label(localized("自動閱讀"), systemImage: "play.fill")
+    private var quickActionGrid: some View {
+        let actions = [
+            ReaderQuickThemeAction(id: .display, titleKey: "顯示設定", systemImage: "textformat.size"),
+            ReaderQuickThemeAction(id: .spacing, titleKey: "間距", systemImage: "line.3.horizontal"),
+            ReaderQuickThemeAction(id: .readingAloud, titleKey: "朗讀", systemImage: "speaker.wave.2"),
+            ReaderQuickThemeAction(id: .autoRead, titleKey: "自動閱讀", systemImage: "play.fill"),
+            ReaderQuickThemeAction(id: .commentBubble, titleKey: "氣泡設定", systemImage: "bubble.left.and.bubble.right"),
+            ReaderQuickThemeAction(id: .chapterTitleStyle, titleKey: "章節標題樣式", systemImage: "textformat"),
+            ReaderQuickThemeAction(id: .headerFooter, titleKey: "頁首頁尾", systemImage: "rectangle.bottomthird.inset.filled"),
+            ReaderQuickThemeAction(id: .settings, titleKey: "更多設定", systemImage: "ellipsis")
+        ]
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: DSSpacing.sm) {
+            ForEach(actions) { action in
+                ReaderQuickThemeActionTile(action: action) { selectTool(action.id) }
             }
-            .buttonStyle(QuickPanelActionButtonStyle())
-
-            Button(action: onCustomize) {
-                Label(localized("Customize"), systemImage: "gear")
-            }
-            .buttonStyle(QuickPanelActionButtonStyle())
         }
     }
 
     // MARK: - Actions
+
+    private func selectTool(_ route: ReaderQuickPanelRoute) {
+        switch route {
+        case .settings, .display, .spacing, .headerFooter, .decoration, .chapterTitleStyle, .commentBubble:
+            quickSettingsDestination = route
+        case .tableOfContents, .bookmarks, .readingAloud, .autoRead, .touchZoneEditor, .styleImporter, .paywall:
+            dismiss()
+            DispatchQueue.main.async { onSelectRoute(route) }
+        }
+    }
+
+    private func settingsSection(for route: ReaderQuickPanelRoute) -> ReaderSettingsInitialSection {
+        switch route {
+        case .display: .text
+        case .spacing: .spacing
+        case .headerFooter: .headerFooter
+        case .decoration, .commentBubble: .decoration
+        case .chapterTitleStyle: .chapterTitleStyle
+        default: .all
+        }
+    }
 
     private func adjustFontSize(_ delta: CGFloat) {
         fontSize = GlobalSettings.clampedReaderFontSize((fontSize + delta).rounded())
@@ -608,8 +690,7 @@ private struct QuickPanelSegmentButtonStyle: ButtonStyle {
         pageTurnOption: .curl,
         isVerticalWritingMode: false,
         onSelectPageTurnOption: { _ in },
-        onStartAutoRead: {},
-        onCustomize: {}
+        onSelectRoute: { _ in }
     )
 }
 

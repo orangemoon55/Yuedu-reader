@@ -79,6 +79,24 @@ struct ReaderCoverPageMotion: Equatable {
         }
     }
 
+    /// Wavefront travel axis. The host swaps shader textures so the target stays behind it.
+    var rippleShaderAxis: SIMD2<Float> {
+        SIMD2<Float>(Float(alongTurn(1)), 0)
+    }
+
+    /// Normalized edge origin for the wavefront, with the touch's vertical position retained.
+    func rippleOrigin(verticalPosition: CGFloat) -> CGPoint {
+        let y = verticalPosition.isFinite ? min(max(verticalPosition, 0), 1) : 0.5
+        return CGPoint(x: rippleShaderAxis.x > 0 ? 0 : 1, y: y)
+    }
+
+    /// The shader sweeps -1-softEdge...1+softEdge. An edge origin projects the
+    /// page onto 0...1, so use only that interval; every drag event moves the front.
+    func rippleShaderProgress(_ progress: CGFloat) -> CGFloat {
+        let value = progress.isFinite ? min(max(progress, 0), 1) : 0
+        return (1 + value * 1.024) / 2.024
+    }
+
     /// How long the page takes to come to rest after the finger lets go. UIKit's
     /// spring for a given duration is stiffer than an ease-out of the same length:
     /// the 0.22s ease-out this replaced covered two thirds of the way in its
@@ -130,6 +148,7 @@ struct PageViewControllerPagingAdapterDescriptor: Equatable {
     let transitionStyle: UIPageViewController.TransitionStyle
     let disablesBuiltInSwipe: Bool
     let usesCoverOverlay: Bool
+    let usesRippleOverlay: Bool
     let usesInstantPan: Bool
     let isDoubleSided: Bool
     /// Whether a two-page spread under this style turns around the centre spine, as a
@@ -156,21 +175,31 @@ struct PageViewControllerPagingAdapterDescriptor: Equatable {
             transitionStyle = .pageCurl
             disablesBuiltInSwipe = false
             usesCoverOverlay = false
+            usesRippleOverlay = false
             usesInstantPan = false
         case .slide:
             transitionStyle = .scroll
             disablesBuiltInSwipe = false
             usesCoverOverlay = false
+            usesRippleOverlay = false
             usesInstantPan = false
         case .cover:
             transitionStyle = .scroll
             disablesBuiltInSwipe = true
             usesCoverOverlay = true
+            usesRippleOverlay = false
+            usesInstantPan = false
+        case .ripple:
+            transitionStyle = .scroll
+            disablesBuiltInSwipe = true
+            usesCoverOverlay = false
+            usesRippleOverlay = true
             usesInstantPan = false
         case .none:
             transitionStyle = .scroll
             disablesBuiltInSwipe = true
             usesCoverOverlay = false
+            usesRippleOverlay = false
             usesInstantPan = true
         }
     }

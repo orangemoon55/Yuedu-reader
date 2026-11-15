@@ -117,6 +117,7 @@ enum ReaderPagingStyle: Hashable, Codable {
         case .cover: self = .cover
         case .curl: self = .curl
         case .none: self = .none
+        case .ripple: self = .custom("ripple")
         }
     }
 

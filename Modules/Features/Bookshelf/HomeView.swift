@@ -245,6 +245,8 @@ struct HomeView: View {
     @State private var legacyImportSequence =
         DismissalSequencedPresentation<BookshelfImportPresentationRoute>()
     @State private var editingBook: ReadingBook? = nil
+    @State private var searchingCoverForBook: ReadingBook?
+    @State private var coverSearchError: String?
     @State private var bookToDelete: ReadingBook? = nil
     /// 作品詳情 from a book's •••, the shelf's one item destination (iOS 17 guardrail 12,
     /// `Technotes/iOS17SearchWatchdogPostmortem.md`).
@@ -267,10 +269,31 @@ struct HomeView: View {
     @State private var showAIPaywall = false
     @ObservedObject private var subscription = SubscriptionStore.shared
     @AppStorage("bookLayoutIsGrid") private var isGridMode = false
+    @AppStorage("bookshelfRingMode") private var isRingMode = false
+    @AppStorage("bookshelfFattenedBookIDs") private var fattenedBookIDsData = Data()
     @AppStorage(BookSortOrder.storageKey) private var sortOrder = BookSortOrder.manual.rawValue
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Namespace private var bookTransition
     @State private var entriesMemo = ShelfEntriesMemo()
+
+    private var isFattenedBookIDs: Set<UUID> {
+        (try? JSONDecoder().decode(Set<UUID>.self, from: fattenedBookIDsData)) ?? []
+    }
+
+    private func performBookContextAction(_ book: ReadingBook, _ action: BookshelfBookContextAction) {
+        switch action {
+        case .open:
+            openBook(book, from: activePage, tapped: nil)
+        case .searchCover:
+            searchingCoverForBook = book
+        case .toggleFatten:
+            var ids = isFattenedBookIDs
+            if ids.remove(book.id) == nil { ids.insert(book.id) }
+            fattenedBookIDsData = (try? JSONEncoder().encode(ids)) ?? Data()
+        case .delete:
+            bookToDelete = book
+        }
+    }
 
     private var hInset: CGFloat { sizeClass == .regular ? 32 : 20 }
     private var isCompactFiveColumnGrid: Bool { gs.bookshelfGridColumnCount >= 5 }
@@ -459,6 +482,12 @@ struct HomeView: View {
                             shelfScrollToTopPage = page
                             shelfScrollToTopRequest += 1
                         }
+                    },
+                    onReaderClosed: {
+                        transitionBookStore?.publishPendingPositionUpdate(bookID: readerBookID)
+                    },
+                    onReaderCloseCancelled: {
+                        transitionBookStore?.publishPendingPositionUpdate(bookID: readerBookID)
                     }
                 )
             }
@@ -603,6 +632,15 @@ struct HomeView: View {
                         EmptyLibraryView(showAdd: $showAddSheet)
                             .rootTabTitleScrollAnchor()
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+                    } else if isRingMode, editMode != .active {
+                        BookshelfRingView(
+                            books: sortedBooks(inGroup: nil),
+                            colorScheme: colorScheme,
+                            isFattened: { isFattenedBookIDs.contains($0) },
+                            onOpen: { book in openBook(book, from: .all, tapped: nil) },
+                            onContextAction: { book, action in performBookContextAction(book, action) }
+                        )
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                     } else {
                         groupedShelf(pages: shelfPages)
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
@@ -725,6 +763,33 @@ struct HomeView: View {
                         store.setCustomIntro(newIntro, for: book.id)
                     }
                     .environmentObject(store)
+                }
+            }
+            .sheet(item: $searchingCoverForBook) { book in
+                NavigationStack {
+                    OnlineCoverSearchView(title: book.title, author: book.author) { candidate in
+                        Task {
+                            let applied = await store.applyCustomCover(
+                                bookId: book.id,
+                                coverUrl: candidate.coverUrl,
+                                sourceId: candidate.sourceId
+                            )
+                            if !applied { coverSearchError = localized("無法儲存封面") }
+                        }
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(localized("關閉")) { searchingCoverForBook = nil }
+                        }
+                    }
+                    .alert(localized("封面設定失敗"), isPresented: Binding(
+                        get: { coverSearchError != nil },
+                        set: { if !$0 { coverSearchError = nil } }
+                    )) {
+                        Button(localized("確定"), role: .cancel) {}
+                    } message: {
+                        Text(coverSearchError ?? "")
+                    }
                 }
             }
             .alert(
@@ -879,12 +944,21 @@ struct HomeView: View {
 
             Divider()
 
-            Picker("", selection: $isGridMode) {
-                Label(localized("列表"), systemImage: "list.bullet").tag(false)
-                Label(localized("格狀"), systemImage: "square.grid.2x2").tag(true)
+            Picker("", selection: $isRingMode) {
+                Label(localized("圓環書架"), systemImage: "circle.hexagongrid").tag(true)
+                Label(localized("傳統書架"), systemImage: "books.vertical").tag(false)
             }
             .pickerStyle(.inline)
             .labelsHidden()
+
+            if !isRingMode {
+                Picker("", selection: $isGridMode) {
+                    Label(localized("列表"), systemImage: "list.bullet").tag(false)
+                    Label(localized("格狀"), systemImage: "square.grid.2x2").tag(true)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
 
             Divider()
 
@@ -1184,7 +1258,8 @@ struct HomeView: View {
                             onEdit: { editingBook = book },
                             onDelete: { bookToDelete = book },
                             onShowWork: { showWorkDetail(for: book) },
-                            onTogglePin: { togglePin(book) }
+                            isFattened: isFattenedBookIDs.contains(book.id),
+                            onContextAction: { performBookContextAction(book, $0) }
                         )
                         .equatable()
                         .tag(book.id)
@@ -1329,7 +1404,9 @@ struct HomeView: View {
                             onEdit: { editingBook = book },
                             onDelete: { bookToDelete = book },
                             onShowWork: { showWorkDetail(for: book) },
-                            onTogglePin: { togglePin(book) }
+                            onTogglePin: { togglePin(book) },
+                            isFattened: isFattenedBookIDs.contains(book.id),
+                            onContextAction: { performBookContextAction(book, $0) }
                         )
                         .equatable()
                     case .folder(let name, let books):
@@ -1918,6 +1995,8 @@ struct BookRow: View {
     var onShowWork: (() -> Void)? = nil
     /// 置頂 / 取消置頂 (feedback #17).
     var onTogglePin: (() -> Void)? = nil
+    var isFattened = false
+    var onContextAction: ((BookshelfBookContextAction) -> Void)? = nil
 
     /// A row's cover. A group's folder in the list takes the same frame.
     static let coverSize = CGSize(width: 45, height: 65)
@@ -1946,6 +2025,16 @@ struct BookRow: View {
                     Button(localized("編輯書籍資訊")) { onEdit() }
                     Button(localized("刪除書籍"), role: .destructive) { onDelete() }
                 }
+                .contextMenu {
+                    BookshelfBookContextMenu(
+                        book: book,
+                        isFattened: isFattened,
+                        onOpen: openBook,
+                        onSearchCover: { onContextAction?(.searchCover) },
+                        onToggleFatten: { onContextAction?(.toggleFatten) },
+                        onDelete: onDelete
+                    )
+                }
         }
     }
 
@@ -1973,10 +2062,13 @@ struct BookRow: View {
                             BookOverflowMenu(
                                 iconSize: 16,
                                 isPinned: book.isPinned,
+                                onOpen: openBook,
                                 onEdit: onEdit,
                                 onDelete: onDelete,
                                 onShowWork: onShowWork,
-                                onTogglePin: onTogglePin
+                                onTogglePin: onTogglePin,
+                                onSearchCover: { onContextAction?(.searchCover) },
+                                onFatten: { onContextAction?(.toggleFatten) }
                             )
                         }
                     }
@@ -2157,6 +2249,8 @@ struct BookGridCell: View {
     var onShowWork: (() -> Void)? = nil
     /// 置頂 / 取消置頂 (feedback #17): the grid has no swipe, so its ••• offers it.
     var onTogglePin: (() -> Void)? = nil
+    var isFattened = false
+    var onContextAction: ((BookshelfBookContextAction) -> Void)? = nil
     @State private var coverFrame = BookshelfCoverFrameBox()
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -2233,10 +2327,13 @@ struct BookGridCell: View {
                         iconSize: isCompactLayout ? 13 : 14,
                         controlSize: isCompactLayout ? 28 : 32,
                         isPinned: book.isPinned,
+                        onOpen: { activate() },
                         onEdit: onEdit,
                         onDelete: onDelete,
                         onShowWork: onShowWork,
-                        onTogglePin: onTogglePin
+                        onTogglePin: onTogglePin,
+                        onSearchCover: { onContextAction?(.searchCover) },
+                        onFatten: { onContextAction?(.toggleFatten) }
                     )
                     // 選取 takes the per-book menu away, as it does in the list. It keeps
                     // its room, so the shelf does not reflow on the way in and out.
@@ -2260,9 +2357,19 @@ struct BookGridCell: View {
                 if let onShowWork {
                     Button(localized("作品詳情")) { onShowWork() }
                 }
-                Button(localized("編輯書籍資訊")) { onEdit() }
+                Button(localized("编辑书籍資訊")) { onEdit() }
                 Button(localized("刪除書籍"), role: .destructive) { onDelete() }
             }
+        }
+        .contextMenu {
+            BookshelfBookContextMenu(
+                book: book,
+                isFattened: isFattened,
+                onOpen: { activate() },
+                onSearchCover: { onContextAction?(.searchCover) },
+                onToggleFatten: { onContextAction?(.toggleFatten) },
+                onDelete: onDelete
+            )
         }
     }
 
@@ -2660,15 +2767,31 @@ private struct BookOverflowMenu: View {
     let iconSize: CGFloat
     var controlSize: CGFloat = 44
     var isPinned = false
+    let onOpen: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     /// 作品詳情 (5f), offered for every book.
     var onShowWork: (() -> Void)? = nil
     /// 置頂 / 取消置頂 (feedback #17).
     var onTogglePin: (() -> Void)? = nil
+    var onSearchCover: (() -> Void)? = nil
+    var onFatten: (() -> Void)? = nil
 
     var body: some View {
         Menu {
+            Button { onOpen() } label: {
+                Label(localized("打開"), systemImage: "book")
+            }
+            if let onSearchCover {
+                Button(action: onSearchCover) {
+                    Label(localized("搜索網絡封面"), systemImage: "photo.on.rectangle.angled")
+                }
+            }
+            if let onFatten {
+                Button(action: onFatten) {
+                    Label(localized("加入養肥"), systemImage: "leaf")
+                }
+            }
             if let onShowWork {
                 Button { onShowWork() } label: {
                     Label(localized("作品詳情"), systemImage: "books.vertical")
@@ -2863,6 +2986,7 @@ extension BookGridCell: @MainActor Equatable {
             && lhs.isCompactLayout == rhs.isCompactLayout
             && lhs.coverDisplaySize == rhs.coverDisplaySize
             && lhs.isEditing == rhs.isEditing
+            && lhs.isFattened == rhs.isFattened
             && lhs.isSelected == rhs.isSelected
             && lhs.selectedCoverScale == rhs.selectedCoverScale
             && lhs.transitionNamespace == rhs.transitionNamespace
@@ -2876,6 +3000,7 @@ extension BookRow: @MainActor Equatable {
     static func == (lhs: BookRow, rhs: BookRow) -> Bool {
         lhs.book == rhs.book
             && lhs.isEditing == rhs.isEditing
+            && lhs.isFattened == rhs.isFattened
             && lhs.transitionNamespace == rhs.transitionNamespace
             && (lhs.onShowWork == nil) == (rhs.onShowWork == nil)
             && (lhs.onTogglePin == nil) == (rhs.onTogglePin == nil)

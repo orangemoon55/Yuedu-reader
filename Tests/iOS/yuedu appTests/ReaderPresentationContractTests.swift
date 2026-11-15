@@ -31,7 +31,16 @@ struct ReaderPresentationContractTests {
         #expect(cover.disablesBuiltInSwipe)
         #expect(cover.usesCoverOverlay)
         #expect(!cover.usesInstantPan)
+        #expect(!cover.usesRippleOverlay)
         #expect(cover.spineLocation(isRTL: true) == .max)
+
+        let ripple = PageViewControllerPagingAdapterDescriptor(pageTurnStyle: .ripple)
+        #expect(ripple.style == .custom("ripple"))
+        #expect(ripple.transitionStyle == .scroll)
+        #expect(ripple.disablesBuiltInSwipe)
+        #expect(!ripple.usesCoverOverlay)
+        #expect(ripple.usesRippleOverlay)
+        #expect(!ripple.usesInstantPan)
 
         let none = PageViewControllerPagingAdapterDescriptor(pageTurnStyle: .none)
         #expect(none.style == .none)
@@ -65,10 +74,34 @@ struct ReaderPresentationContractTests {
         #expect(!single.usesMidSpine)
         #expect(single.spreadGutter == 0)
 
-        for style in [PageTurnStyle.slide, .cover, .none] {
+        for style in [PageTurnStyle.slide, .cover, .ripple, .none] {
             let spread = PageViewControllerPagingAdapterDescriptor(pageTurnStyle: style, isDoublePageSpread: true)
             #expect(!spread.usesMidSpine)
             #expect(spread.spreadGutter == DSLayout.readerSpreadGutter)
+        }
+    }
+
+    @Test("ripple wavefront spans the page from its reading-direction edge")
+    func rippleWavefrontSpansThePage() {
+        for isRTL in [false, true] {
+            for direction in [ReaderCoverTurnDirection.forward, .backward] {
+                let motion = ReaderCoverPageMotion(direction: direction, isRTL: isRTL)
+                let axis = motion.rippleShaderAxis
+                let origin = motion.rippleOrigin(verticalPosition: 0.25)
+                #expect(axis.x == ((direction == .forward) != isRTL ? -1 : 1))
+                #expect(origin.x == (axis.x > 0 ? 0 : 1))
+                #expect(origin.y == 0.25)
+                #expect(motion.rippleOrigin(verticalPosition: .nan).y == 0.5)
+                // With the host's swapped textures, a front below 0 displays
+                // only the old page; above 1 displays only the target page.
+                let startFront = -1.012 + 2.024 * Double(motion.rippleShaderProgress(0))
+                let endFront = -1.012 + 2.024 * Double(motion.rippleShaderProgress(1))
+                #expect(abs(startFront + 0.012) < 0.00001)
+                #expect(abs(endFront - 1.012) < 0.00001)
+                #expect(motion.rippleShaderProgress(-1) == motion.rippleShaderProgress(0))
+                #expect(motion.rippleShaderProgress(2) == motion.rippleShaderProgress(1))
+                #expect(motion.rippleShaderProgress(.nan) == motion.rippleShaderProgress(0))
+            }
         }
     }
 

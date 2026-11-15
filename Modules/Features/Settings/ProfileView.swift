@@ -26,23 +26,10 @@ struct SettingsView: View {
     @State private var autoOpenDiagnostics = false
     @State private var autoOpenFeedbackCenter = false
     #endif
-    private let feedbackEmail = "r3212239269@gmail.com"
-    private let officialQQGroupID = "1107613783"
-    private let telegramGroupURL = URL(string: "https://t.me/+ZWmmgMwwJ3JiN2Rl")
     private let privacyPolicyURL = URL(string: "https://yuedureader.com/privacy")
     private let userAgreementURL = URL(string: "https://yuedureader.com/terms")
     private let paidTermsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")
     private let sourceCodeURL = URL(string: "https://github.com/CHANG-JUI-LIN/Yuedu-reader/releases")
-
-    private var feedbackMailURL: URL? {
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = feedbackEmail
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: localized("yuedu app 反饋"))
-        ]
-        return components.url
-    }
 
     private var appLanguageFooter: String {
         // The name iOS Settings lists the app under: the display name (閱讀), not the bundle name.
@@ -265,10 +252,6 @@ struct SettingsView: View {
                         NavigationLink {
                             AboutSupportView(
                                 appVersion: appVersion,
-                                feedbackEmail: feedbackEmail,
-                                officialQQGroupID: officialQQGroupID,
-                                feedbackMailURL: feedbackMailURL,
-                                telegramGroupURL: telegramGroupURL,
                                 privacyPolicyURL: privacyPolicyURL,
                                 userAgreementURL: userAgreementURL,
                                 paidTermsURL: paidTermsURL,
@@ -396,12 +379,7 @@ private struct AboutSupportView: View {
     @Environment(\.openURL) private var openURL
     @Environment(OnboardingState.self) private var onboarding: OnboardingState?
     @Bindable private var gs = GlobalSettings.shared
-    @State private var showCopiedQQGroup = false
     let appVersion: String
-    let feedbackEmail: String
-    let officialQQGroupID: String
-    let feedbackMailURL: URL?
-    let telegramGroupURL: URL?
     let privacyPolicyURL: URL?
     let userAgreementURL: URL?
     let paidTermsURL: URL?
@@ -422,7 +400,7 @@ private struct AboutSupportView: View {
                         .font(DSFont.title3.weight(.semibold))
                         .foregroundStyle(DSColor.textPrimary)
 
-                    Text(localized("聯絡方式、版本資訊與政策協議"))
+                    Text(localized("版本資訊與政策協議"))
                         .font(DSFont.footnote)
                         .foregroundColor(DSColor.textSecondary)
                         .multilineTextAlignment(.center)
@@ -491,41 +469,6 @@ private struct AboutSupportView: View {
             }
             .interfaceSectionSurface()
 
-            Section(header: Text(localized("聯絡方式")).foregroundStyle(DSColor.textSecondary)) {
-                actionRow(
-                    icon: "envelope.fill",
-                    title: localized("電子郵件"),
-                    detail: feedbackEmail,
-                    trailingIcon: "arrow.up.right"
-                ) {
-                    if let url = feedbackMailURL {
-                        openURL(url)
-                    }
-                }
-
-                actionRow(
-                    icon: "number.circle.fill",
-                    title: localized("官方 QQ 群"),
-                    detail: officialQQGroupID,
-                    trailingIcon: "doc.on.doc"
-                ) {
-                    UIPasteboard.general.string = officialQQGroupID
-                    showCopiedQQGroup = true
-                }
-
-                actionRow(
-                    icon: "paperplane.fill",
-                    title: localized("Telegram 群"),
-                    detail: "t.me",
-                    trailingIcon: "arrow.up.right"
-                ) {
-                    if let url = telegramGroupURL {
-                        openURL(url)
-                    }
-                }
-            }
-            .interfaceSectionSurface()
-
             Section {
                 actionRow(
                     icon: "hand.raised.fill",
@@ -572,11 +515,6 @@ private struct AboutSupportView: View {
         .navigationTitle(localized("關於 Yuedu Reader"))
         .toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .settings)
-        .alert(localized("已複製"), isPresented: $showCopiedQQGroup) {
-            Button(localized("好"), role: .cancel) {}
-        } message: {
-            Text(String(format: localized("已複製 QQ 群號：%@"), officialQQGroupID))
-        }
     }
 
     private func actionRow(

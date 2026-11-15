@@ -61,11 +61,16 @@ final class ReaderSessionCoordinator: ObservableObject {
     /// lifecycle saves publish it before the library becomes visible again.
     func synchronizeLibraryProgress(
         to store: BookStore, bookId: UUID, forceSave: Bool,
+        notifyLibraryViews: Bool? = nil,
         resolveProgress: (CoreTextReadingPosition) -> Double
     ) {
         let progress = resolveProgress(state.location.coreTextPosition)
-        store.updatePosition(bookId: bookId, position: min(1, max(0, progress)),
-                             forceSave: forceSave, notifyLibraryViews: forceSave)
+        store.updatePosition(
+            bookId: bookId,
+            position: min(1, max(0, progress)),
+            forceSave: forceSave,
+            notifyLibraryViews: notifyLibraryViews ?? forceSave
+        )
     }
 
     var isPageTransitioning: Bool {

@@ -122,7 +122,8 @@ final class ReaderNavigationCoordinator: ObservableObject {
     private var presentedDetailController: UIViewController?
     private var detailReturnCompletion: (() -> Void)?
     private var afterDetailReturn: (() -> Void)?
-    private var readerClosedCompletion: (() -> Void)?
+    private var readerClosedCompletion: (@MainActor () -> Void)?
+    private var readerCloseCancelledCompletion: (@MainActor () -> Void)?
     /// The reader's own goodbye (its source's `endRead`), registered by the reader on screen.
     /// Run from `notifyReaderClosed`, which every way out — the close button, a swipe back,
     /// UIKit removing the controller — passes through, unlike the reader's close button.
@@ -130,6 +131,10 @@ final class ReaderNavigationCoordinator: ObservableObject {
 
     private var pendingCloseAfterPush = false
     private var isProgrammaticPopPending = false
+    private var isClosingReaderTransition = false
+
+    /// True only while the owned UIKit reader is actually closing, not when a sheet merely covers it.
+    var isClosingForReader: Bool { isClosingReaderTransition }
 
     init() {
         let driver = ReaderNavigationTransitionDriver()
@@ -148,6 +153,14 @@ final class ReaderNavigationCoordinator: ObservableObject {
         }
         driver.onInteractivePopCompleted = { [weak self] in
             self?.completeInteractivePop()
+        }
+        driver.onInteractivePopBegan = { [weak self] in
+            self?.isClosingReaderTransition = true
+        }
+        driver.onInteractivePopCancelled = { [weak self] in
+            guard let self else { return }
+            self.isClosingReaderTransition = false
+            self.readerCloseCancelledCompletion?()
         }
         driver.onPopTransitionCompleted = { [weak self] completed in
             self?.completeProgrammaticPop(completed: completed)
@@ -170,7 +183,8 @@ final class ReaderNavigationCoordinator: ObservableObject {
         source: ReaderTransitionSource? = nil,
         destination: @escaping @MainActor () -> UIViewController,
         onTransitionCompleted: (@MainActor () -> Void)? = nil,
-        onReaderClosed: (() -> Void)? = nil
+        onReaderClosed: (@MainActor () -> Void)? = nil,
+        onReaderCloseCancelled: (@MainActor () -> Void)? = nil
     ) {
         AppLogger.info("⟐ coordinator.open bookID=\(bookID) hasSource=\(source != nil) readerBookID=\(String(describing: readerBookID)) isReaderPresented=\(isReaderPresented)")
 
@@ -203,6 +217,8 @@ final class ReaderNavigationCoordinator: ObservableObject {
 
         pendingCloseAfterPush = false
         isProgrammaticPopPending = false
+        isClosingReaderTransition = false
+        readerCloseCancelledCompletion = nil
         // A fresh book must lay out its own first page before the card starts
         // turning; the previous book's readiness says nothing about this one.
         isReaderContentReady = false
@@ -211,6 +227,7 @@ final class ReaderNavigationCoordinator: ObservableObject {
         pendingPushRetryTask = nil
         pendingOpenCompletion = onTransitionCompleted
         readerClosedCompletion = onReaderClosed
+        readerCloseCancelledCompletion = onReaderCloseCancelled
         self.source = source ?? ReaderTransitionSource.fallback(bookID: bookID)
         self.readerBookID = bookID
         pendingDestinationFactory = destination
@@ -450,6 +467,7 @@ final class ReaderNavigationCoordinator: ObservableObject {
         pendingPushRetryTask = nil
         pendingCloseAfterPush = false
         isProgrammaticPopPending = false
+        isClosingReaderTransition = false
         isReaderPresented = false
         readerBookID = nil
         source = nil
@@ -484,8 +502,13 @@ final class ReaderNavigationCoordinator: ObservableObject {
         }
 
         isProgrammaticPopPending = true
+        isClosingReaderTransition = true
         guard transitionDriver.startProgrammaticPop() else {
             isProgrammaticPopPending = false
+            isClosingReaderTransition = false
+            let cancelled = readerCloseCancelledCompletion
+            readerCloseCancelledCompletion = nil
+            cancelled?()
             return
         }
     }
@@ -626,6 +649,7 @@ final class ReaderNavigationCoordinator: ObservableObject {
     }
 
     private func completeInteractivePop() {
+        isClosingReaderTransition = false
         pendingPushRetryTask?.cancel()
         pendingPushRetryTask = nil
         isProgrammaticPopPending = false
@@ -671,6 +695,8 @@ final class ReaderNavigationCoordinator: ObservableObject {
 
     private func completeProgrammaticPop(completed: Bool) {
         isProgrammaticPopPending = false
+        isClosingReaderTransition = false
+        readerCloseCancelledCompletion = nil
         if completed {
             pendingPushRetryTask?.cancel()
             pendingPushRetryTask = nil

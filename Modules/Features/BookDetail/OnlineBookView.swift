@@ -46,6 +46,7 @@ struct OnlineBookView: View {
     @Environment(\.appDependencies) private var dependencies
     @State private var pushed: OnlineBookDetailPush?
     @StateObject private var genres = SourceGenreLinks()
+    @StateObject private var sourceAuthorWorks = SourceAuthorWorks()
     @State private var pendingChapterSelection: Int?
 
     private var gs: GlobalSettings { GlobalSettings.shared }
@@ -320,9 +321,27 @@ struct OnlineBookView: View {
                         Task { await genres.retryRelated(key: key, source: source, tags: tags, book: currentBook) }
                     }
                 )
+                if let source {
+                    BookDetailSourceAuthorWorksSection(
+                        state: sourceAuthorWorks.state,
+                        source: source,
+                        onSelect: { pushed = .book($0) },
+                        onRetry: {
+                            Task {
+                                await sourceAuthorWorks.retry(
+                                    key: authorWorksLoadKey,
+                                    source: source,
+                                    author: displayAuthor,
+                                    currentBook: currentBook,
+                                    fetcher: dependencies.bookSourceFetcher
+                                )
+                            }
+                        }
+                    )
+                }
             }
         }
-        .environment(\.locale, Locale(identifier: gs.localeIdentifier))
+
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 BookDetailMoreMenu(
@@ -443,6 +462,15 @@ struct OnlineBookView: View {
             guard let key = genreLoadKey else { return }
             await genres.load(key: key, source: source, tags: tags, book: currentBook)
         }
+        .task(id: authorWorksLoadKey) {
+            await sourceAuthorWorks.load(
+                key: authorWorksLoadKey,
+                source: source,
+                author: displayAuthor,
+                currentBook: currentBook,
+                fetcher: dependencies.bookSourceFetcher
+            )
+        }
     }
 
     // MARK: Genres and author
@@ -453,6 +481,14 @@ struct OnlineBookView: View {
     private var genreLoadKey: String? {
         guard onContinueReading == nil, !(loadingTOC || (chapters.isEmpty && tocError == nil)) else { return nil }
         return ([source?.bookSourceUrl ?? "", currentBook.bookUrl] + tags).joined(separator: "\u{1F}")
+    }
+
+    private var authorWorksLoadKey: String? {
+        guard onContinueReading == nil, source != nil,
+              !(loadingTOC || (chapters.isEmpty && tocError == nil)),
+              !displayAuthor.isEmpty, displayAuthor != localized("未知作者")
+        else { return nil }
+        return [source?.bookSourceUrl ?? "", currentBook.bookUrl, displayAuthor].joined(separator: "\u{1F}")
     }
 
     /// Whether the genres are links: not for a source that takes label taps itself, and not on

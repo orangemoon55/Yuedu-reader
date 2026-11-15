@@ -73,6 +73,13 @@ class BookStore: @MainActor ObservableObject, BookProvider {
         mutationRevision &+= 1
     }
 
+    /// Publish progress saved silently while a reader's closing card animation was running.
+    /// The record and its disk write are already up to date; only the shelf redraw is deferred.
+    func publishPendingPositionUpdate(bookID: UUID) {
+        guard unpublishedPositionBookIDs.remove(bookID) != nil else { return }
+        objectWillChange.send()
+    }
+
     /// A record never holds its table of contents, as legado's `Book` has none: a list
     /// attached to one — a book built with its chapters, or read through `readingBook(id:)`
     /// and saved back — moves to `chapterStore`, and the record keeps its summary. A record

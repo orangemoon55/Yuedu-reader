@@ -53,6 +53,13 @@ struct ReaderSettingsExportTests {
         )
     }
 
+    @Test("legado does not misrepresent ripple as curl")
+    func rippleExportsAsUnsupportedAnimation() {
+        var snapshot = makeSnapshot()
+        snapshot.pageTurnStyle = .ripple
+        #expect(ReaderLayoutPresetExporter.pageAnim(for: snapshot) == -1)
+    }
+
     @Test("scroll mode outranks the page-turn animation, as legado stores it")
     func scrollModeOutranksPageAnimation() throws {
         var snapshot = makeSnapshot()

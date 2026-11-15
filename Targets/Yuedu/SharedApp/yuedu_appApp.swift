@@ -344,7 +344,10 @@ struct yuedu_appApp: App {
                     bookStore.metadataFill.setActive(scenePhase == .active)
                     // Seamless iCloud: merge with the cloud on launch, then look for new chapters.
                     launchOwnsChapterRefresh = true
-                    syncThenRefreshChapters(syncReason: GlobalSettings.shared.iCloudAutoSync ? "launch" : nil)
+                    syncThenRefreshChapters(
+                        syncReason: GlobalSettings.shared.iCloudAutoSync ? "launch" : nil,
+                        launch: true
+                    )
                 }
         }
         // On the scene, not on the window's content: SwiftUI does not update a view out of the
@@ -443,7 +446,8 @@ struct yuedu_appApp: App {
     /// changes every online book it finds new chapters for: run together, it voided the very
     /// merge that brings another device's reading progress, which then waited for a later
     /// sync. `metadataFill` changes the shelf in the foreground too and is not ordered here.
-    private func syncThenRefreshChapters(syncReason: String?) {
+    private func syncThenRefreshChapters(syncReason: String?, launch: Bool = false) {
+
         Task {
             if !PersonalBuildFeatures.isStandalone, let syncReason {
                 do {
@@ -452,11 +456,12 @@ struct yuedu_appApp: App {
                     AppLogger.sync("sync(\(syncReason)) ended: \(error.localizedDescription)", level: .notice)
                 }
             }
+            let refreshedOnLaunch = launch ? await ChapterUpdater.refreshLastRead(bookStore: bookStore) : nil
             // `.utility`: this walks every online book's table of contents through
             // its source's bridge, and a chapter the reader opens meanwhile must
             // not wait behind it (`BookSourceSession`'s turn queue).
             Task(priority: .utility) {
-                await ChapterUpdater.refreshAll(bookStore: bookStore, auto: true)
+                await ChapterUpdater.refreshAll(bookStore: bookStore, auto: true, excludingBookID: refreshedOnLaunch)
             }
         }
     }
@@ -521,6 +526,21 @@ final class ChapterRefreshPass {
 
 enum ChapterUpdater {
     @MainActor private static let pass = ChapterRefreshPass()
+    @MainActor private static let latestPass = ChapterRefreshPass()
+
+    /// Refresh only the most recently read online book once on each cold launch, ahead of the
+    /// rate-limited full-shelf sweep. The latter already prioritizes the same book first.
+    @MainActor static func refreshLastRead(bookStore: BookStore) async -> UUID? {
+        await BookSourceStore.shared.waitUntilLoaded()
+        let lastRead = bookStore.books
+            .filter(\.isOnline)
+            .max { ($0.lastOpenedDate ?? $0.addedDate) < ($1.lastOpenedDate ?? $1.addedDate) }
+        guard let lastRead else { return nil }
+        await latestPass.run(waitForRunning: true) {
+            await refreshBook(book: lastRead, bookStore: bookStore)
+        }
+        return lastRead.id
+    }
 
     /// Returns true (and records the time) when an automatic refresh is allowed
     /// under the throttle window; false when one ran too recently. Manual
@@ -533,17 +553,22 @@ enum ChapterUpdater {
     /// - Parameter auto: `true` for launch / foreground refreshes (throttled by
     ///   `AppConfig.autoRefreshMinInterval`); `false` for explicit pull-to-refresh,
     ///   which always runs. Either way only one pass runs at a time (`ChapterRefreshPass`).
-    @MainActor static func refreshAll(bookStore: BookStore, auto: Bool = false) async {
+    @MainActor static func refreshAll(bookStore: BookStore, auto: Bool = false, excludingBookID: UUID? = nil) async {
         await pass.run(waitForRunning: !auto, admit: { !auto || consumeAutoRefreshAllowance() }) {
-            await refreshEveryOnlineBook(bookStore: bookStore, auto: auto)
+            await refreshEveryOnlineBook(bookStore: bookStore, auto: auto, excludingBookID: excludingBookID)
         }
     }
 
-    private static func refreshEveryOnlineBook(bookStore: BookStore, auto: Bool) async {
+    private static func refreshEveryOnlineBook(bookStore: BookStore, auto: Bool, excludingBookID: UUID?) async {
+
         // Every refreshed book looks its source up on the main thread; wait for the library
         // read here, off it, rather than there.
         await BookSourceStore.shared.waitUntilLoaded()
-        let onlineBooks = await MainActor.run { bookStore.books.filter { $0.isOnline } }
+        let onlineBooks = await MainActor.run {
+            bookStore.books
+                .filter { $0.isOnline && $0.id != excludingBookID }
+                .sorted { ($0.lastOpenedDate ?? $0.addedDate) > ($1.lastOpenedDate ?? $1.addedDate) }
+        }
         guard !onlineBooks.isEmpty else { return }
         // Bracketed in the Crashlytics log: a hang, CPU or disk-write report that arrives
         // during or after it shows the refresh was running and how big it was.
@@ -561,13 +586,14 @@ enum ChapterUpdater {
 
         let maxConcurrentTasks = AppConfig.startupRefreshMaxConcurrentTasks
         await withTaskGroup(of: Void.self) { group in
-            for i in 0..<min(maxConcurrentTasks, onlineBooks.count) {
+            let initialCount = min(maxConcurrentTasks, onlineBooks.count)
+            for index in 0..<initialCount {
                 group.addTask {
-                    await refreshBook(book: onlineBooks[i], bookStore: bookStore)
+                    await refreshBook(book: onlineBooks[index], bookStore: bookStore)
                 }
             }
             
-            var index = maxConcurrentTasks
+            var index = initialCount
             for await _ in group {
                 if index < onlineBooks.count {
                     let nextBook = onlineBooks[index]

@@ -3,7 +3,7 @@ import Combine
 
 // MARK: - ReadingSession
 
-struct ReadingSession: Codable, Identifiable {
+struct ReadingSession: Codable, Identifiable, Sendable {
     let id: UUID
     let bookId: String
     let bookTitle: String
@@ -173,6 +173,10 @@ class ReadingStatsStore: ObservableObject {
     }()
 
     private let fileURL: URL
+    private nonisolated static let persistenceQueue = DispatchQueue(
+        label: "com.yuedu.reading-stats.persist",
+        qos: .utility
+    )
 
     init(fileURL: URL = ReadingStatsStore.defaultFileURL) {
         self.fileURL = fileURL
@@ -237,7 +241,19 @@ class ReadingStatsStore: ObservableObject {
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(sessions) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        let sessions = sessions
+        let fileURL = fileURL
+        let hold = BackgroundTaskHold(name: "reading-stats.persist")
+        Self.persistenceQueue.async {
+            defer { hold.release() }
+            guard let data = try? JSONEncoder().encode(sessions) else { return }
+            try? data.write(to: fileURL, options: .atomic)
+        }
+    }
+
+    nonisolated static func queuedWritesLanded() async {
+        await withCheckedContinuation { continuation in
+            persistenceQueue.async { continuation.resume() }
+        }
     }
 }
