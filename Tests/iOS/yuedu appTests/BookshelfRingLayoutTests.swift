@@ -183,7 +183,7 @@ struct BookshelfRingLayoutTests {
         if let path = ProcessInfo.processInfo.environment["QINGYUN_SCREENSHOT_DIR"], !path.isEmpty {
             directory = URL(fileURLWithPath: path, isDirectory: true)
         } else {
-            directory = FileManager.default.temporaryDirectory
+            directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("qingyun-layout-preview", isDirectory: true)
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -104,7 +104,10 @@ struct CyberGearShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         let side = min(rect.width, rect.height)
-        guard side.isFinite, side > 0 else { return Path() }
+        guard rect.size.width > 0, rect.size.height > 0,
+              rect.origin.x.isFinite, rect.origin.y.isFinite,
+              rect.size.width.isFinite, rect.size.height.isFinite,
+              side.isFinite, side > 0 else { return Path() }
         return Self.unitPath.applying(CGAffineTransform(a: side, b: 0, c: 0, d: side,
                                                       tx: rect.midX - side / 2, ty: rect.midY - side / 2))
     }
@@ -124,7 +127,10 @@ private struct CyberGearTicks: Shape {
 
     func path(in rect: CGRect) -> Path {
         let side = min(rect.width, rect.height)
-        guard side.isFinite, side > 0 else { return Path() }
+        guard rect.size.width > 0, rect.size.height > 0,
+              rect.origin.x.isFinite, rect.origin.y.isFinite,
+              rect.size.width.isFinite, rect.size.height.isFinite,
+              side.isFinite, side > 0 else { return Path() }
         return Self.unitPath.applying(CGAffineTransform(a: side, b: 0, c: 0, d: side,
                                                       tx: rect.midX - side / 2, ty: rect.midY - side / 2))
     }

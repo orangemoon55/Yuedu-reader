@@ -16,10 +16,12 @@ finish() {
   if [[ -n "${DEST:-}" ]]; then
     local container_path
     container_path="$(xcrun simctl get_app_container "${DEST#id=}" com.local.qingyun data 2>/dev/null || true)"
-    if [[ -d "$container_path/tmp/qingyun-layout-preview" ]]; then
-      mkdir -p trollstore-output/layout-preview
-      ditto "$container_path/tmp/qingyun-layout-preview" trollstore-output/layout-preview
-    fi
+    for preview_root in "$container_path/Documents/qingyun-layout-preview" "$container_path/tmp/qingyun-layout-preview"; do
+      if [[ -d "$preview_root" ]]; then
+        mkdir -p trollstore-output/layout-preview
+        ditto "$preview_root" trollstore-output/layout-preview
+      fi
+    done
   fi
   rm -f GoogleService-Info.plist
   rm -rf "$PRIVATE"
