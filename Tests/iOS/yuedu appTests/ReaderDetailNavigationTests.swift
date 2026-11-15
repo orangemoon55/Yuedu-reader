@@ -30,7 +30,7 @@ private final class DetailTestNavigationController: UINavigationController {
 struct ReaderDetailNavigationTests {
     private func openedReader(
         owner: UUID? = nil,
-        onClosed: @escaping () -> Void = {}
+        onClosed: @escaping @MainActor () -> Void = {}
     ) -> (ReaderNavigationCoordinator, DetailTestNavigationController, UIViewController, UUID) {
         let root = UIViewController()
         let nav = DetailTestNavigationController(rootViewController: root)
