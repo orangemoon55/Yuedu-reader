@@ -38,7 +38,8 @@ final class ReaderSettingsEntryUITests: XCTestCase {
         book.tap()
         let content = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "这是设置入口测试正文")).firstMatch
         XCTAssertTrue(content.waitForExistence(timeout: 30), app.debugDescription)
-        XCTAssertTrue(shelf.waitForNonExistence(timeout: 10), "Floating navigation must leave the reader's page unobstructed")
+        let floatingBar = app.otherElements["rootTab.floatingBar"].firstMatch
+        XCTAssertTrue(floatingBar.waitForNonExistence(timeout: 10), "Floating navigation must hide on the reader page")
 
         for cycle in 0..<3 {
             let settings = app.buttons["reader_tool_settings"].firstMatch
@@ -74,8 +75,8 @@ final class ReaderSettingsEntryUITests: XCTestCase {
         }
         XCTAssertTrue(back.waitForExistence(timeout: 5), app.debugDescription)
         back.tap()
-        XCTAssertTrue(shelf.waitForExistence(timeout: 15), "Floating navigation must return after leaving reader")
-        XCTAssertTrue(shelf.isHittable)
+        XCTAssertTrue(floatingBar.waitForExistence(timeout: 15), "Floating navigation must return after leaving reader")
+        XCTAssertTrue(floatingBar.isHittable)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "floating-tabs-after-reader"
         screenshot.lifetime = .keepAlways
