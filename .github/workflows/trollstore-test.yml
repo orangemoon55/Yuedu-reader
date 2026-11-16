@@ -27,7 +27,7 @@ jobs:
   regressions:
     name: 核查圆盘、目录和阅读退出回归
     runs-on: xcode-27
-    timeout-minutes: 55
+    timeout-minutes: 70
     steps:
       - name: 获取所选分支源码
         uses: actions/checkout@v4

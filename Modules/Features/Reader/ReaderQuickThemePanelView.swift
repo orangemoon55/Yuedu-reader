@@ -57,14 +57,14 @@ struct ReaderQuickThemePanelView: View {
     var allowsVerticalWritingMode = false
     var hasParagraphReviews = false
     let onSelectPageTurnOption: (ReaderQuickPageTurnOption) -> Void
-    var onSelectRoute: (ReaderQuickPanelRoute) -> Void = { _ in }
+    var onSelectRoute: ((ReaderQuickPanelRoute) -> Void)? = nil
 
     @Bindable private var settings = GlobalSettings.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     /// The saved-background page pushed in this panel's own navigation.
     @State private var backgroundEditor: ReaderBackgroundEditorRoute?
-    @State private var quickSettingsDestination: ReaderQuickPanelRoute?
+    @State var panelNavigation = ReaderQuickPanelNavigation()
     /// Measured height of the panel's own content, so the sheet is exactly as tall
     /// as what it holds. A fixed detent left a band of dead space under the last
     /// row whenever the content came out shorter than the constant.
@@ -104,9 +104,12 @@ struct ReaderQuickThemePanelView: View {
                 )
             }
             .softScrollEdges()
+            .disabled(panelNavigation.isHandingOff)
             .onPreferenceChange(ReaderQuickPanelContentHeightKey.self) { height in
-                guard height > 0 else { return }
-                contentHeight = height
+                guard let next = ReaderQuickPanelHeightPolicy.measurement(
+                    height, replacing: contentHeight, isRoot: canMeasureRoot, minimum: 1
+                ) else { return }
+                contentHeight = next
             }
             .scrollBounceBehavior(.basedOnSize)
             // This panel supplies its own bottom padding. Let the scroll viewport
@@ -119,7 +122,7 @@ struct ReaderQuickThemePanelView: View {
             // reader flicks away, and a navigation chrome on top of it ate height
             // the controls could use.
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(item: $quickSettingsDestination) { route in
+            .navigationDestination(item: $panelNavigation.settingsDestination) { route in
                 ReaderQuickThemeSettingsDestination(
                     route: route,
                     fontSize: $fontSize,
@@ -147,7 +150,7 @@ struct ReaderQuickThemePanelView: View {
                         backgroundEditor = nil
                     },
                     onDelete: { backgroundEditor = nil },
-                    onRequestPaywall: { onSelectRoute(.paywall($0)) }
+                    onRequestPaywall: { selectTool(.paywall($0)) }
                 )
             }
         }
@@ -159,16 +162,20 @@ struct ReaderQuickThemePanelView: View {
                 )
             }
         }
-        .onPreferenceChange(ReaderQuickPanelSafeAreaBottomKey.self) {
-            bottomSafeAreaInset = $0
+        .onPreferenceChange(ReaderQuickPanelSafeAreaBottomKey.self) { inset in
+            guard let next = ReaderQuickPanelHeightPolicy.measurement(
+                inset, replacing: bottomSafeAreaInset, isRoot: canMeasureRoot
+            ) else { return }
+            bottomSafeAreaInset = next
         }
+        .onAppear { panelNavigation.appeared() }
         // The grabber is the only way out now that the title bar is gone, so the
         // sheet must stay draggable and the indicator visible.
         // A height detent excludes the bottom safe area, which UIKit adds back.
         // Our measurement already includes the panel's complete bottom padding.
         // The saved-background page is a whole form, not a row of controls: the panel
         // opens to full height while it is up, and goes back to fitting its content.
-        .presentationDetents(backgroundEditor == nil && quickSettingsDestination == nil
+        .presentationDetents(backgroundEditor == nil && panelNavigation.settingsDestination == nil
             ? [.height(max(DSLayout.minimumTapTarget, contentHeight - bottomSafeAreaInset))]
             : [.large])
         .presentationDragIndicator(.visible)
@@ -500,13 +507,19 @@ struct ReaderQuickThemePanelView: View {
 
     // MARK: - Actions
 
+    private var canMeasureRoot: Bool {
+        !panelNavigation.isHandingOff && backgroundEditor == nil && panelNavigation.settingsDestination == nil
+    }
+
     private func selectTool(_ route: ReaderQuickPanelRoute) {
-        switch route {
-        case .settings, .display, .spacing, .headerFooter, .decoration, .chapterTitleStyle, .commentBubble:
-            quickSettingsDestination = route
-        case .tableOfContents, .bookmarks, .readingAloud, .autoRead, .touchZoneEditor, .styleImporter, .paywall:
-            dismiss()
-            DispatchQueue.main.async { onSelectRoute(route) }
+        panelNavigation.select(route) { selected in
+            // Record the request before dismissing. The reader's onDismiss is
+            // the only place allowed to present the next sheet on iOS 17.
+            if let onSelectRoute {
+                onSelectRoute(selected)
+            } else {
+                dismiss()
+            }
         }
     }
 

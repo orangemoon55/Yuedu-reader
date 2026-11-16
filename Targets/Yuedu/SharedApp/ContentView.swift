@@ -20,6 +20,7 @@ struct ContentView: View {
     /// screen's own (`RootTabBarVisibility`).
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @State private var selectedRootTab: RootTabItem = .explore
+    @State private var rootKeyboardVisible = false
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
     /// A keyword a book source handed back via `java.searchBook`, or a detail page's author,
@@ -104,6 +105,11 @@ struct ContentView: View {
         GlobalAppTypography.activate(postScriptName: drawnGlobalFont, boldText: isBoldTextOn)
         return tabView
         .environment(\.rootTabBarVisibility, rootTabBar)
+        .background {
+            RootTabKeyboardObserver(isVisible: $rootKeyboardVisible)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         // For 關於's 新手導覽, and the tabs that open the page a start names.
         .environment(onboarding)
         // 外觀主題's 淺色／深色 preview is for 外觀主題; another tab is not previewing.
@@ -328,21 +334,63 @@ struct ContentView: View {
         }
     }
 
-    private var visibleTabsTabView: some View {
-        TabView(selection: Binding {
+    private var usesFloatingRootTabBar: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+    }
+
+    private var rootTabSelection: Binding<RootTabItem> {
+        Binding {
             selectedRootTab
         } set: { tab in
             // Stamped as the tap lands: iOS 27 appears the tab's root before `onChange` runs.
             if tab == .library, selectedRootTab != .library { LibraryTabTiming.noteSelected() }
             selectedRootTab = tab
-        }) {
+        }
+    }
+
+    private var floatingRootTabBar: some View {
+        FloatingRootTabBar(
+            tabs: gs.visibleRootTabs,
+            selection: rootTabSelection,
+            hidesLabels: shouldHideRootTabLabels,
+            iconSize: CGFloat(gs.usesCustomRootTabIconSize
+                ? gs.rootTabIconSize : GlobalSettings.initialCustomRootTabIconSize),
+            tint: appearanceTheme?.accentColor ?? .accentColor,
+            customIcon: { tab in
+                RootTabIconRenderer.customIcon(
+                    for: tab, colorScheme: effectiveColorScheme,
+                    pointSize: CGFloat(gs.usesCustomRootTabIconSize
+                        ? gs.rootTabIconSize : GlobalSettings.initialCustomRootTabIconSize),
+                    displayScale: displayScale, settings: gs
+                )
+            }
+        )
+        .padding(.top, FloatingRootTabBarLayout.topSpacing)
+        .padding(.bottom, FloatingRootTabBarLayout.bottomSpacing)
+    }
+
+    private var visibleTabsTabView: some View {
+        TabView(selection: rootTabSelection) {
             ForEach(gs.visibleRootTabs) { tab in
                 rootTabContent(for: tab)
                     .modifier(ThemedSurfaceBackground(
                         scope: AppearancePageBackgroundScope(rawValue: tab.rawValue) ?? .global,
                         isProActive: subscriptionStore.hasAccess(.readerThemePacks)
                     ))
-                    .background { RootTabBarHider(visibility: rootTabBar) }
+                    .background {
+                        RootTabBarHider(visibility: rootTabBar, isFloating: usesFloatingRootTabBar)
+                    }
+                    // Inside the tab's content: LNPopupUI already adds its bar height
+                    // to this controller's safe area. The floating tabs sit above that
+                    // reserved player area, and reserve their own height for the last row.
+                    // Keeping this modifier in every state preserves NavigationStack identity.
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if rootTabBar.showsFloatingTabBar(
+                            isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
+                        ) {
+                            floatingRootTabBar
+                        }
+                    }
                     .tag(tab)
                     .tabItem {
                         rootTabItemLabel(for: tab)

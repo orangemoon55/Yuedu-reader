@@ -36,5 +36,6 @@ struct ReaderQuickThemeActionTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(localized(action.titleKey))
+        .accessibilityIdentifier("reader.quickTool.\(String(describing: action.id))")
     }
 }

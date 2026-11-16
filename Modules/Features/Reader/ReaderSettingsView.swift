@@ -138,20 +138,21 @@ struct ReaderSettingsView: View {
             .navigationTitle(localized(initialSection.titleKey))
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss() // 點擊叉叉直接離開
-                    } label: {
-                        Image(systemName: "xmark")
+                if !usesParentNavigation {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel(localized("關閉"))
+                        .accessibilityIdentifier("reader.settings.close")
                     }
-                    .accessibilityLabel(localized("關閉"))
                 }
-
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Image(systemName: "checkmark")
                     }
                     .accessibilityLabel(localized("完成"))
+                    .accessibilityIdentifier("reader.settings.done")
                 }
             }
         }
@@ -613,6 +614,7 @@ struct ReaderSettingsView: View {
                     systemImage: ReadingSettingsScopeItem.headerFooter.systemImage
                 )
             }
+            .accessibilityIdentifier("reader.settings.headerFooter.editor")
 
             if supportsLineHeight {
                 NavigationLink {
@@ -782,8 +784,7 @@ struct ReaderSettingsView: View {
             if let onOpenTouchZoneEditor {
                 if premiumVisibility.showsTouchZoneEditor {
                     Button {
-                        dismiss()
-                        DispatchQueue.main.async { onOpenTouchZoneEditor() }
+                        onOpenTouchZoneEditor()
                     } label: {
                         SettingsRowLabel(localized("翻頁區塊編輯"), systemImage: "square.grid.3x3", role: .action)
                     }

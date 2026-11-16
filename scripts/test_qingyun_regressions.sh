@@ -52,6 +52,14 @@ xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -only-testing:'yuedu appTests/ReaderCardCloseFallbackTests' \
   -only-testing:'yuedu appTests/ReaderNavigationCoordinatorTests' \
   -only-testing:'yuedu appTests/ReaderSwipeUpExitMotionTests' \
+  -only-testing:'yuedu appTests/ReaderQuickPanelNavigationTests' \
+  -only-testing:'yuedu appTests/ReaderQuickPanelPresentationTests' \
+  -only-testing:'yuedu appTests/ReaderQuickThemePanelLayoutTests' \
+  -only-testing:'yuedu appTests/ReaderSettingsPublicationTests' \
+  -only-testing:'yuedu appTests/DismissalSequencedPresentationTests' \
+  -only-testing:'yuedu appTests/ReaderBarEditorRenderingTests' \
+  -only-testing:'yuedu appTests/FloatingRootTabBarTests' \
+  -only-testing:'yuedu appUITests/ReaderSettingsEntryUITests' \
   >> "$PRIVATE/test.log" 2>&1
 python3 - "$PRIVATE/test.log" <<'PY'
 from pathlib import Path

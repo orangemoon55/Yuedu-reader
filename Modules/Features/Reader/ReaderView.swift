@@ -10,6 +10,7 @@ private enum ReaderSettingsDeferredPresentationRoute {
     case styleImporter(ReaderStyleImportRoute)
     /// A locked control inside settings (匯入字體 without Pro) asked for the paywall.
     case paywall(PremiumFeature)
+    case touchZoneEditor
 }
 
 // MARK: - Main Reader View
@@ -107,7 +108,7 @@ struct ReaderView: View {
     /// run from the panel's real `onDismiss` — the same contract
     /// `Technotes/iOS17MenuModalPresentation.md` sets out, and the reason 現代's
     /// book card lost 聽書 before it was applied there.
-    @State var quickPanelDeferredRoute: ReaderQuickPanelRoute?
+    @State private var quickPanelPresentation = DismissalSequencedPresentation<ReaderQuickPanelRoute>()
     @State var showReaderSearch = false
     @State var readerSearchSelection = ""
     /// 全書搜尋: the last search and its results while the book is open, and the hit the
@@ -2779,8 +2780,8 @@ struct ReaderView: View {
                     hasParagraphReviews: currentBookHasParagraphReviews,
                     onOpenTouchZoneEditor: {
                         guard subscriptionStore.isProActive, !effectiveScrollMode else { return }
-                        setReaderChromeVisible(false)
-                        showTouchZoneEditor = true
+                        readerSettingsDeferredPresentation.select(.touchZoneEditor)
+                        showSettings = false
                     },
                     onOpenStyleImporter: requestFirstLevelReaderStyleImporter,
                     onOpenPaywall: readerSettingsPaywallAction,
@@ -2802,7 +2803,7 @@ struct ReaderView: View {
                 hasParagraphReviews: currentBookHasParagraphReviews,
                 onSelectPageTurnOption: { applyQuickPageTurnOption($0) },
                 onSelectRoute: {
-                    quickPanelDeferredRoute = $0
+                    quickPanelPresentation.select($0)
                     showQuickThemePanel = false
                 }
             )
@@ -3203,8 +3204,7 @@ struct ReaderView: View {
 
     /// Runs whatever the quick panel asked for, once its sheet is actually gone.
     private func presentDeferredQuickPanelRoute() {
-        guard let route = quickPanelDeferredRoute else { return }
-        quickPanelDeferredRoute = nil
+        guard let route = quickPanelPresentation.consumeAfterDismissal() else { return }
         selectQuickPanelRoute(route)
     }
 
@@ -3253,6 +3253,10 @@ struct ReaderView: View {
             readerStyleImportRoute = styleRoute
         case .paywall(let feature):
             paywallFeature = feature
+        case .touchZoneEditor:
+            guard subscriptionStore.isProActive, !effectiveScrollMode else { return }
+            setReaderChromeVisible(false)
+            showTouchZoneEditor = true
         }
     }
 
