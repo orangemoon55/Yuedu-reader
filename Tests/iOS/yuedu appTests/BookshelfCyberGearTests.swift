@@ -47,12 +47,13 @@ struct BookshelfCyberGearTests {
         #expect(path.contains(tip))
         #expect(!path.contains(outsideRoot))
         #expect(path.contains(rootBand))
-        for index in 0..<720 {
+        let coverEdgeHits = (0..<720).filter { index in
             let angle = CGFloat(index) * .pi / 360
             let coverEdge = CGPoint(x: center.x + cos(angle) * diameter * 0.465,
                                     y: center.y + sin(angle) * diameter * 0.465)
-            #expect(!path.contains(coverEdge))
+            return path.contains(coverEdge)
         }
+        #expect(coverEdgeHits.isEmpty, "Gear overlaps the cover annulus at half-degree samples: \(coverEdgeHits)")
     }
 
     @Test("Gear facets stay within bounds and avoid book covers")

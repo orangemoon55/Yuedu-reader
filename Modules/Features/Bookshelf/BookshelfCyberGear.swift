@@ -120,11 +120,16 @@ struct CyberGearShape: Shape {
             }
         }
         path.closeSubpath()
-        path.move(to: CGPoint(x: 0.5 + innerRadius, y: 0.5))
-        path.addArc(center: CGPoint(x: 0.5, y: 0.5), radius: innerRadius,
-                    startAngle: .degrees(360), endAngle: .degrees(180), clockwise: true)
-        path.addArc(center: CGPoint(x: 0.5, y: 0.5), radius: innerRadius,
-                    startAngle: .degrees(180), endAngle: .degrees(0), clockwise: true)
+        // Cache the inner contour at one-degree resolution. Path.contains may
+        // flatten Bezier arcs more coarsely than the narrow .001d cover clearance;
+        // straight segments keep drawing and containment on the same boundary.
+        // Inradius = .466 * cos(pi/360) > .465 for every point on the contour.
+        for index in 0..<360 {
+            let angle = -CGFloat(index) * .pi / 180
+            let point = CGPoint(x: 0.5 + cos(angle) * innerRadius,
+                                y: 0.5 + sin(angle) * innerRadius)
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
         path.closeSubpath()
         return path
     }()
