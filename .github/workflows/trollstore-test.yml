@@ -27,6 +27,7 @@ on:
         options:
           - all
           - settings-ui
+          - chapter-title
 
 permissions:
   contents: read

@@ -37,6 +37,8 @@ bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == settings-ui ]]; then
   TEST_SELECTION=(-only-testing:'yuedu appUITests/ReaderSettingsEntryUITests')
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == chapter-title ]]; then
+  TEST_SELECTION=(-only-testing:'yuedu appTests/ReaderChapterTitlePresentationTests')
 else
   TEST_SELECTION=(
   -only-testing:'yuedu appTests/BookshelfTangMirrorTests'
