@@ -22,13 +22,11 @@ struct BookshelfRingView: View {
     @State private var isVisible = false
     @State private var coverSources = BookshelfRingCoverSources()
     @State private var loadedChapterContext: (book: ReadingBook, context: BookshelfRingChapterContext)?
+    @State private var currentVisibleBooks: [ReadingBook] = []
     @State private var isDrawing = false
-    @State private var drawComplete = false
     @State private var drawRecommendation: (bookID: UUID, text: String)?
     @State private var displayedBookOverride: UUID?
     @State private var cachedDrawCategory: (bookID: UUID, category: String)?
-    @State private var didInitialShelfReconcile = false
-    @State private var pendingDrawBookID: UUID?
 
 
     private struct ChapterRequest: Equatable {
@@ -68,10 +66,9 @@ struct BookshelfRingView: View {
             guard currentVisibleBooks.indices.contains(completedSlot) else { return }
             let winner = currentVisibleBooks[completedSlot]
             drawRecommendation = (winner.id, BookshelfDrawRecommendation.message(for: winner, category: cachedDrawCategory?.bookID == winner.id ? cachedDrawCategory?.category : nil))
-            drawComplete = true
             isDrawing = false
             selectedID = winner.id
-            currentVisibleBooks = []
+            displayedBookOverride = winner.id
             cachedDrawCategory = nil
         }
         let sourceID = winner.bookSourceId
@@ -102,7 +99,6 @@ struct BookshelfRingView: View {
 
     private func resetDrawState() {
         isDrawing = false
-        drawComplete = false
         currentVisibleBooks = []
         drawRecommendation = nil
         displayedBookOverride = nil
