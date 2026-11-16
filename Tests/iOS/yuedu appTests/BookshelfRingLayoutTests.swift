@@ -76,16 +76,17 @@ struct BookshelfRingLayoutTests {
         #expect(xxxLargeHeight > largeHeight)
     }
 
-    @Test("Center badge produces opaque blue brand pixels")
-    func centerBadgeRendersBlueIcon() throws {
+    @Test("Center draw button uses the miniature grape mirror, with copper gold and patina")
+    func centerBadgeRendersGrapeMirror() throws {
         let image = try render(BookshelfRingCenterBadge(diameter: 96), width: 96, height: 96)
         let pixels = try Pixels(image)
-        // Sample the blue field above the book drawing, inside the circular mask.
-        let blue = pixels.sample(x: pixels.width / 2, y: pixels.height / 6)
-        #expect(blue.b > blue.r + 15 && blue.a > 250)
+        let boss = pixels.sample(x: pixels.width / 2, y: pixels.height / 2)
+        #expect(boss.r > boss.b + 20 && boss.g > boss.b + 10 && boss.a > 250)
+        let patina = pixels.sample(x: pixels.width / 2, y: pixels.height / 4)
+        #expect(patina.g > patina.b && patina.a > 250)
         let corner = pixels.sample(x: 0, y: 0)
         #expect(corner.a < 20)
-        try save(image, name: "center-badge")
+        try save(image, name: "center-grape-mirror")
     }
 
     @Test("Four sectors paint their own cover and leave the center and exterior clipped")

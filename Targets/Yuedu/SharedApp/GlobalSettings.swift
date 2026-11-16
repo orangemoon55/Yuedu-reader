@@ -188,7 +188,8 @@ enum ReaderTheme: String, CaseIterable {
     /// the bound appearance palette → the background's built-in text color.
     @MainActor
     var uiTextColor: UIColor {
-        if let preset = activeAppearancePreset, preset.readerBackgroundID != nil {
+        if let preset = activeAppearancePreset,
+           preset.readerBackgroundID != nil || preset.id == AppearanceThemePreset.nightCopperID {
             return preset.text
         }
         if let rgbHex = GlobalSettings.shared.readerTextColorOverride(for: self) {
@@ -518,6 +519,58 @@ enum AppearanceColorScheme: String, Equatable {
 struct ReaderKeepsScreenAwakeSyncRecord: Codable, Equatable, Sendable {
     var keepsScreenAwake: Bool
     var modifiedAt: Date?
+}
+
+/// Build 11's standalone-only default. The settings object supplies the currently
+/// worn reading setup, so selecting a colour theme cannot revert per-theme type.
+/// Raw JSON merging retains other built-in themes and any unknown future fields.
+enum QingyunNightCopperThemeMigration {
+    static let completedKey = "qy_night_copper_build11_completed"
+    static let previousAppearanceKey = "qy_night_copper_build11_previous_appearance"
+    static let selectionKeys = [
+        "yd_appearance_theme_id", "yd_appearance_dark_theme_id",
+        "yd_appearance_separate_dark_theme", "yd_appearance_follows_system",
+        "yd_appearance_pinned_color_scheme", "yd_appearance_on_screen",
+    ]
+
+    @discardableResult
+    static func runIfNeeded(
+        defaults: UserDefaults,
+        isStandalone: Bool,
+        reading: AppearanceThemeReadingSettings
+    ) -> Bool {
+        guard isStandalone, !defaults.bool(forKey: completedKey) else { return false }
+        let readingKey = "yd_reading_settings_builtin_themes"
+        do {
+            var readings: [String: Any] = [:]
+            if let data = defaults.data(forKey: readingKey) {
+                guard let existing = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    return false
+                }
+                readings = existing
+            }
+            readings[AppearanceThemePreset.nightCopperID] = try JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(reading)
+            )
+            let readingData = try JSONSerialization.data(withJSONObject: readings)
+            var previous: [String: Any] = [:]
+            for key in selectionKeys { previous[key] = defaults.object(forKey: key) }
+            // Backup once; no custom theme, font, icon, tab or shared layout is removed.
+            defaults.set(previous, forKey: previousAppearanceKey)
+            defaults.set(readingData, forKey: readingKey)
+            defaults.set(AppearanceThemePreset.nightCopperID, forKey: selectionKeys[0])
+            defaults.set(AppearanceThemePreset.nightCopperID, forKey: selectionKeys[1])
+            defaults.set(false, forKey: "yd_appearance_separate_dark_theme")
+            defaults.set(false, forKey: "yd_appearance_follows_system")
+            defaults.set("dark", forKey: "yd_appearance_pinned_color_scheme")
+            defaults.set("dark", forKey: "yd_appearance_on_screen")
+            defaults.set(true, forKey: completedKey)
+            return true
+        } catch {
+            // Leave the installation untouched if its reading store cannot be preserved.
+            return false
+        }
+    }
 }
 
 // MARK: - Global Settings
@@ -2667,6 +2720,10 @@ class GlobalSettings {
         // The revision the asset store already has is read by `loadInitialReaderStyleAssetRevision`,
         // which the app calls at launch on the main actor.
 
+        // All persisted values are loaded; capture them before extras/reading sync
+        // can substitute the old theme's baseline. Standalone build 11 only, once.
+        applyNightCopperUpgradeIfNeeded()
+
         // Establishes "a custom theme is selected ⟹ a baseline exists". The selection
         // `didSet` cannot do it, because it never fires for a theme restored from
         // disk — so a theme saved before write-back existed would take the user's
@@ -3105,6 +3162,31 @@ class GlobalSettings {
         }
     }
 
+    /// Runs before launch-time extras can restore a different theme's typography.
+    /// Also called by App.init; the marker makes that second call a no-op.
+    func applyNightCopperUpgradeIfNeeded() {
+        guard PersonalBuildFeatures.isStandalone,
+              !UserDefaults.standard.bool(forKey: QingyunNightCopperThemeMigration.completedKey) else { return }
+        guard QingyunNightCopperThemeMigration.runIfNeeded(
+            defaults: .standard,
+            isStandalone: PersonalBuildFeatures.isStandalone,
+            reading: currentReadingSettingsSnapshot()
+        ) else { return }
+        let wasApplying = isApplyingAppearanceExtras
+        isApplyingAppearanceExtras = true
+        appearanceThemeID = AppearanceThemePreset.nightCopperID
+        appearanceDarkThemeID = AppearanceThemePreset.nightCopperID
+        appearanceUsesSeparateDarkTheme = false
+        appearanceFollowsSystem = false
+        appearancePinnedColorScheme = .dark
+        appearanceOnScreen = .dark
+        isApplyingAppearanceExtras = wasApplying
+        AppearanceThemePreset.activeAppThemes = ActiveAppThemes(
+            light: AppearanceThemePreset.nightCopper.palette(for: .light),
+            dark: AppearanceThemePreset.nightCopper.palette(for: .dark)
+        )
+    }
+
     func selectedAppearanceThemeID(for colorScheme: ColorScheme) -> String {
         if appearanceUsesSeparateDarkTheme, colorScheme == .dark {
             return appearanceDarkThemeID
@@ -3364,7 +3446,7 @@ class GlobalSettings {
     private var appearanceExtrasFileReferences: [AppearanceThemeExtras] {
         customAppearanceThemes.compactMap(\.extras)
             + customAppearanceThemes.compactMap(\.originalExtras)
-            + [appearanceExtrasBaseline].compactMap { $0 }
+            + [appearanceExtrasBaseline, nightCopperArtworkBaseline].compactMap { $0 }
     }
 
     private func isDefaultCoverFileReferenced(_ fileName: String) -> Bool {

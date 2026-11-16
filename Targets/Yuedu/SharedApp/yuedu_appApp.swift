@@ -205,6 +205,9 @@ struct yuedu_appApp: App {
                 + "browserEnabled=\(BrowserLayoutFeature.browserEnabled)"
         )
         #endif
+        // GlobalSettings also runs this before its first extras sync, in case a
+        // launch dependency initialized it earlier. Subsequent launches are no-ops.
+        GlobalSettings.shared.applyNightCopperUpgradeIfNeeded()
         UserFontStorageManager.shared.removeSupersededCopies(keeping: GlobalSettings.shared.userFonts)
         UserFontStorageManager.shared.registerAllOnLaunch()
         GlobalSettings.shared.validateGlobalFontSelection()

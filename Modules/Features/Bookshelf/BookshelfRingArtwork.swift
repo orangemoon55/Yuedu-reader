@@ -45,7 +45,8 @@ struct BookshelfRingSectorArtwork: View {
     }
 }
 
-/// The centre is an opaque brand badge, independent of rotor angle and book tint.
+/// The miniature grape mirror remains upright and is the shelf draw control.
+/// The identifier is retained so existing navigation/UI automation still finds it.
 struct BookshelfRingCenterBadge: View {
     let diameter: CGFloat
     var isDrawing = false
@@ -55,25 +56,9 @@ struct BookshelfRingCenterBadge: View {
         Group {
             if let onDraw {
                 Button(action: onDraw) {
-                    ZStack {
-                        badge
-                        if isDrawing {
-                            ProgressView()
-                                .tint(.white)
-                                .padding(8)
-                                .background(.ultraThinMaterial, in: Circle())
-                                .accessibilityHidden(true)
-                        } else {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: diameter * 0.18, weight: .bold))
-                                .foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.75), radius: 3, x: 0, y: 1)
-                                .frame(width: diameter * 0.38, height: diameter * 0.38)
-                                .background(Color.accentColor.opacity(0.78), in: Circle())
-                                .offset(x: diameter * 0.28, y: diameter * 0.28)
-                                .accessibilityHidden(true)
-                        }
-                    }
+                    badge
+                        .frame(width: max(44, diameter), height: max(44, diameter))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isDrawing)
@@ -88,14 +73,6 @@ struct BookshelfRingCenterBadge: View {
     }
 
     private var badge: some View {
-        Image("YueduAppIcon")
-            .resizable()
-            .scaledToFill()
-            .frame(width: diameter, height: diameter)
-            .background(Color(red: 0.09, green: 0.15, blue: 0.25))
-            .clipShape(Circle())
-            .overlay { Circle().stroke(Color.white.opacity(0.75), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.16), radius: 2, y: 1)
-            .accessibilityHidden(true)
+        BookshelfTangMirrorBoss(diameter: diameter, isDrawing: isDrawing)
     }
 }

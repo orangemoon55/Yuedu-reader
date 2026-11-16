@@ -248,6 +248,7 @@ struct AppearanceThemePreset: Identifiable, Hashable {
     /// leave the cards invisible now that the accent no longer tints the page.
     /// Dark: a small step up in brightness.
     var appCardBackground: UIColor {
+        if id == Self.nightCopperID && !hasEditedColors { return Self.hex(0x293A30) }
         if isDarkAppearancePalette { return Self.mix(background, .white, 0.10) }
         return hasNearWhiteBackground
             ? Self.mix(background, .black, 0.04)
@@ -256,6 +257,7 @@ struct AppearanceThemePreset: Identifiable, Hashable {
     /// Nested / secondary surfaces, between the page and the cards. Dark: one step
     /// lighter again, matching iOS's tertiary-over-secondary stacking.
     var appSecondaryBackground: UIColor {
+        if id == Self.nightCopperID && !hasEditedColors { return Self.hex(0x1B2923) }
         if isDarkAppearancePalette { return Self.mix(background, .white, 0.16) }
         return hasNearWhiteBackground
             ? Self.mix(background, .black, 0.02)
@@ -465,11 +467,32 @@ struct AppearanceThemePreset: Identifiable, Hashable {
         requiresPro: false, isImagePreset: false, isCustom: false
     )
 
+    static let nightCopperID = "night_copper"
+
+    /// A colour-only, free built-in. Both appearances share the authored palette;
+    /// fonts, tab artwork and reading layout remain the user's existing design.
+    static let nightCopper: AppearanceThemePreset = {
+        var preset = AppearanceThemePreset(
+            id: nightCopperID, nameKey: "夜铜", displayName: "夜铜",
+            background: hex(0x15231E), text: hex(0xEDE3CB),
+            bar: hex(0x293A30), accent: hex(0xD5B777), dialogue: hex(0x293A30),
+            previewBackground: hex(0x15231E),
+            relativePreviewImagePath: nil, imagePaths: [],
+            requiresPro: false, isImagePreset: false, isCustom: false
+        )
+        let labels = AppearanceThemeTextColors(
+            primary: hex(0xEDE3CB), secondary: hex(0xC3B597), tertiary: hex(0xA89C81)
+        )
+        preset.authoredTextColors = labels
+        preset.authoredDarkTextColors = labels
+        return preset
+    }()
+
     static var allDefaultPresets: [AppearanceThemePreset] {
         [classic] + freeSolidPresets + bundledThemePacks
     }
 
-    /// Low-saturation six-hue palette (blue/orange/green/purple/pink/gold).
+    /// Low-saturation six-hue palette plus Night Copper.
     /// IDs are stable storage keys — do not rename when display names change.
     static let freeSolidPresets: [AppearanceThemePreset] = [
         AppearanceThemePreset(
@@ -526,6 +549,7 @@ struct AppearanceThemePreset: Identifiable, Hashable {
             relativePreviewImagePath: nil, imagePaths: [],
             requiresPro: false, isImagePreset: false, isCustom: false
         ),
+        nightCopper,
     ]
 
     // Theme PACKS (imported image sets) are intentionally NOT built yet — the

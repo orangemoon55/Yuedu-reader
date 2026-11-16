@@ -17,18 +17,30 @@ enum BookshelfRingPresentation {
         layout(diameter: diameter, count: count).radius
     }
 
+    /// The Tang mirror has a wider engraved rim and a larger miniature mirror boss.
+    /// Keep the old geometry API for existing styles and transition regressions.
+    nonisolated static func mirrorCoverSize(diameter: CGFloat, count: Int) -> CGSize {
+        let width = layout(diameter: diameter, count: count, outerLimit: 0.411, bossRadius: 0.083).width
+        return CGSize(width: width, height: width * 1.4)
+    }
+
+    nonisolated static func mirrorOrbitRadius(diameter: CGFloat, count: Int) -> CGFloat {
+        layout(diameter: diameter, count: count, outerLimit: 0.411, bossRadius: 0.083).radius
+    }
+
     private struct Layout {
         var width: CGFloat = 0
         var radius: CGFloat = 0
     }
 
-    nonisolated private static func layout(diameter: CGFloat, count: Int) -> Layout {
+    nonisolated private static func layout(diameter: CGFloat, count: Int,
+                                            outerLimit: CGFloat = 0.465, bossRadius: CGFloat = 0.055) -> Layout {
         guard diameter.isFinite, diameter > 0, count > 0 else { return Layout() }
         let count = min(count, 9)
         // Keep a tiny numerical reserve in addition to the required two points.
         let gap: CGFloat = 2.01
-        let outerRadius = diameter * 0.465 - 0.01
-        let badgeRadius = diameter * 0.055
+        let outerRadius = diameter * outerLimit - 0.01
+        let badgeRadius = diameter * bossRadius
         let desiredRatio: CGFloat
         switch count {
         case 1...4: desiredRatio = 0.21

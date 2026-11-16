@@ -75,7 +75,7 @@ struct BookshelfRingView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(Color.blue)
+                        .foregroundStyle(DSColor.accent)
                         .disabled(draw.isDrawing)
                         .accessibilityIdentifier("bookshelf.ring.more")
                         .offset(x: 12, y: -12)
@@ -237,34 +237,19 @@ private struct BookshelfRingRotor: View {
     let onContextAction: (ReadingBook, BookshelfBookContextAction) -> Void
     let onDraw: () -> Void
     @GestureState private var gestureIsActive = false
-    @State private var coverBackdrops: [UUID: UIImage] = [:]
 
     var body: some View {
         GeometryReader { proxy in
             let diameter = min(proxy.size.width, proxy.size.height)
             let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
             let step = BookshelfRingGeometry.step(count: books.count)
-            let tileSize = BookshelfRingPresentation.coverSize(diameter: diameter, count: books.count)
-            let orbitRadius = BookshelfRingPresentation.orbitRadius(diameter: diameter, count: books.count)
+            let tileSize = BookshelfRingPresentation.mirrorCoverSize(diameter: diameter, count: books.count)
+            let orbitRadius = BookshelfRingPresentation.mirrorOrbitRadius(diameter: diameter, count: books.count)
             let angle = motion.rotation
             ZStack {
-                ZStack {
-                    ForEach(books.indices, id: \.self) { slot in
-                        BookshelfRingSectorArtwork(
-                            image: coverBackdrops[books[slot].id], slot: slot, count: books.count,
-                            diameter: diameter, rotation: angle, isSelected: slot == motion.selectedSlot,
-                            colorScheme: colorScheme
-                        )
-                    }
-                }
-                .rotationEffect(.degrees(Double(angle)))
-                .allowsHitTesting(false)
-                BookshelfCyberGear(diameter: diameter, rotation: angle, colorScheme: colorScheme,
-                                   isSpinning: motion.isSpinning, selectedSlot: motion.selectedSlot,
-                                   isDrawing: motion.isDrawing, angularVelocity: motion.angularVelocity)
-                Circle().stroke(BookshelfRingPalette.jade.opacity(0.18), lineWidth: 0.65)
-                    .padding(diameter * (0.5 - BookshelfRingGeometry.innerRadius))
-                    .allowsHitTesting(false)
+                BookshelfTangMirror(diameter: diameter, rotation: angle, count: books.count,
+                                    selectedSlot: motion.selectedSlot, isSpinning: motion.isSpinning,
+                                    isDrawing: motion.isDrawing)
 
                 ForEach(Array(books.enumerated()), id: \.element.id) { slot, book in
                     let radians = (CGFloat(slot) * step + angle - 90) * .pi / 180
@@ -274,8 +259,6 @@ private struct BookshelfRingRotor: View {
                         isFattened: isFattened(book.id),
                         coverFrame: coverSources.box(for: book.id),
                         onCoverFrameChange: { onCoverFrameChange(book, $0) },
-                        onBackdrop: { coverBackdrops[book.id] = $0 },
-
                         onSelect: {
                             guard motion.canOpenSector else { return }
                             onOpen(book)
@@ -288,13 +271,13 @@ private struct BookshelfRingRotor: View {
                               y: center.y + sin(radians) * orbitRadius)
                 }
                 BookshelfRingCenterBadge(
-                    diameter: diameter * BookshelfRingGeometry.innerRadius * 2,
+                    diameter: diameter * 0.166,
                     isDrawing: motion.isDrawing,
                     onDraw: books.isEmpty ? nil : onDraw
                 )
                     .position(center)
                 if !books.isEmpty {
-                    Capsule().fill(BookshelfRingPalette.jade.opacity(0.7))
+                    Capsule().fill(BookshelfTangPalette.highlight.opacity(0.9))
                         .frame(width: 3, height: 9)
                         .position(x: center.x, y: diameter * 0.043)
                         .allowsHitTesting(false)
@@ -304,7 +287,9 @@ private struct BookshelfRingRotor: View {
             .background {
                 Circle().fill(Color.clear).contentShape(Circle())
                     .gesture(SpatialTapGesture().onEnded { value in
-                        guard motion.canOpenSector, let slot = BookshelfRingGeometry.slot(
+                        guard motion.canOpenSector,
+                              hypot(value.location.x - center.x, value.location.y - center.y) > max(22, diameter * 0.083),
+                              let slot = BookshelfRingGeometry.slot(
                             at: value.location, center: center, diameter: diameter,
                             rotation: motion.rotation, count: books.count
                         ) else { return }
@@ -318,9 +303,6 @@ private struct BookshelfRingRotor: View {
             // GestureState resets on recognizer cancellation too; onEnded has
             // already cleared the drag on a normal release.
             if !active { motion.cancelDrag() }
-        }
-        .onChange(of: books.map(\.id)) { _, ids in
-            coverBackdrops = coverBackdrops.filter { ids.contains($0.key) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityAdjustableAction { direction in
@@ -338,7 +320,7 @@ private struct BookshelfRingRotor: View {
             .updating($gestureIsActive) { _, active, _ in active = true }
             .onChanged { value in
                 let radius = hypot(value.startLocation.x - center.x, value.startLocation.y - center.y)
-                guard !motion.isDrawing, radius >= max(22, diameter * BookshelfRingGeometry.innerRadius),
+                guard !motion.isDrawing, radius >= max(22, diameter * 0.083),
                       radius <= diameter * BookshelfRingGeometry.outerRadius else { return }
                 motion.drag(value, center: center, reduceMotion: reduceMotion)
             }
@@ -354,10 +336,8 @@ private struct BookshelfRingCoverTile: View {
     let isFattened: Bool
     let coverFrame: BookshelfCoverFrameBox
     let onCoverFrameChange: (CGRect) -> Void
-    let onBackdrop: (UIImage) -> Void
     let onSelect: () -> Void
     let onContextAction: (BookshelfBookContextAction) -> Void
-    @State private var tintImage: UIImage?
 
     var body: some View {
         let cornerRadius = BookshelfCoverStyle.cornerRadius
@@ -367,7 +347,7 @@ private struct BookshelfRingCoverTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 // Measure only the untransformed front artwork. The paper, board,
                 // highlights and shadows must not enter the reader's lift frame.
-                .reportBookshelfCoverFrame(into: coverFrame, onChange: onCoverFrameChange, onImage: { tintImage = $0 })
+                .reportBookshelfCoverFrame(into: coverFrame, onChange: onCoverFrameChange)
                 .overlay {
                     BookshelfRingBookFinish(size: size)
                         .equatable()
@@ -377,7 +357,7 @@ private struct BookshelfRingCoverTile: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(isSelected ? BookshelfRingPalette.jade : Color.white.opacity(0.45), lineWidth: isSelected ? 2 : 0.75)
+                        .stroke(isSelected ? BookshelfTangPalette.highlight : BookshelfTangPalette.gold.opacity(0.45), lineWidth: isSelected ? 2 : 0.75)
                         .allowsHitTesting(false)
                 }
                 .background {
@@ -403,14 +383,6 @@ private struct BookshelfRingCoverTile: View {
         .accessibilityLabel(BookshelfAccessibility.description(for: book))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("bookshelf.ring.book.\(book.id.uuidString)")
-        .task(id: tintImage.map(ObjectIdentifier.init)) {
-            guard let image = tintImage else { return }
-            let backdrop = await Task.detached(priority: .utility) {
-                BookshelfRingPresentation.makeBackdrop(from: image)
-            }.value
-            guard !Task.isCancelled, let backdrop else { return }
-            onBackdrop(backdrop)
-        }
     }
 }
 

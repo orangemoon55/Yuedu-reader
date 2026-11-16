@@ -41,7 +41,8 @@ xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -only-testing:'yuedu appTests/BookshelfRingTests' \
   -only-testing:'yuedu appTests/BookshelfRingPresentationTests' \
   -only-testing:'yuedu appTests/BookshelfRingLayoutTests' \
-  -only-testing:'yuedu appTests/BookshelfCyberGearTests' \
+  -only-testing:'yuedu appTests/BookshelfTangMirrorTests' \
+  -only-testing:'yuedu appTests/QingyunNightCopperThemeTests' \
   -only-testing:'yuedu appTests/BookshelfDrawRecommendationTests' \
   -only-testing:'yuedu appTests/BookshelfRingDrawStateTests' \
   -only-testing:'yuedu appTests/DiscoverySourcePinsTests' \

@@ -23,6 +23,31 @@ import SwiftUI
 ///    pack keeps saying nothing about the settings the user never touched.
 extension GlobalSettings {
     private static let extrasBaselineKey = "yd_appearance_extras_baseline"
+    private static let nightCopperArtworkBaselineKey = "qy_night_copper_artwork_baseline"
+
+    /// Only artwork is suspended by Night Copper, with files still referenced.
+    /// The original custom theme and its existing extras baseline stay untouched.
+    var nightCopperArtworkBaseline: AppearanceThemeExtras? {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: Self.nightCopperArtworkBaselineKey) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(AppearanceThemeExtras.self, from: data)
+        }
+        set {
+            guard let newValue, let data = try? JSONEncoder().encode(newValue) else {
+                UserDefaults.standard.removeObject(forKey: Self.nightCopperArtworkBaselineKey)
+                return
+            }
+            UserDefaults.standard.set(data, forKey: Self.nightCopperArtworkBaselineKey)
+        }
+    }
+
+    static var nightCopperArtworkExtras: AppearanceThemeExtras {
+        var extras = AppearanceThemeExtras()
+        extras.pageBackgrounds = [:]
+        return extras
+    }
 
     /// The user's own values from before the first theme was applied, or nil when no
     /// custom theme is selected.
@@ -90,6 +115,7 @@ extension GlobalSettings {
     /// invariant "a custom theme is selected ⟹ a baseline exists" holds even for
     /// themes saved before write-back existed. Cheap and idempotent.
     func synchronizeAppearanceThemeExtras() {
+        guard !isApplyingAppearanceExtras else { return }
         // Every write below lands in a `didSet` that would otherwise write straight
         // back into the theme being applied — restoring the baseline would overwrite
         // the very extras this call is installing.
@@ -100,6 +126,32 @@ extension GlobalSettings {
         // Read before anything below is written: the first read captures the user's own
         // reading setup, which the baseline may still hold from before 排版生效範圍.
         _ = globalReadingSettings
+
+        // Night Copper owns only an empty artwork layer. Keep the live font,
+        // icons, tabs and effects; never restore a previous pack's whole baseline.
+        // Its page/card pictures are saved separately and restored on leaving.
+        if onScreenAppearanceThemeID == AppearanceThemePreset.nightCopperID {
+            if nightCopperArtworkBaseline == nil {
+                var artwork = AppearanceThemeExtras()
+                artwork.pageBackgrounds = appearancePageBackgrounds
+                artwork.cardBackground = appearanceCardBackground
+                nightCopperArtworkBaseline = artwork
+            }
+            let own = Self.nightCopperArtworkExtras
+            if appearancePageBackgrounds != (own.pageBackgrounds ?? [:]) {
+                appearancePageBackgrounds = own.pageBackgrounds ?? [:]
+            }
+            if appearanceCardBackground != own.cardBackground {
+                appearanceCardBackground = own.cardBackground
+            }
+            synchronizeReadingSettings()
+            return
+        }
+        if let artwork = nightCopperArtworkBaseline {
+            appearancePageBackgrounds = artwork.pageBackgrounds ?? [:]
+            appearanceCardBackground = artwork.cardBackground
+            nightCopperArtworkBaseline = nil
+        }
 
         if activeExtrasOwnerThemeID != nil {
             if appearanceExtrasBaseline == nil {

@@ -119,7 +119,7 @@ struct ReaderSettingsView: View {
                     }
 
                     if initialSection == .chapterTitleStyle, supportsLineHeight {
-                        ChapterTitleStyleSettingsView()
+                        ChapterTitleStyleSettingsView(onOpenImporter: { requestStyleImporter(.chapterTitleStyle) })
                     }
 
                     if initialSection == .all || initialSection == .decoration || initialSection == .commentBubble {

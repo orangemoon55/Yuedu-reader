@@ -28,6 +28,13 @@ extension GlobalSettings {
     /// - Parameter wornTheme: the built-in background the reader sits on now. A light one
     ///   is the light mode's; from 黑色, the last light one used is.
     func readerBackgroundResolution(mode: ColorScheme, wornTheme: ReaderTheme) -> ReaderBackgroundResolution {
+        // Night Copper is a complete colour treatment. Keep the user's saved
+        // background/binding/font choices intact; this override exists only
+        // while this appearance is selected.
+        if onScreenAppearanceThemeID == AppearanceThemePreset.nightCopperID {
+            return ReaderBackgroundResolution(theme: .night, customBackground: nil,
+                                              paintsWithAppearanceTheme: true)
+        }
         let lightTheme = wornTheme == .night ? ReaderTheme.lastLightTheme : wornTheme
         let builtIn = ReaderBackgroundResolution(
             theme: mode == .dark ? .night : lightTheme,

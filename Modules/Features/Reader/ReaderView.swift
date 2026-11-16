@@ -482,8 +482,10 @@ struct ReaderView: View {
         if let background = resolution.customBackground {
             preset = settings.readerBackgroundPreset(for: background)
         } else if resolution.paintsWithAppearanceTheme {
+            let paletteMode: ColorScheme = settings.onScreenAppearanceThemeID == AppearanceThemePreset.nightCopperID
+                ? .dark : settings.readerMode
             preset = settings.appearanceTheme(
-                for: settings.readerMode,
+                for: paletteMode,
                 isProActive: subscriptionStore.hasAccess(.readerThemePacks)
             )
         }

@@ -48,7 +48,7 @@ struct FloatingRootTabBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.colorSchemeContrast) private var contrast
     @ScaledMetric(relativeTo: .caption) private var labelLineHeight: CGFloat = 15
 
     private var reduceTransparency: Bool { reduceTransparencyOverride ?? systemReduceTransparency }
