@@ -904,7 +904,8 @@ final class BookshelfRingMotion {
             return
         }
         isSpinning = true
-        settling = Settlement(start: rotation, target: target, startedAt: CACurrentMediaTime())
+        settling = Settlement(start: rotation, target: target, startedAt: CACurrentMediaTime(),
+                              drawTarget: nil, drawTargetSlot: nil)
         ticker.start { [weak self, weak ticker = ticker] time in
             guard let self else { ticker?.stop(); return }
             self.tick(time)
@@ -914,10 +915,14 @@ final class BookshelfRingMotion {
     private func tick(_ time: TimeInterval) {
         guard isActive, let settling else { stop(); return }
         let elapsed = time - settling.startedAt
-        if elapsed >= 0.56 {
-            updateSelection(for: settling.target)
-            rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
-            stop()
+        if elapsed >= (settling.drawTarget == nil ? 0.56 : 2.2) {
+            if let drawSlot = settling.drawTargetSlot {
+                completeDraw(slot: drawSlot)
+            } else {
+                updateSelection(for: settling.target)
+                rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
+                stop()
+            }
             return
         }
         // Closed-form damped spring: frame-rate independent, bounded overshoot,
