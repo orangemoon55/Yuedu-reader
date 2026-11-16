@@ -64,7 +64,7 @@ final class ReaderChapterTitlePresentationTests: XCTestCase {
         }
 
         try await waitUntil {
-            !descendants(of: host.view).isEmpty
+            !self.descendants(of: host.view).isEmpty
         }
         XCTAssertNil(
             descendants(of: host.view).first { $0.accessibilityIdentifier == "reader.chapterTitleStyle.form" },
