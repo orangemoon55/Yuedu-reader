@@ -60,11 +60,6 @@ private struct DiscoverySourcePicker: View {
     @State private var query = ""
     @State private var matches: [DiscoverableBookSource]
     @State private var pins = DiscoverySourcePins()
-    @State private var showsPinConfirmation = false
-
-    private var pinActionTitle: String {
-        localized(pins.pendingChange?.shouldPin == false ? "取消置頂" : "置頂")
-    }
 
     private struct SearchInput: Equatable {
         let query: String
@@ -106,8 +101,7 @@ private struct DiscoverySourcePicker: View {
                 .accessibilityAddTraits(source.url == selectedURL ? .isSelected : [])
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button {
-                        pins.requestChange(for: source.id)
-                        showsPinConfirmation = true
+                        pins.togglePin(source.id, availableIDs: Set(sources.map(\.id)))
                     } label: {
                         Label(
                             localized(pins.isPinned(source.id) ? "取消置頂" : "置頂"),
@@ -116,17 +110,6 @@ private struct DiscoverySourcePicker: View {
                     }
                     .tint(DSColor.accent)
                 }
-            }
-            .alert(pinActionTitle, isPresented: $showsPinConfirmation) {
-                Button(pinActionTitle) {
-                    pins.confirmPendingChange(availableIDs: Set(sources.map(\.id)))
-                }
-                Button(localized("取消"), role: .cancel) {
-                    pins.cancelPendingChange()
-                }
-            } message: {
-                // Show only the display name, never the source's URL or credentials.
-                Text(sources.first { $0.id == pins.pendingChange?.sourceID }?.displayName ?? "")
             }
             .searchable(
                 text: $query,

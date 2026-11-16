@@ -28,6 +28,7 @@ on:
           - all
           - settings-ui
           - chapter-title
+          - toc-pins
 
 permissions:
   contents: read

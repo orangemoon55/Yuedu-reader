@@ -9,8 +9,8 @@ struct DiscoverySourcePinsTests {
         DiscoverableBookSource(id: id, name: name, url: url)
     }
 
-    @Test("opening or cancelling confirmation never changes order or persistence")
-    func requiresConfirmation() throws {
+    @Test("pinning immediately updates order and saves UUID preferences")
+    func pinAppliesImmediately() throws {
         let suite = "DiscoverySourcePinsTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -19,21 +19,15 @@ struct DiscoverySourcePinsTests {
         let sources = [first, second]
         let ids = Set(sources.map(\.id))
 
-        pins.confirmPendingChange(availableIDs: ids)
-        #expect(pins.pinnedIDs.isEmpty)
-        pins.requestChange(for: second.id)
-        #expect(pins.pendingChange?.shouldPin == true)
-        #expect(pins.ordered(sources).map(\.id) == [first.id, second.id])
-        #expect(defaults.object(forKey: DiscoverySourcePins.preferenceKey) == nil)
-        #expect(DiscoverySourcePins(defaults: defaults).pinnedIDs.isEmpty)
-        pins.cancelPendingChange()
-        pins.confirmPendingChange(availableIDs: ids)
-        #expect(pins.pendingChange == nil)
-        #expect(pins.pinnedIDs.isEmpty)
-        #expect(defaults.object(forKey: DiscoverySourcePins.preferenceKey) == nil)
+        pins.togglePin(second.id, availableIDs: ids)
+        #expect(pins.pinnedIDs == [second.id])
+        #expect(pins.ordered(sources).map(\.id) == [second.id, first.id])
+        #expect(defaults.stringArray(forKey: DiscoverySourcePins.preferenceKey) == [second.id.uuidString])
+        #expect(DiscoverySourcePins(defaults: defaults).pinnedIDs == [second.id])
+        #expect(sources.map(\.id) == [first.id, second.id])
     }
 
-    @Test("confirmed pins are newest first; unpin also requires confirmation")
+    @Test("newest pins come first and unpin immediately restores the source order")
     func multiPinOrderAndUnpin() throws {
         let suite = "DiscoverySourcePinsTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -43,21 +37,13 @@ struct DiscoverySourcePinsTests {
         let sources = [first, second, third]
         let ids = Set(sources.map(\.id))
 
-        pins.requestChange(for: second.id)
-        pins.confirmPendingChange(availableIDs: ids)
+        pins.togglePin(second.id, availableIDs: ids)
         #expect(pins.ordered(sources).map(\.id) == [second.id, first.id, third.id])
-        pins.requestChange(for: third.id)
-        pins.confirmPendingChange(availableIDs: ids)
+        pins.togglePin(third.id, availableIDs: ids)
         #expect(pins.ordered(sources).map(\.id) == [third.id, second.id, first.id])
         #expect(sources.map(\.id) == [first.id, second.id, third.id])
 
-        pins.requestChange(for: third.id)
-        #expect(pins.pendingChange?.shouldPin == false)
-        #expect(pins.isPinned(third.id))
-        pins.cancelPendingChange()
-        #expect(pins.ordered(sources).map(\.id) == [third.id, second.id, first.id])
-        pins.requestChange(for: third.id)
-        pins.confirmPendingChange(availableIDs: ids)
+        pins.togglePin(third.id, availableIDs: ids)
         #expect(pins.ordered(sources).map(\.id) == [second.id, first.id, third.id])
         let restored = DiscoverySourcePins(defaults: defaults)
         #expect(!restored.isPinned(third.id))
@@ -72,8 +58,7 @@ struct DiscoverySourcePinsTests {
         let pins = DiscoverySourcePins(defaults: defaults)
         let first = candidate("甲", url: "https://a.example"), second = candidate("乙", url: "https://b.example")
         let sources = [first, second]
-        pins.requestChange(for: second.id)
-        pins.confirmPendingChange(availableIDs: Set(sources.map(\.id)))
+        pins.togglePin(second.id, availableIDs: Set(sources.map(\.id)))
 
         let reopenedDefaults = try #require(UserDefaults(suiteName: suite))
         let restored = DiscoverySourcePins(defaults: reopenedDefaults)
@@ -103,9 +88,9 @@ struct DiscoverySourcePinsTests {
         #expect(!pins.isPinned(reimported.id))
         #expect(pins.ordered([first, reimported, third]).map(\.id) == [third.id, first.id, reimported.id])
         #expect(pins.ordered([]).isEmpty)
-        pins.requestChange(for: first.id)
-        pins.confirmPendingChange(availableIDs: [third.id])
+        pins.togglePin(first.id, availableIDs: [third.id])
+        pins.togglePin(removed.id, availableIDs: [third.id])
         #expect(!pins.isPinned(first.id))
-        #expect(pins.pendingChange == nil)
+        #expect(pins.pinnedIDs == [removed.id, third.id])
     }
 }

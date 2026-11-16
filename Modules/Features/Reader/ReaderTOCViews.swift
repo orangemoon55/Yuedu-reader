@@ -168,7 +168,9 @@ private struct VerticalTOCView: View {
     let pageOffsets: [UUID: Int]
     let showsPageNumbers: Bool
     let uncachedChapterIndexes: Set<Int>
-    let latestScrollRequest: Int
+    let edgeRequest: ReaderTOCEdgeRequest?
+    let onViewportChange: (CGRect) -> Void
+    let onEdgeFramesChange: ([ReaderTOCEdge: CGRect]) -> Void
     let onSelectChapter: (BookChapter) -> Void
 
     @State private var didInitialTOCScroll = false
@@ -185,6 +187,8 @@ private struct VerticalTOCView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: VerticalTOCLayout.columnSpacing) {
+                    let first = ReaderTOCScrollTarget.first(in: chapters)
+                    let latest = latestChapterIndex
                     ForEach(Array(rightToLeftChapters.enumerated()), id: \.element.id) { _, chapter in
                         let pageNumber: Int = {
                             if let offset = pageOffsets[chapter.id] {
@@ -201,6 +205,9 @@ private struct VerticalTOCView: View {
                         ) {
                             onSelectChapter(chapter)
                         }
+                        .reportTOCEdges(for: chapter,
+                                        first: first,
+                                        latest: latest)
                         .id(chapter.index)
                     }
                 }
@@ -215,11 +222,11 @@ private struct VerticalTOCView: View {
                     proxy.scrollTo(row, anchor: .trailing)
                 }
             }
-            .onChange(of: latestScrollRequest, initial: true) { _, request in
-                guard request > 0,
-                      let row = latestChapterIndex else { return }
-                // RTL columns advance from right to left; newest chapters are at the left edge.
-                proxy.scrollTo(row, anchor: .leading)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onViewportChange($0) }
+            .onPreferenceChange(ReaderTOCEdgeFramesKey.self, perform: onEdgeFramesChange)
+            .onChange(of: edgeRequest, initial: true) { _, request in
+                guard let request, let row = request.destination.target(in: chapters) else { return }
+                proxy.scrollTo(row, anchor: request.destination.anchor(verticalColumns: true))
             }
         }
     }
@@ -238,6 +245,10 @@ enum ReaderTOCScrollTarget {
     /// synthetic or heading-only lists.
     static func latest(in chapters: [BookChapter]) -> Int? {
         chapters.last(where: { !isVolumeHeading($0.title) })?.index ?? chapters.last?.index
+    }
+
+    static func first(in chapters: [BookChapter]) -> Int? {
+        chapters.first(where: { !isVolumeHeading($0.title) })?.index ?? chapters.first?.index
     }
 
     static func isVolumeHeading(_ title: String) -> Bool {
@@ -268,8 +279,18 @@ struct ReaderTOCView: View {
     @Binding var isPresented: Bool
 
     @State private var searchText = ""
-    @State private var latestScrollRequest = 0
-    @State private var pendingLatestScroll = false
+    @State private var edgeRequest: ReaderTOCEdgeRequest?
+    @State private var pendingEdge: ReaderTOCEdge?
+    @State private var latestRowFrame: CGRect?
+    @State private var viewportFrame: CGRect = .zero
+
+    private var isAtLatest: Bool {
+        !isSearching && ReaderTOCEdgeVisibility.isAtLatest(
+            row: latestRowFrame, viewport: viewportFrame,
+            verticalColumns: tocLayoutMode == .verticalRTLColumns)
+    }
+
+    private var edgeActionTitle: String { localized(isAtLatest ? "回頂部" : "去底部") }
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -283,14 +304,14 @@ struct ReaderTOCView: View {
         }
     }
 
-    private func goToLatestChapter() {
+    private func jumpToOtherEdge() {
         guard !chapters.isEmpty else { return }
-        pendingLatestScroll = true
+        let destination: ReaderTOCEdge = isAtLatest ? .first : .latest
         if isSearching {
+            pendingEdge = destination
             searchText = ""
         } else {
-            latestScrollRequest &+= 1
-            pendingLatestScroll = false
+            edgeRequest = ReaderTOCEdgeRequest(destination: destination)
         }
     }
 
@@ -302,11 +323,11 @@ struct ReaderTOCView: View {
                 .toolbarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: goToLatestChapter) {
-                            Text(localized("去底部"))
+                        Button(action: jumpToOtherEdge) {
+                            Text(edgeActionTitle)
                         }
                         .disabled(chapters.isEmpty)
-                        .accessibilityLabel(localized("去底部"))
+                        .accessibilityLabel(edgeActionTitle)
                         .accessibilityIdentifier("toc.latest")
                     }
                     ToolbarItem(placement: .topBarTrailing) {
@@ -328,9 +349,9 @@ struct ReaderTOCView: View {
                 )
                 .background(PageBackgroundView(scope: .settings).ignoresSafeArea())
                 .onChange(of: isSearching) { _, searching in
-                    guard !searching, pendingLatestScroll else { return }
-                    pendingLatestScroll = false
-                    latestScrollRequest &+= 1
+                    guard !searching, let destination = pendingEdge else { return }
+                    pendingEdge = nil
+                    edgeRequest = ReaderTOCEdgeRequest(destination: destination)
                 }
                 .pageBackgroundToolbar(for: .settings)
         }
@@ -363,7 +384,9 @@ struct ReaderTOCView: View {
                     pageOffsets: pageOffsets,
                     showsPageNumbers: showsPageNumbers,
                     uncachedChapterIndexes: uncachedChapterIndexes,
-                    latestScrollRequest: latestScrollRequest,
+                    edgeRequest: edgeRequest,
+                    onViewportChange: { viewportFrame = $0 },
+                    onEdgeFramesChange: { latestRowFrame = $0[.latest] },
                     onSelectChapter: { chapter in
                         onSelectChapter(chapter)
                         isPresented = false
@@ -411,10 +434,15 @@ struct ReaderTOCView: View {
                         .listRowSeparator(.hidden)
                 }
 
+                let first = ReaderTOCScrollTarget.first(in: filteredChapters)
+                let latest = ReaderTOCScrollTarget.latest(in: filteredChapters)
                 ForEach(filteredChapters) { chapter in
                     chapterRow(chapter)
+                        .reportTOCEdges(for: chapter, first: first, latest: latest)
                 }
             }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { viewportFrame = $0 }
+            .onPreferenceChange(ReaderTOCEdgeFramesKey.self) { latestRowFrame = $0[.latest] }
             .softScrollEdges()
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -429,10 +457,9 @@ struct ReaderTOCView: View {
                 // on record.
                 proxy.scrollTo(row, anchor: .center)
             }
-            .onChange(of: latestScrollRequest, initial: true) { _, request in
-                guard request > 0,
-                      let row = ReaderTOCScrollTarget.latest(in: filteredChapters) else { return }
-                proxy.scrollTo(row, anchor: .bottom)
+            .onChange(of: edgeRequest, initial: true) { _, request in
+                guard let request, let row = request.destination.target(in: filteredChapters) else { return }
+                proxy.scrollTo(row, anchor: request.destination.anchor(verticalColumns: false))
             }
         }
     }

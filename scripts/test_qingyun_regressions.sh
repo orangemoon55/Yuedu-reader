@@ -39,6 +39,13 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == settings-ui ]]; then
   TEST_SELECTION=(-only-testing:'yuedu appUITests/ReaderSettingsEntryUITests')
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == chapter-title ]]; then
   TEST_SELECTION=(-only-testing:'yuedu appTests/ReaderChapterTitlePresentationTests')
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == toc-pins ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/ReaderTOCEdgeNavigationTests'
+    -only-testing:'yuedu appTests/ReaderTOCEdgeRenderingTests'
+    -only-testing:'yuedu appTests/ChapterListOrderTests'
+    -only-testing:'yuedu appTests/DiscoverySourcePinsTests'
+  )
 else
   TEST_SELECTION=(
   -only-testing:'yuedu appTests/BookshelfTangMirrorTests'
