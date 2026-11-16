@@ -5,9 +5,9 @@ import UIKit
 /// target below 44pt; an unusually narrow container scrolls instead of clipping it.
 struct FloatingRootTabBarLayout: Equatable {
     static let minimumHitSize: CGFloat = 44
-    static let surfacePadding: CGFloat = 6
-    static let bottomSpacing: CGFloat = 8
-    static let topSpacing: CGFloat = 8
+    static let surfacePadding: CGFloat = 4
+    static let bottomSpacing: CGFloat = 6
+    static let topSpacing: CGFloat = 6
 
     let itemWidth: CGFloat
     let capsuleWidth: CGFloat
@@ -20,13 +20,13 @@ struct FloatingRootTabBarLayout: Equatable {
     init(availableWidth: CGFloat, mainTabCount: Int, hasSearch: Bool, height: CGFloat) {
         let count = max(0, mainTabCount)
         self.height = max(Self.minimumHitSize + Self.surfacePadding * 2, height)
-        searchDiameter = hasSearch ? min(self.height, 68) : 0
-        gap = count > 0 && hasSearch ? 10 : 0
+        searchDiameter = hasSearch ? min(self.height, 56) : 0
+        gap = count > 0 && hasSearch ? 8 : 0
         let padding = count > 0 ? Self.surfacePadding * 2 : 0
         let available = max(0, availableWidth.isFinite ? availableWidth : 0)
         let usable = max(0, min(available - 24, 620))
         let candidate = count > 0 ? (usable - searchDiameter - gap - padding) / CGFloat(count) : 0
-        itemWidth = count > 0 ? max(Self.minimumHitSize, min(104, candidate)) : 0
+        itemWidth = count > 0 ? max(Self.minimumHitSize, min(88, candidate)) : 0
         capsuleWidth = CGFloat(count) * itemWidth + padding
         contentWidth = capsuleWidth + gap + searchDiameter
         viewportWidth = min(available, contentWidth)
@@ -58,7 +58,7 @@ struct FloatingRootTabBar: View {
     private var barHeight: CGFloat {
         let textHeight = hidesLabels || mainTabs.isEmpty ? 0
             : labelLineHeight * (dynamicTypeSize.isAccessibilitySize ? 2 : 1) + 3
-        return max(64, drawnIconSize + textHeight + 16)
+        return max(56, drawnIconSize + textHeight + 10)
     }
 
     var body: some View {
@@ -72,7 +72,8 @@ struct FloatingRootTabBar: View {
                     if !mainTabs.isEmpty {
                         HStack(spacing: 0) {
                             ForEach(mainTabs) { tab in
-                                tabButton(tab, width: layout.itemWidth, height: layout.height - 12)
+                                tabButton(tab, width: layout.itemWidth,
+                                          height: layout.height - FloatingRootTabBarLayout.surfacePadding * 2)
                             }
                         }
                         .padding(FloatingRootTabBarLayout.surfacePadding)

@@ -4532,3 +4532,10 @@
 "已完成 %1$d / %2$d 個書源 · %3$d 張封面" = "%1$d / %2$d sources complete · %3$d covers";
 "請先安裝並啟用支援搜索的書源，或從相簿選一張圖片。" = "Install and enable sources that support search, or choose a photo.";
 "可以從相簿選一張圖片，或更換書源後重試。" = "Choose a photo or try other book sources.";
+
+"夜銅" = "Night Copper";
+"在正文顯示模組的評論" = "Show module comments in reading text";
+"重新打開書籍後套用，原書源的評論不受影響。" = "Applies when you reopen the book. Source comments are unchanged.";
+"這個模組需要模組引擎 %1$@ 以上的版本，目前引擎是 %2$@。" = "This module requires engine %1$@ or later; the current engine is %2$@.";
+"模組引擎不識別欄位 %@，無法安全匯入。" = "Unknown module field %@; import was stopped.";
+"目前的模組引擎尚未支援 %@，請勿刪除欄位繞過檢查。" = "The module engine does not support %@ yet. Do not remove the field to bypass validation.";

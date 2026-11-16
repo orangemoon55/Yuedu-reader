@@ -293,7 +293,7 @@ private struct ReaderPreparingSurface: View {
             }
             .toolbar(chromeIsShown ? .visible : .hidden, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(theme == .night ? .dark : .light, for: .navigationBar)
+            .toolbarColorScheme(theme.isDark ? .dark : .light, for: .navigationBar)
             // Inside the stack, where the reader applies them too: that layer reaches the
             // hosting controller through the stack.
             .statusBarHidden(

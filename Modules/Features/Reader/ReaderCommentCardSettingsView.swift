@@ -114,7 +114,7 @@ struct ReaderCommentCardSettingsView: View {
 
     /// The preview is drawn on the reading theme, as the card would be.
     private var isNightReading: Bool {
-        ReaderTheme.loadPersisted() == .night
+        ReaderTheme.loadPersisted().isDark
     }
 
     private var selectionBinding: Binding<UUID?> {

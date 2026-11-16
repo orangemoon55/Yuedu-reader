@@ -252,7 +252,7 @@ private struct ReaderBarsPreviewHost: View {
                 readerTextColor: theme.uiTextColor,
                 horizontalPadding: padding,
                 svgAssetStore: nil,
-                userInterfaceStyle: theme == .night ? .dark : .light,
+                userInterfaceStyle: theme.isDark ? .dark : .light,
                 displayScale: 3,
                 bodyFontPostScriptName: bodyFontPostScriptName
             )

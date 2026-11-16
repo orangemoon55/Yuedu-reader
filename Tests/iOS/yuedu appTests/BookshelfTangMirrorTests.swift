@@ -89,6 +89,27 @@ final class BookshelfTangMirrorTests: XCTestCase {
         }
     }
 
+    func testMechanicalLinkageMovesWithRotorAndStaysInsideBookDisc() {
+        let initial = TangMechanicalKinematics.rods(diameter: 360, rotation: 0)
+        let moved = TangMechanicalKinematics.rods(diameter: 360, rotation: 19)
+        XCTAssertEqual(initial.count, 6)
+        XCTAssertNotEqual(initial, moved)
+        for angle in stride(from: CGFloat(-1440), through: 1440, by: 7) {
+            let rods = TangMechanicalKinematics.rods(diameter: 360, rotation: angle)
+            for rod in rods {
+                for point in [rod.start, rod.hinge, rod.end] {
+                    let radius = hypot(point.x - 180, point.y - 180)
+                    XCTAssertGreaterThan(radius, 360 * 0.09)
+                    XCTAssertLessThan(radius, 360 * 0.411)
+                }
+            }
+        }
+        XCTAssertLessThan(TangMechanicalKinematics.plateAngle(layer: 1, rotation: 30), 0)
+        XCTAssertGreaterThan(TangMechanicalKinematics.plateAngle(layer: 2, rotation: 30), 0)
+        XCTAssertTrue(TangMechanicalKinematics.rods(diameter: 0, rotation: 0).isEmpty)
+        XCTAssertTrue(TangMechanicalKinematics.rods(diameter: 360, rotation: .nan).isEmpty)
+    }
+
     private func attach(_ image: UIImage, _ name: String) {
         let attachment = XCTAttachment(image: image)
         attachment.name = name

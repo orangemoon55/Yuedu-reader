@@ -28,16 +28,10 @@ extension GlobalSettings {
     /// - Parameter wornTheme: the built-in background the reader sits on now. A light one
     ///   is the light mode's; from 黑色, the last light one used is.
     func readerBackgroundResolution(mode: ColorScheme, wornTheme: ReaderTheme) -> ReaderBackgroundResolution {
-        // Night Copper is a complete colour treatment. Keep the user's saved
-        // background/binding/font choices intact; this override exists only
-        // while this appearance is selected.
-        if onScreenAppearanceThemeID == AppearanceThemePreset.nightCopperID {
-            return ReaderBackgroundResolution(theme: .night, customBackground: nil,
-                                              paintsWithAppearanceTheme: true)
-        }
-        let lightTheme = wornTheme == .night ? ReaderTheme.lastLightTheme : wornTheme
+        let lightTheme = wornTheme.isDark ? ReaderTheme.lastLightTheme : wornTheme
+        let darkTheme = wornTheme.isDark ? wornTheme : ReaderTheme.lastDarkTheme
         let builtIn = ReaderBackgroundResolution(
-            theme: mode == .dark ? .night : lightTheme,
+            theme: mode == .dark ? darkTheme : lightTheme,
             customBackground: nil,
             paintsWithAppearanceTheme: false
         )
@@ -129,7 +123,7 @@ extension GlobalSettings {
     /// already in use, and the mode the user is in stays theirs.
     func adoptReaderDarkMode(from theme: ReaderTheme) {
         guard !appearanceBindReaderTheme else { return }
-        let isDark = theme == .night && wornReaderCustomBackground?.isDark != true
+        let isDark = theme.isDark && wornReaderCustomBackground?.isDark != true
         if readerDarkMode != isDark { readerDarkMode = isDark }
     }
 
@@ -157,7 +151,7 @@ extension GlobalSettings {
         binds: Bool
     ) -> Bool {
         if let stored { return stored }
-        return theme == .night && (binds || !wornBackgroundIsDark)
+        return theme.isDark && (binds || !wornBackgroundIsDark)
     }
 
     /// Whether the reader starts out following the device. One never given a background

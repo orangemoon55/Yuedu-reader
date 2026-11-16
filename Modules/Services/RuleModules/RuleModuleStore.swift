@@ -76,7 +76,7 @@ struct RuleModuleStore: Sendable {
     /// A module not installed yet. The folder appears whole or not at all: it is written beside
     /// the others under a hidden name and moved into place.
     @discardableResult
-    func install(_ data: Data, from subscriptionURL: URL?, appVersion: String = RuleModuleVersion.app,
+    func install(_ data: Data, from subscriptionURL: URL?, appVersion: String = RuleModuleRuntimeCompatibility.version,
                  now: Date = .now) throws -> InstalledRuleModule {
         let module = try validated(data, appVersion: appVersion)
         guard !OfficialRuleModules.reservedIDs.contains(module.id) else { throw RuleModuleStoreError.reservedID(module.id) }
@@ -104,7 +104,7 @@ struct RuleModuleStore: Sendable {
     /// old rules. `subscriptionURL`, when given, is where the update came from — a repository's
     /// address for the module (M6) — and becomes the address 檢查更新 reads; nil keeps the old one.
     @discardableResult
-    func update(id: String, with data: Data, from subscriptionURL: URL? = nil, appVersion: String = RuleModuleVersion.app,
+    func update(id: String, with data: Data, from subscriptionURL: URL? = nil, appVersion: String = RuleModuleRuntimeCompatibility.version,
                 now: Date = .now) throws -> InstalledRuleModule {
         let installed = try read(folderNamed: id, appVersion: appVersion)
         let module = try validated(data, appVersion: appVersion)
@@ -134,7 +134,7 @@ struct RuleModuleStore: Sendable {
 
     // MARK: - Reads
 
-    func list(appVersion: String = RuleModuleVersion.app) -> Listing {
+    func list(appVersion: String = RuleModuleRuntimeCompatibility.version) -> Listing {
         let folders: [URL]
         do {
             folders = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey],

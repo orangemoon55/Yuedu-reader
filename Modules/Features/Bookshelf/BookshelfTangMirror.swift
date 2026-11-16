@@ -43,10 +43,13 @@ struct BookshelfTangMirror: View {
             // Opacity animates inside the rotated layer so angle normalization at
             // settlement cannot produce a backwards full-circle animation.
             if !reduceMotion {
-                TangTwinMirrorOrbit(diameter: diameter, isDrawing: isDrawing)
-                    .opacity(isSpinning ? 1 : 0)
-                    .animation(.easeOut(duration: 0.28), value: isSpinning)
-                    .rotationEffect(.degrees(Double(rotation)))
+                TangMechanicalModule(
+                    diameter: diameter, rotation: rotation,
+                    isSpinning: isSpinning, isDrawing: isDrawing,
+                    reduceTransparency: reduceTransparency
+                )
+                .opacity(isSpinning ? 1 : 0)
+                .animation(.easeOut(duration: 0.28), value: isSpinning)
             }
         }
         .frame(width: diameter, height: diameter)
@@ -154,5 +157,119 @@ private struct TangTwinMirrorOrbit: View {
         .frame(width: diameter, height: diameter)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Every component is driven by the actual rotor angle. There is no independent
+/// timer or perpetual animation, and stopping the wheel stops its mechanism.
+enum TangMechanicalKinematics {
+    struct Rod: Equatable {
+        let start: CGPoint
+        let hinge: CGPoint
+        let end: CGPoint
+    }
+
+    static func rods(diameter: CGFloat, rotation: CGFloat) -> [Rod] {
+        guard diameter.isFinite, diameter > 0, rotation.isFinite else { return [] }
+        let center = CGPoint(x: diameter / 2, y: diameter / 2)
+        return (0..<6).map { index in
+            let phase = CGFloat(index) * .pi / 3
+            let drive = rotation.truncatingRemainder(dividingBy: 360) * .pi / 180
+            let angle = phase - .pi / 2 + drive * 0.58
+            let extensionAmount = (sin(drive * 3 + phase) + 1) / 2
+            func point(_ radius: CGFloat, _ offset: CGFloat = 0) -> CGPoint {
+                CGPoint(x: center.x + cos(angle + offset) * diameter * radius,
+                        y: center.y + sin(angle + offset) * diameter * radius)
+            }
+            return Rod(start: point(0.115),
+                       hinge: point(0.245 + extensionAmount * 0.025, sin(drive * 3 + phase) * 0.09),
+                       end: point(0.365 + extensionAmount * 0.025))
+        }
+    }
+
+    static func plateAngle(layer: Int, rotation: CGFloat) -> Double {
+        guard rotation.isFinite else { return 0 }
+        return Double(rotation) * ([1.0, -0.62, 0.38][min(max(layer, 0), 2)])
+    }
+}
+
+private struct TangMechanicalModule: View {
+    let diameter: CGFloat
+    let rotation: CGFloat
+    let isSpinning: Bool
+    let isDrawing: Bool
+    let reduceTransparency: Bool
+
+    private var energy: Double { isDrawing ? 1 : 0.72 }
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { layer in
+                let side = diameter * (0.70 + CGFloat(layer) * 0.07)
+                ZStack {
+                    Circle().stroke(BookshelfTangPalette.bronze.opacity(0.65),
+                                    lineWidth: diameter * (layer == 2 ? 0.013 : 0.009))
+                    Circle().trim(from: 0.015, to: 0.985)
+                        .stroke(AngularGradient(colors: [BookshelfTangPalette.gold.opacity(0.2),
+                            BookshelfTangPalette.highlight.opacity(energy),
+                            BookshelfTangPalette.bronze.opacity(0.4), BookshelfTangPalette.gold.opacity(0.2)],
+                            center: .center), lineWidth: max(1, diameter * 0.003))
+                    // Physical registration plates make the counter-rotation visible.
+                    ForEach(0..<12, id: \.self) { tooth in
+                        RoundedRectangle(cornerRadius: diameter * 0.002)
+                            .fill(tooth.isMultiple(of: 3) ? BookshelfTangPalette.highlight : BookshelfTangPalette.gold)
+                            .frame(width: diameter * 0.009, height: diameter * 0.016)
+                            .offset(y: -side / 2)
+                            .rotationEffect(.degrees(Double(tooth) * 30))
+                    }
+                }
+                .frame(width: side, height: side)
+                .rotationEffect(.degrees(TangMechanicalKinematics.plateAngle(layer: layer, rotation: rotation)))
+                .opacity(reduceTransparency ? 0.8 : 1)
+            }
+            TangLinkageRods(diameter: diameter, rotation: rotation, energy: energy)
+            TangTwinMirrorOrbit(diameter: diameter, isDrawing: isDrawing)
+                .rotationEffect(.degrees(Double(rotation) * -0.38))
+            Circle()
+                .stroke(BookshelfTangPalette.highlight.opacity(isDrawing ? 0.95 : 0.28),
+                        style: StrokeStyle(lineWidth: max(1, diameter * 0.006), dash: [3, 5]))
+                .frame(width: diameter * 0.19, height: diameter * 0.19)
+                .scaleEffect(isDrawing ? 1.18 : 1)
+                .opacity(isDrawing ? 1 : 0)
+                .animation(.easeOut(duration: 0.32), value: isDrawing)
+        }
+        .frame(width: diameter, height: diameter)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TangLinkageRods: View {
+    let diameter: CGFloat
+    let rotation: CGFloat
+    let energy: Double
+
+    var body: some View {
+        Canvas { context, _ in
+            for mechanism in TangMechanicalKinematics.rods(diameter: diameter, rotation: rotation) {
+                var rod = Path()
+                rod.move(to: mechanism.start)
+                rod.addLine(to: mechanism.hinge)
+                rod.addLine(to: mechanism.end)
+                context.stroke(rod, with: .color(.black.opacity(0.48)),
+                               style: StrokeStyle(lineWidth: max(2, diameter * 0.009), lineCap: .round, lineJoin: .round))
+                context.stroke(rod, with: .color(BookshelfTangPalette.gold.opacity(0.26 + energy * 0.38)),
+                               style: StrokeStyle(lineWidth: max(1, diameter * 0.004), lineCap: .round, lineJoin: .round))
+                for joint in [mechanism.hinge, mechanism.end] {
+                    let jointSize = diameter * 0.014
+                    let circle = Path(ellipseIn: CGRect(x: joint.x - jointSize / 2, y: joint.y - jointSize / 2,
+                                                       width: jointSize, height: jointSize))
+                    context.fill(circle, with: .color(BookshelfTangPalette.highlight.opacity(0.8)))
+                    context.stroke(circle, with: .color(BookshelfTangPalette.bronze), lineWidth: 1)
+                }
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .allowsHitTesting(false)
     }
 }

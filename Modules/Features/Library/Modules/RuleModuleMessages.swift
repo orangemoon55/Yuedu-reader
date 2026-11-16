@@ -6,6 +6,8 @@ import Foundation
 extension RuleModuleRejection {
     var message: String {
         switch self {
+        case .unsupportedField(let field): String(format: localized("模組引擎不識別欄位 %@，無法安全匯入。"), field)
+        case .unsupportedCapability(let field): String(format: localized("目前的模組引擎尚未支援 %@，請勿刪除欄位繞過檢查。"), field)
         case .tooLarge: localized("模組檔案超過 256 KB。")
         case .notJSON: localized("這不是模組檔案：無法讀成 JSON。")
         case .missingField(let field): String(format: localized("缺少欄位 %@。"), field)
@@ -13,7 +15,7 @@ extension RuleModuleRejection {
         case .invalidID(let id): String(format: localized("代號「%@」只能用英文字母、數字、句點、底線和連字號。"), id)
         case .invalidVersion(let field, let value): String(format: localized("%1$@ 的「%2$@」不是數字版本。"), field, value)
         case .requiresNewerApp(let required, let running):
-            String(format: localized("這個模組需要閱讀 %1$@ 以上的版本，目前是 %2$@。"), required, running)
+            String(format: localized("這個模組需要模組引擎 %1$@ 以上的版本，目前引擎是 %2$@。"), required, running)
         case .noEntries: localized("模組沒有任何清單。")
         case .tooManyEntries(let count): String(format: localized("模組有 %d 個清單，上限是 50 個。"), count)
         case .duplicateEntryID(let id): String(format: localized("清單代號「%@」重複。"), id)

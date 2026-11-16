@@ -73,6 +73,7 @@ struct RuleModuleDetailView: View {
             }
 
             RuleModuleManifestSections(module: installed.module)
+            RuleModuleGlobalSettingsSection(module: installed.module, library: library)
 
             Section {
                 Toggle(isOn: Binding(get: { library.isShownInLibrary(moduleID) },

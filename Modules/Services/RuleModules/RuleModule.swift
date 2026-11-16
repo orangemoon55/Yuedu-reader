@@ -14,7 +14,7 @@ struct RuleModule: Codable, Hashable, Sendable {
     var site: String?
     /// Numeric dot form (`1.0.0`); 檢查更新 accepts a higher one.
     var version: String
-    /// The lowest app version that reads this file.
+    /// The lowest module-engine compatibility version that reads this file.
     var requiredVersion: String?
     /// The only hosts its requests may go to. A `*.example.org` entry (format 3.0) is a domain a
     /// redirect may follow into, never a request's own host (`RuleModuleHosts`).
@@ -30,6 +30,187 @@ struct RuleModule: Codable, Hashable, Sendable {
     /// holds its table of contents; each chapter's page holds its text. Without it the module's
     /// books are data only.
     var reading: Reading?
+    /// What its readers wrote about a book (format 3.0.1): asked for the record that is the
+    /// work 作品詳情 shows, found by `lookup` or `search`. Without it the module gives none.
+    var reviews: Reviews?
+    /// The module's picture, an address on `hosts` (format 3.0.2): drawn wherever the module is
+    /// named. Without it the module has the symbol every module shares.
+    var icon: String?
+    /// Parameters of the whole module, Forward's `globalParams` (format 3.0.2): set once on the
+    /// module's page, and a `{{name}}` in any request of its lists, search, lookup and reviews.
+    /// `RuleModuleLibrary` writes the reader's own into each one's `value`.
+    var globalParams: [Param]?
+    /// A book's own page as 作品詳情 opens one of the module's books, Forward's `loadDetail`
+    /// (format 3.0.2): `{{url}}` is the book's `url`; it gives the description and tags its row
+    /// did not. Asked once per opening, or from its `cacheDuration`.
+    var detail: Detail?
+    /// Works like a book, Forward's `relatedItems` (format 3.0.2): 作品詳情's 相關作品, asked of
+    /// the record of the work as `reviews` is.
+    var related: Related?
+    /// The module's books of one genre, by `{{tag}}` (format 3.0.2): where a genre of one of its
+    /// books opens. Without it the genre opens what `search` finds for the word.
+    var genre: Entry?
+    /// Its rules and requests may run JavaScript (format 3.0.2; `RuleModuleScriptRuntime`): `@js:`
+    /// and `<js>` in a rule, and a request's `script`. The script computes and never connects:
+    /// every request is still the module's own, to its `hosts`. Without it a rule with JS is
+    /// refused at import, as before.
+    var javascript: Bool?
+    /// What readers wrote about a chapter (format 3.0.2), drawn in the text as a 來源配置's own
+    /// are: 段評 (a count at the end of a paragraph), 熱評 (a card under a paragraph), 本章說 (a
+    /// card after the chapter) and 作者說. Asked for the record that is the book being read,
+    /// found as `reviews` finds a work's, then for the chapter of the site's whose title is the
+    /// chapter's. Any book: one from a file, or from a source with no comments.
+    var comments: Comments?
+
+    /// A record's chapters on the site, and what the site holds about one chapter.
+    struct Comments: Codable, Hashable, Sendable {
+        /// Seconds a book's chapter list, and each of a chapter's answers, answer again without a
+        /// request.
+        var cacheDuration: Int?
+        var chapters: CommentChapters
+        /// 本章說: the chapter's comments, and the card after the chapter.
+        var chapter: ChapterComments
+        /// 段評: how many comments each paragraph has. With it, `paragraph` reads one paragraph's.
+        var counts: ParagraphCounts?
+        /// One paragraph's comments: `{{paragraphId}}` is the paragraph's, as `counts` or `hot`
+        /// gave it.
+        var paragraph: ChapterComments?
+        /// 熱評: a picked comment under a paragraph.
+        var hot: HotComments?
+        /// 作者說: the author's note on the chapter.
+        var authorSay: AuthorSay?
+    }
+
+    /// Which paragraph an item is about. The paragraph is told by its text (`quote`, the
+    /// paragraph or its first words), or by its number (`index`, from 1) when the site's count of
+    /// the chapter's paragraphs (`paragraphCount`) is the reader's own: the reader's copy and the
+    /// site's are two editions, and a number alone would put a comment under another paragraph.
+    struct ParagraphRules: Codable, Hashable, Sendable {
+        var quote: String?
+        var index: String?
+        /// The site's own id of the paragraph, `{{paragraphId}}`; its `index` when absent.
+        var id: String?
+    }
+
+    /// 段評: `{{chapterId}}` is the chapter's; each item is a paragraph and how many comments it has.
+    struct ParagraphCounts: Codable, Hashable, Sendable {
+        var request: Request
+        var list: ParagraphCountRules
+        /// How many paragraphs the site's chapter has, read on the page itself.
+        var paragraphCount: String?
+    }
+
+    struct ParagraphCountRules: Codable, Hashable, Sendable {
+        var items: String
+        var count: String
+        var quote: String?
+        var index: String?
+        var id: String?
+
+        var paragraph: ParagraphRules { ParagraphRules(quote: quote, index: index, id: id) }
+    }
+
+    /// 熱評: each item is a comment and the paragraph it is under.
+    struct HotComments: Codable, Hashable, Sendable {
+        var request: Request
+        var list: HotCommentRules
+        var paragraphCount: String?
+    }
+
+    struct HotCommentRules: Codable, Hashable, Sendable {
+        var items: String
+        var text: String
+        var author: String?
+        var likes: String?
+        var quote: String?
+        var index: String?
+        var id: String?
+
+        var paragraph: ParagraphRules { ParagraphRules(quote: quote, index: index, id: id) }
+    }
+
+    /// 作者說: the note, read on the page itself (no `items`).
+    struct AuthorSay: Codable, Hashable, Sendable {
+        var request: Request
+        var text: String
+        var author: String?
+    }
+
+    /// The record's chapters as the site lists them: `{{id}}` and `{{url}}` are the record's.
+    struct CommentChapters: Codable, Hashable, Sendable {
+        var request: Request
+        var list: CommentChapterRules
+    }
+
+    struct CommentChapterRules: Codable, Hashable, Sendable {
+        var items: String
+        /// The chapter's own id on the site: the comments request's `{{chapterId}}`.
+        var id: String
+        var title: String
+    }
+
+    /// One chapter's comments: `{{chapterId}}` is the chapter's `id`, `{{id}}` and `{{url}}` the
+    /// record's, `{{page}}` the page from 1, `{{sort}}` the chosen order's `value`.
+    struct ChapterComments: Codable, Hashable, Sendable {
+        var request: Request
+        /// The orders the site has (最熱, 最新), the first the default; the reader picks one.
+        var sorts: [Option]?
+        /// Each comment, read as a review is; `rating` is not drawn.
+        var list: ReviewRules
+        /// How many comments there are in all, read on the page itself: the card's 「N 則」.
+        var total: String?
+    }
+
+    /// A record's related works, on one page of the site's.
+    struct Related: Codable, Hashable, Sendable {
+        /// `{{id}}` is the record's `id`, `{{url}}` its `url`, as for `reviews`.
+        var request: Request
+        /// Seconds a work's related works answer again without a request.
+        var cacheDuration: Int?
+        /// Each work, read as a list's are.
+        var list: ListRules
+    }
+
+    /// A record's reviews, on one page of the site's.
+    struct Reviews: Codable, Hashable, Sendable {
+        /// `{{id}}` is the record's `id`, `{{url}}` its `url`; the address must be on `hosts`
+        /// once it is filled.
+        var request: Request
+        /// Seconds a work's reviews answer again without a request.
+        var cacheDuration: Int?
+        var list: ReviewRules
+        /// What a review's `rating` and the summary's `score` are out of; 5 when absent.
+        var ratingScale: Double?
+        /// The book's rating as a whole, read on the page itself (no `items`).
+        var rating: RatingRules?
+    }
+
+    /// One review, read in the scope `items` selects. Only what the site gives is drawn: a
+    /// review without a `rating` rule has no stars.
+    struct ReviewRules: Codable, Hashable, Sendable {
+        var items: String
+        var text: String
+        /// The review's own headline.
+        var title: String?
+        /// Who wrote it, as the site names them.
+        var author: String?
+        /// When, as the site writes it (`2025-01-02 15:43:23`, an ISO 8601 date, or seconds
+        /// since 1970); a date in no such form is left out.
+        var date: String?
+        /// The writer's own rating of the book, a number out of `ratingScale`.
+        var rating: String?
+        /// How many readers marked it helpful.
+        var likes: String?
+    }
+
+    struct RatingRules: Codable, Hashable, Sendable {
+        /// The average, a number out of `ratingScale`.
+        var score: String
+        /// How many ratings it is the average of.
+        var count: String?
+        /// How many ratings each star has, several values, the highest star first.
+        var distribution: String?
+    }
 
     struct Reading: Codable, Hashable, Sendable {
         /// Sent with every page of a book (`User-Agent`). No templates.
@@ -119,11 +300,19 @@ struct RuleModule: Codable, Hashable, Sendable {
         /// On `search`: the fewest characters a keyword is sent with (Open Library refuses one
         /// under 3, 「三体」). A shorter one is not asked (format 3.0).
         var minKeywordLength: Int?
+        /// On `search`: a keyword that is an author's name finds that author's books, so
+        /// 作品詳情's 作者其他作品 may ask it (format 3.0.1). Absent, it is asked for titles only.
+        var searchesAuthors: Bool?
+        /// On `modules[]`: the list's own store, its sections in order, each the list with some of
+        /// its parameters set (format 3.0.2). A card of the list opens it instead of the plain
+        /// list (maintainer, 2026-11-15: a genre opens as Apple Books' 愛情 page does). An older
+        /// app ignores it.
+        var store: [StoreSection]?
 
         init(id: String?, title: String?, description: String? = nil, cacheDuration: Int? = nil,
              params: [Param] = [], request: Request, list: ListRules, contentKind: String? = nil,
              excludeTags: [String]? = nil, isbnPrefixes: [String]? = nil, detail: Detail? = nil,
-             minKeywordLength: Int? = nil) {
+             minKeywordLength: Int? = nil, searchesAuthors: Bool? = nil, store: [StoreSection]? = nil) {
             self.id = id
             self.title = title
             self.description = description
@@ -136,6 +325,8 @@ struct RuleModule: Codable, Hashable, Sendable {
             self.isbnPrefixes = isbnPrefixes
             self.detail = detail
             self.minKeywordLength = minKeywordLength
+            self.searchesAuthors = searchesAuthors
+            self.store = store
         }
 
         init(from decoder: any Decoder) throws {
@@ -152,6 +343,8 @@ struct RuleModule: Codable, Hashable, Sendable {
             isbnPrefixes = try container.decodeIfPresent([String].self, forKey: .isbnPrefixes)
             detail = try container.decodeIfPresent(Detail.self, forKey: .detail)
             minKeywordLength = try container.decodeIfPresent(Int.self, forKey: .minKeywordLength)
+            searchesAuthors = try container.decodeIfPresent(Bool.self, forKey: .searchesAuthors)
+            store = try container.decodeIfPresent([StoreSection].self, forKey: .store)
         }
 
         /// Whether `keyword` is long enough to be sent (`minKeywordLength`), counted trimmed.
@@ -159,6 +352,15 @@ struct RuleModule: Codable, Hashable, Sendable {
             let keyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
             return !keyword.isEmpty && keyword.count >= (minKeywordLength ?? 1)
         }
+    }
+
+    /// One section of a list's store (`Entry.store`): the list drawn in `layout`, with `params`
+    /// over the parameters' own values. Named by the option it sets, as its cards are.
+    struct StoreSection: Codable, Hashable, Sendable {
+        /// A layout of books (`HomeSectionLayout`): `heroCards`, `multiRow`, `largeRow`…
+        var layout: String
+        /// Parameter values by name.
+        var params: [String: String]?
     }
 
     /// A `search` or `lookup` record's own page (Open Library: a work's description is at
@@ -172,6 +374,9 @@ struct RuleModule: Codable, Hashable, Sendable {
         var intro: String?
         /// Several values.
         var tags: String?
+        /// On the module's own `detail` (format 3.0.2): seconds a book's page answers again
+        /// without a request.
+        var cacheDuration: Int?
     }
 
     /// Forward's parameter, by its names and types.
@@ -188,11 +393,18 @@ struct RuleModule: Codable, Hashable, Sendable {
         /// An enumeration whose default is the option in the reader's 中繼資料語言偏好推薦 (format
         /// 3.0): 趨勢's 地區. `value` is the default when no option is in that language.
         var followsLanguage: Bool?
+        /// Shown, and its own value sent, only while another parameter of the same list (or of
+        /// `globalParams`) has one of these values, Forward's `belongTo` (format 3.0.2). Hidden,
+        /// it sends its default.
+        var belongTo: BelongTo?
+        /// Values an `input` offers to fill in, Forward's `placeholders` (format 3.0.2).
+        var placeholders: [Placeholder]?
 
         var kind: ParamType? { ParamType(rawValue: type) }
 
         init(name: String, title: String? = nil, type: String, description: String? = nil, value: String? = nil,
-             enumOptions: [Option]? = nil, followsLanguage: Bool? = nil) {
+             enumOptions: [Option]? = nil, followsLanguage: Bool? = nil, belongTo: BelongTo? = nil,
+             placeholders: [Placeholder]? = nil) {
             self.name = name
             self.title = title
             self.type = type
@@ -200,6 +412,8 @@ struct RuleModule: Codable, Hashable, Sendable {
             self.value = value
             self.enumOptions = enumOptions
             self.followsLanguage = followsLanguage
+            self.belongTo = belongTo
+            self.placeholders = placeholders
         }
 
         init(from decoder: any Decoder) throws {
@@ -217,7 +431,21 @@ struct RuleModule: Codable, Hashable, Sendable {
             }
             enumOptions = try container.decodeIfPresent([Option].self, forKey: .enumOptions)
             followsLanguage = try container.decodeIfPresent(Bool.self, forKey: .followsLanguage)
+            belongTo = try container.decodeIfPresent(BelongTo.self, forKey: .belongTo)
+            placeholders = try container.decodeIfPresent([Placeholder].self, forKey: .placeholders)
         }
+    }
+
+    /// The parameter a `belongTo` follows, by its `name`, and the values that show it.
+    struct BelongTo: Codable, Hashable, Sendable {
+        var paramName: String
+        var value: [String]
+    }
+
+    /// An `input`'s suggestion: what the menu says, and what it fills in.
+    struct Placeholder: Codable, Hashable, Sendable {
+        var title: String
+        var value: String
     }
 
     enum ParamType: String, CaseIterable, Sendable {
@@ -252,6 +480,11 @@ struct RuleModule: Codable, Hashable, Sendable {
         /// How a value goes into `body`: `form` (absent), percent-encoded, or `json`, escaped as
         /// a JSON string's contents, for a body such as `{"keyword":"{{keyword}}"}` (format 3.0).
         var bodyEncoding: String?
+        /// JavaScript run once the templates are filled, in a module that declares `javascript`
+        /// (format 3.0.2): `request` is `{url, method, body, headers}` and `values` the templates'
+        /// values; the request sent is the object it returns, else `request` as it left it. For a
+        /// site that signs its requests. The address it writes is still held to `hosts`.
+        var script: String?
     }
 
     /// `Request.bodyEncoding`'s values.
@@ -283,6 +516,14 @@ struct RuleModule: Codable, Hashable, Sendable {
         var seriesCovers: String? = nil
         /// `comic` makes the item a comic; any other value leaves the entry's kind (format 3.0).
         var contentKind: String? = nil
+        /// The record's own id on the site, for a request that takes one where its `url` is
+        /// another address (`reviews`' `{{id}}`; format 3.0.1).
+        var id: String? = nil
+        /// The books of the series the item stands for, in series order, the item's own among
+        /// them: a rule that selects them inside the item, each then read with this list's own
+        /// rules (`title`, `author`, `cover`, `url`…). The item's card opens the series' page,
+        /// which lists them; one with a `url` opens as a work of its own (format 3.0.1).
+        var volumes: String? = nil
     }
 }
 
@@ -335,6 +576,11 @@ private extension String {
 /// (a JSON body sent percent-encoded searches for `%E8…`).
 enum RuleModuleFormat {
     static let version3 = "3.0"
+    /// `reviews`, a list's `id` and `volumes`, and a search's `searchesAuthors`.
+    static let version3_0_1 = "3.0.1"
+    /// `icon`, `globalParams`, `detail`, `related`, `genre`, a list's `store`, a parameter's
+    /// `belongTo` and `placeholders`, `javascript`, a request's `script`, and `comments`.
+    static let version3_0_2 = "3.0.2"
 }
 
 extension RuleModule.ListRules {
@@ -343,7 +589,8 @@ extension RuleModule.ListRules {
         RuleListFields(name: title, author: author ?? "", bookUrl: url ?? "", coverUrl: cover ?? "",
                        intro: intro ?? "", wordCount: "", lastChapter: "", kind: kind ?? "", language: language ?? "",
                        aliases: aliases ?? "", tags: tags ?? "", publisher: publisher ?? "", isbn: isbn ?? "",
-                       series: series ?? "", seriesCovers: seriesCovers ?? "", contentKind: contentKind ?? "")
+                       series: series ?? "", seriesCovers: seriesCovers ?? "", contentKind: contentKind ?? "",
+                       id: id ?? "")
     }
 }
 
@@ -374,6 +621,9 @@ struct RuleModuleVersion: Comparable, Sendable {
 
     static func == (lhs: Self, rhs: Self) -> Bool { !(lhs < rhs) && !(rhs < lhs) }
 
-    /// The running app's `CFBundleShortVersionString`.
-    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
+    /// Compatibility alias for callers that used the former app-version name.
+    static var app: String { RuleModuleRuntimeCompatibility.version }
+
+    /// Marketing version is display-only; it never gates a module.
+    static var displayVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
 }

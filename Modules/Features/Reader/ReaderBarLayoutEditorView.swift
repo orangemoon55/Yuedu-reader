@@ -107,7 +107,7 @@ struct ReaderBarLayoutEditorView: View {
                     ? readerConfig.readerHeaderHorizontalPadding
                     : readerConfig.readerFooterHorizontalPadding,
                 svgAssetStore: svgAssetStore,
-                userInterfaceStyle: theme == .night ? .dark : .light,
+                userInterfaceStyle: theme.isDark ? .dark : .light,
                 displayScale: displayScale,
                 bodyFontPostScriptName: UserReaderFontResolver.postScriptName(settings.selectedReaderFontPostScript)
             )
@@ -495,7 +495,7 @@ struct ReaderBarLayoutEditorView: View {
 
     private func colorBinding(dark: Bool, field: ReaderOverlayComponentKind? = nil, slot: ReaderBarSlot? = nil) -> Binding<Color> {
         let appearance: UIUserInterfaceStyle = dark ? .dark : .light
-        let previewTheme: ReaderTheme = dark ? .night : (theme == .night ? .white : theme)
+        let previewTheme: ReaderTheme = dark ? .night : (theme.isDark ? .white : theme)
         return Binding(
             get: {
                 var style = layout.style

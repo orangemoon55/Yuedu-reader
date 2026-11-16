@@ -6,7 +6,7 @@ import Foundation
 @MainActor
 final class ModuleProvider: CollectionBrowsing, HomeSectionProviding {
     let module: RuleModule
-    private let client: RuleModuleClient
+    let client: RuleModuleClient
     /// The reader's 中繼資料語言偏好推薦, for a parameter that follows it.
     private let language: @MainActor () -> String
 
@@ -76,7 +76,9 @@ final class ModuleProvider: CollectionBrowsing, HomeSectionProviding {
         guard case .module(_, let entryID) = section.binding, let entry = entry(entryID) else { return module.version }
         let followed = entry.params.filter { $0.followsLanguage == true }
             .map { "\($0.name)=\($0.currentValue(in: section.parameters, language: language()))" }
-        return ([module.version] + followed).joined(separator: "\u{1F}")
+        // The module's own settings (`globalParams`, 3.0.2): one changed on its page loads every row again.
+        let globals = module.globalValues(language: nil).sorted { $0.key < $1.key }.map { "global.\($0.key)=\($0.value)" }
+        return ([module.version] + followed + globals).joined(separator: "\u{1F}")
     }
 
     /// The list's own title, in the app's language: a section the defaults made has none, and
@@ -202,6 +204,17 @@ final class ModuleProvider: CollectionBrowsing, HomeSectionProviding {
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
+    /// An `isbn` rule's values: one per line as every rule's are, and one per `,` `;` `/` `|`
+    /// within a line. A site writes an edition's ISBN-13 and -10 in one value
+    /// (`9787309138856,7309138856`), and a rule has no way to split it; no ISBN holds one of
+    /// these, so nothing else is split.
+    nonisolated static func isbnValues(_ value: String) -> [String] {
+        var seen = Set<String>()
+        return value.components(separatedBy: CharacterSet(charactersIn: "\n,;，；/|"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
     /// Its items are books the module reads: never a lookup's record, which is a copy's data.
     private func isReadable(_ entry: RuleModule.Entry) -> Bool {
         module.reading != nil && entry != module.lookup
@@ -245,7 +258,7 @@ final class ModuleProvider: CollectionBrowsing, HomeSectionProviding {
         let itemID = hasURLRule && !item.bookUrl.isEmpty ? item.bookUrl : "\(title)\u{1F}\(author)"
         let kind = entry.contentKind(of: item)
         // An edition's ISBN-10 and -13 normalize to one value; a work lists every edition's.
-        let identifiers = Set(Self.values(item.isbn ?? "").lazy.compactMap { ExternalIdentifier.normalized(.isbn13, $0) }
+        let identifiers = Set(Self.isbnValues(item.isbn ?? "").lazy.compactMap { ExternalIdentifier.normalized(.isbn13, $0) }
             .reduce(into: [ExternalIdentifier]()) { kept, isbn in
                 if kept.count < Self.isbnLimit, !kept.contains(isbn) { kept.append(isbn) }
             })
@@ -314,7 +327,7 @@ extension RuleModule.Entry {
     /// `title` with the options `parameters` pick by name (今日熱門 · 日本): what tells two cards of
     /// one list apart, in a layout of lists and in its form.
     func cardName(_ title: String, parameters: [String: String]) -> String {
-        let picked = editableParams.compactMap { param -> String? in
+        let picked = shownParams(in: parameters, language: nil).compactMap { param -> String? in
             guard param.kind == .enumeration, let value = parameters[param.name] else { return nil }
             return param.enumOptions?.first { $0.value == value }?.title
         }

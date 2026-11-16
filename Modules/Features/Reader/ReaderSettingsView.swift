@@ -17,7 +17,7 @@ enum ReaderSettingsInitialSection: Hashable {
         case .all: "閱讀設定"
         case .text: "顯示設定"
         case .spacing: "間距"
-        case .headerFooter: "頁首頁尾與標題"
+        case .headerFooter: "頁首頁尾"
         case .decoration: "閱讀裝飾"
         case .chapterTitleStyle: "章節標題樣式"
         case .commentBubble: "氣泡設定"
@@ -93,46 +93,16 @@ struct ReaderSettingsView: View {
 
     var body: some View {
         ReaderSettingsNavigationHost(usesParent: usesParentNavigation) {
-            VStack(spacing: 0) {
-                previewPanel
-                Divider()
-
-                // What the text looks like, how it sits on the page, what surrounds it,
-                // what decorates it, then how the reader behaves — the order a reader
-                // reaches for them. 排版生效範圍 comes first because it decides where every
-                // change below is kept.
-                Form {
-                    if initialSection == .all || initialSection == .text || initialSection == .spacing {
-                        scopeSection
-                    }
-
-                    if initialSection == .all || initialSection == .text {
-                        if supportsUserFont || supportsFontSize { textSection }
-                    }
-
-                    if initialSection == .all || initialSection == .spacing {
-                        if supportsSpacing || supportsLineHeight { layoutSection }
-                    }
-
-                    if initialSection == .all || initialSection == .headerFooter {
-                        headerFooterSection
-                    }
-
-                    if initialSection == .chapterTitleStyle, supportsLineHeight {
-                        ChapterTitleStyleSettingsView(onOpenImporter: { requestStyleImporter(.chapterTitleStyle) })
-                    }
-
-                    if initialSection == .all || initialSection == .decoration || initialSection == .commentBubble {
-                        readerDecorationSection
-                    }
-
-                    if initialSection == .all {
-                        if showsPagingSection { pagingSection }
-                        brightnessSection
-                        readerSettingsBackupSection
-                    }
+            Group {
+                if initialSection == .chapterTitleStyle {
+                    // This page owns its Form. A Form inside the general settings
+                    // Form becomes one empty, zero-height row on iOS 17.
+                    ChapterTitleStyleSettingsView(onOpenImporter: {
+                        requestStyleImporter(.chapterTitleStyle)
+                    })
+                } else {
+                    generalSettingsPanel
                 }
-                .softScrollEdges()
             }
             .themedAppSurface(for: .settings)
             .navigationTitle(localized(initialSection.titleKey))
@@ -160,7 +130,6 @@ struct ReaderSettingsView: View {
         .sheet(item: $paywallFeature) { feature in
             PaywallView(highlightedFeature: feature)
                 .environmentObject(subscriptionStore)
-                // The app's accent, not the reader's ink these settings are opened over.
                 .tint(DSColor.accent)
         }
         .readerStyleImportPresentation(route: $styleImportRoute) { _ in }
@@ -171,27 +140,51 @@ struct ReaderSettingsView: View {
                 dismissButton: .default(Text(localized("確定")))
             )
         }
-        .alert(
-            localized("重設頁首頁尾？"),
-            isPresented: $showingOverlayResetConfirmation
-        ) {
-            Button(localized("重設"), role: .destructive) {
-                resetReaderOverlayLayout()
-            }
+        .alert(localized("重設頁首頁尾？"), isPresented: $showingOverlayResetConfirmation) {
+            Button(localized("重設"), role: .destructive) { resetReaderOverlayLayout() }
             Button(localized("取消"), role: .cancel) {}
         } message: {
             Text(localized("這會恢復預設的欄位配置與樣式。"))
         }
-        .alert(
-            localized("重設排版？"),
-            isPresented: $showingLayoutResetConfirmation
-        ) {
-            Button(localized("重設"), role: .destructive) {
-                resetLayout()
-            }
+        .alert(localized("重設排版？"), isPresented: $showingLayoutResetConfirmation) {
+            Button(localized("重設"), role: .destructive) { resetLayout() }
             Button(localized("取消"), role: .cancel) {}
         } message: {
             Text(localized("行距、字距、段距與頁面邊距會回到預設值。"))
+        }
+    }
+
+    private var generalSettingsPanel: some View {
+        VStack(spacing: 0) {
+            previewPanel
+                .accessibilityIdentifier("reader.settings.preview")
+            Divider()
+            Form {
+                if initialSection == .all || initialSection == .text || initialSection == .spacing {
+                    scopeSection
+                }
+                if initialSection == .all || initialSection == .text {
+                    if supportsUserFont || supportsFontSize { textSection }
+                }
+                if initialSection == .all || initialSection == .spacing {
+                    if supportsSpacing || supportsLineHeight { layoutSection }
+                }
+                if initialSection == .all || initialSection == .headerFooter {
+                    headerFooterSection
+                }
+                if initialSection == .all, supportsLineHeight {
+                    chapterTitleSection
+                }
+                if initialSection == .all || initialSection == .decoration || initialSection == .commentBubble {
+                    readerDecorationSection
+                }
+                if initialSection == .all {
+                    if showsPagingSection { pagingSection }
+                    brightnessSection
+                    readerSettingsBackupSection
+                }
+            }
+            .softScrollEdges()
         }
     }
 
@@ -595,7 +588,7 @@ struct ReaderSettingsView: View {
         }
     }
 
-    // MARK: - 頁首頁尾與標題
+    // MARK: - 頁首頁尾
 
     /// Pushed pages, not sheets handed back to the reader to present. This sheet is
     /// already inside a `NavigationStack`, so pushing keeps the whole flow at one
@@ -616,30 +609,37 @@ struct ReaderSettingsView: View {
             }
             .accessibilityIdentifier("reader.settings.headerFooter.editor")
 
-            if supportsLineHeight {
-                NavigationLink {
-                    ChapterTitleStyleSettingsView(
-                        onOpenImporter: { requestStyleImporter(.chapterTitleStyle) }
-                    )
-                } label: {
-                    SettingsRowLabel(
-                        localized(ReadingSettingsScopeItem.chapterTitle.titleKey),
-                        systemImage: ReadingSettingsScopeItem.chapterTitle.systemImage
-                    )
-                }
-            }
-
             Button(role: .destructive) {
                 showingOverlayResetConfirmation = true
             } label: {
                 SettingsRowLabel(localized("重設頁首頁尾"), systemImage: "arrow.counterclockwise", role: .destructive)
             }
         } header: {
-            Text(localized("頁首頁尾與標題"))
+            Text(localized("頁首頁尾"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
             Text(localized("正文與頁首頁尾的距離在「排版」的上下邊距調整。"))
                 .dsSectionFooter()
+        }
+        .interfaceSectionSurface()
+    }
+
+    private var chapterTitleSection: some View {
+        Section {
+            NavigationLink {
+                ChapterTitleStyleSettingsView(
+                    onOpenImporter: { requestStyleImporter(.chapterTitleStyle) }
+                )
+            } label: {
+                SettingsRowLabel(
+                    localized("章節標題樣式"),
+                    systemImage: ReadingSettingsScopeItem.chapterTitle.systemImage
+                )
+            }
+            .accessibilityIdentifier("reader.settings.chapterTitleStyle")
+        } header: {
+            Text(localized("章節標題樣式"))
+                .foregroundStyle(DSColor.textSecondary)
         }
         .interfaceSectionSurface()
     }

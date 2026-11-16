@@ -21,7 +21,7 @@ extension ReaderView {
     /// so neither inherits it from the bottom bar's environment. Pinning only the bottom bar
     /// put a light book card over a dark bottom bar (feedback #78).
     var readerColorScheme: ColorScheme {
-        readerTheme == .night ? .dark : .light
+        readerTheme.isDark ? .dark : .light
     }
 
     // MARK: - Top chrome

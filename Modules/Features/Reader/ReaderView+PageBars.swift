@@ -75,7 +75,7 @@ extension ReaderView {
             // The reader's own surface, not the app's colour scheme: a night
             // reading theme under a light system appearance still needs the dark
             // resolution of a dynamic tip colour.
-            userInterfaceStyle: readerTheme == .night ? .dark : .light,
+            userInterfaceStyle: readerTheme.isDark ? .dark : .light,
             displayScale: readerDisplayScale,
             bodyFontPostScriptName: UserReaderFontResolver.postScriptName(settings.selectedReaderFontPostScript),
             headerSideInsets: readerBarSideInsets(for: .header),

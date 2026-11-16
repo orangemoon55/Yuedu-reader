@@ -379,7 +379,7 @@ struct ReaderView: View {
     @State var isRestoringPosition = true
     /// The saved position the book opened at, while the reader is still owed it.
     @State var openingRestore = ReaderOpeningRestore()
-    var savedCoreTextRestoreTarget: (chapterIndex: Int, charOffset: Int)? {
+    var savedCoreTextRestoreTarget: (chapterIndex: Int, charOffset: Int, translationOffset: Int?)? {
         get { openingRestore.target }
         nonmutating set { openingRestore.target = newValue }
     }
@@ -403,6 +403,8 @@ struct ReaderView: View {
     @State var versionFinder = ReaderVersionFinder()
     /// The source whose 來源配置登入 the book card opened.
     @State var sourceLoginTarget: BookSource?
+    /// A module's comments in the text of this book (`ReaderChapterCommentDecorator`).
+    @State var commentDecorator = ReaderChapterCommentDecorator()
     /// 調試正文's 調試規則, from 更多.
     @State var contentDebugTarget: ReaderContentDebugTarget?
     @State private var replaceRuleDraft: ReplaceRule?
@@ -482,10 +484,8 @@ struct ReaderView: View {
         if let background = resolution.customBackground {
             preset = settings.readerBackgroundPreset(for: background)
         } else if resolution.paintsWithAppearanceTheme {
-            let paletteMode: ColorScheme = settings.onScreenAppearanceThemeID == AppearanceThemePreset.nightCopperID
-                ? .dark : settings.readerMode
             preset = settings.appearanceTheme(
-                for: paletteMode,
+                for: settings.readerMode,
                 isProActive: subscriptionStore.hasAccess(.readerThemePacks)
             )
         }
@@ -1195,6 +1195,7 @@ struct ReaderView: View {
             progressTrace("onPageChanged page=\(newPage) noPosition — the reading position stays")
             return
         }
+        openingRestore.readerSettled(at: settledPosition)
         let newChapter = settledPosition.spineIndex
         let chapterChanged = newChapter != currentChapterIndex
 
@@ -1213,7 +1214,8 @@ struct ReaderView: View {
         // offset.
         let deliveredRestore = savedCoreTextRestoreTarget.flatMap { target in
             openingRestore.pageSettled(newPage, pageIndex: { engine.pageIndex(for: $0) })
-                ? CoreTextReadingPosition(spineIndex: target.chapterIndex, charOffset: target.charOffset)
+                ? CoreTextReadingPosition(spineIndex: target.chapterIndex, charOffset: target.charOffset,
+                                          translationOffset: target.translationOffset)
                 : nil
         }
         defer {
@@ -2185,7 +2187,7 @@ struct ReaderView: View {
                 // the AI, which is the whole point: a press of 聽書 followed by silence.
                 ReaderTTSPreparationBanner(
                     text: notice,
-                    colorScheme: readerTheme == .night ? .dark : .light
+                    colorScheme: readerTheme.isDark ? .dark : .light
                 )
                 .padding(.top, DSSpacing.sm)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -2198,7 +2200,7 @@ struct ReaderView: View {
                 // 自動換源: the same band, while it searches and briefly when it fails.
                 ReaderAutoChangeSourceBanner(
                     notice: notice,
-                    colorScheme: readerTheme == .night ? .dark : .light,
+                    colorScheme: readerTheme.isDark ? .dark : .light,
                     onExpire: { readerViewModel.dismissAutoChangeSourceNotice(notice) }
                 )
                 .padding(.top, DSSpacing.sm)
@@ -2214,7 +2216,7 @@ struct ReaderView: View {
                 // sits over the top bar's empty middle, clear of its buttons.
                 ReaderBookmarkToastView(
                     toast: toast,
-                    colorScheme: readerTheme == .night ? .dark : .light
+                    colorScheme: readerTheme.isDark ? .dark : .light
                 )
                 .padding(.top, DSSpacing.sm)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -3121,6 +3123,8 @@ struct ReaderView: View {
         .sheet(item: $sourceLoginTarget) { source in
             BookSourceLoginSheet(source: source) { sourceLoginTarget = nil }
         }
+        // A chapter's comments arrived from a module: build the chapter again with them.
+        .onReceive(commentDecorator.updates) { spine in applyCommentUpdate(spine: spine) }
         .sheet(item: $contentDebugTarget) { target in
             BookSourceRuleDebugView(source: target.source, initialTab: .content, initialURL: target.chapterURL)
         }
@@ -3133,7 +3137,7 @@ struct ReaderView: View {
             }
         }
         .sheet(item: $reviewTarget) { target in
-            LegadoReviewBrowserView(target: target) { _ in
+            ReaderReviewSheetContent(target: target) { _ in
                 reviewTarget = nil
             }
         }
@@ -3379,7 +3383,7 @@ struct ReaderView: View {
         }
 
         let position = restored.coreTextPosition
-        savedCoreTextRestoreTarget = (position.spineIndex, max(0, position.charOffset))
+        savedCoreTextRestoreTarget = (position.spineIndex, max(0, position.charOffset), position.translationOffset)
         setCoreTextExternalTarget(position)
         currentChapterIndex = position.spineIndex
         scrollVisibleChapter = position.spineIndex
@@ -3404,7 +3408,8 @@ struct ReaderView: View {
             if let target = savedCoreTextRestoreTarget {
                 // Positions count spine items; an EPUB's `chapters` are its TOC entries (`spineChapters`).
                 let position = CoreTextReadingPosition(spineIndex: max(0, min(target.chapterIndex, spineChapters.count - 1)),
-                                                       charOffset: max(0, target.charOffset))
+                                                       charOffset: max(0, target.charOffset),
+                                                       translationOffset: target.translationOffset)
                 pendingScrollJumpTarget = position
                 currentChapterIndex = position.spineIndex
                 scrollVisibleChapter = position.spineIndex
@@ -3465,6 +3470,8 @@ struct ReaderView: View {
         )
         ensureChapterReady(chapterIndex: position.spineIndex)
         epubRenderer.updateCurrentPosition(globalPage: page, engine: engine)
+        // A saved place among a module's comment cards has no page until the comments arrive.
+        openingRestore.restoreShown(at: position, shownAs: engine.readingPosition(forPage: page))
         finishCoreTextRestore(restoredSpine: position.spineIndex)
     }
 

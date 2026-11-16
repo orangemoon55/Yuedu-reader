@@ -389,12 +389,13 @@ struct ReaderQuickThemePanelView: View {
             && resolution.theme == background
         return Button {
             settings.appearanceBindReaderTheme = false
-            settings.setReaderDarkMode(background == .night, deviceIsDark: colorScheme == .dark)
+            settings.setReaderDarkMode(background.isDark, deviceIsDark: colorScheme == .dark)
             // 黑色 is the reader's dark mode; the saved background stays the light mode's
             // and comes back with it. A light built-in one takes its place there.
-            if background != .night {
+            if !background.isDark {
                 settings.readerCustomBackgroundID = nil
             }
+            background.persist()
             readerTheme = background
         } label: {
             ReaderQuickPanelBackgroundTile(

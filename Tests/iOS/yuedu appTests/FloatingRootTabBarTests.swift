@@ -14,7 +14,7 @@ final class FloatingRootTabBarTests: XCTestCase {
                         hasSearch: search, height: 64
                     )
                     XCTAssertGreaterThanOrEqual(layout.itemWidth, 44)
-                    XCTAssertGreaterThanOrEqual(layout.height - 12, 44)
+                    XCTAssertGreaterThanOrEqual(layout.height - FloatingRootTabBarLayout.surfacePadding * 2, 44)
                     if search { XCTAssertGreaterThanOrEqual(layout.searchDiameter, 44) }
                     XCTAssertLessThanOrEqual(layout.viewportWidth, width)
                     XCTAssertEqual(layout.contentWidth, layout.capsuleWidth + layout.gap + layout.searchDiameter)
@@ -25,7 +25,12 @@ final class FloatingRootTabBarTests: XCTestCase {
         XCTAssertGreaterThan(narrow.contentWidth, narrow.viewportWidth, "Narrow layouts scroll rather than shrink targets")
         let searchOnly = FloatingRootTabBarLayout(availableWidth: 320, mainTabCount: 0, hasSearch: true, height: 64)
         XCTAssertEqual(searchOnly.capsuleWidth, 0)
-        XCTAssertEqual(searchOnly.contentWidth, 64)
+        XCTAssertEqual(searchOnly.contentWidth, 56)
+        let compact = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 2, hasSearch: true, height: 56)
+        XCTAssertEqual(compact.height, 56)
+        XCTAssertEqual(compact.itemWidth, 88)
+        XCTAssertEqual(compact.contentWidth, 248)
+        XCTAssertGreaterThanOrEqual(compact.height - FloatingRootTabBarLayout.surfacePadding * 2, 44)
     }
 
     func testSearchDetachesWithoutChangingOrderSelectionOrHiddenPreferences() {
@@ -128,6 +133,55 @@ final class FloatingRootTabBarTests: XCTestCase {
         XCTAssertGreaterThan(accessibleSize.height, standardSize.height)
     }
 
+    func testSettingsLastRowStopsAboveMeasuredFloatingBarAndRemainsHitTestable() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: FloatingBarBottomInsetHarness())
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKey()
+        }
+
+        let bar = try await waitForView(in: host.view) { view -> UIView? in
+            view.accessibilityIdentifier == "floatingBar.measurement" ? view : nil
+        }
+        let scroll = try await waitForView(in: host.view) { view -> UIScrollView? in
+            guard let scroll = view as? UIScrollView,
+                  scroll.contentSize.height > scroll.bounds.height + 100 else { return nil }
+            return scroll
+        }
+        // A Form virtualizes rows. Scroll first, then look for the final row.
+        for _ in 0..<3 {
+            host.view.layoutIfNeeded()
+            scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top,
+                scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)), animated: false)
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let about = try await waitForView(in: host.view) { view -> UIView? in
+            view.accessibilityIdentifier == "settings.about" ? view : nil
+        }
+        host.view.layoutIfNeeded()
+
+        let aboutFrame = about.convert(about.bounds, to: window)
+        let barFrame = bar.convert(bar.bounds, to: window)
+        XCTAssertTrue(barFrame.minY.isFinite)
+        XCTAssertTrue(aboutFrame.maxY.isFinite)
+        XCTAssertLessThanOrEqual(
+            aboutFrame.maxY, barFrame.minY + 1,
+            "The last settings row must remain fully above the floating bar"
+        )
+        let hit = window.hitTest(CGPoint(x: aboutFrame.midX, y: aboutFrame.midY), with: nil)
+        XCTAssertTrue(
+            hit.map { isDescendant($0, of: about) } == true,
+            "The visible About row must remain touchable"
+        )
+    }
+
     func testUIKitReaderHostingReceivesRootVisibilityAndReleasesItsRequest() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)
@@ -159,4 +213,68 @@ final class FloatingRootTabBarTests: XCTestCase {
         XCTAssertFalse(visibility.isTabBarHidden)
         XCTAssertTrue(visibility.showsFloatingTabBar(isFloating: true, keyboardVisible: false))
     }
+}
+
+@MainActor
+private extension FloatingRootTabBarTests {
+    func descendants(of view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { descendants(of: $0) }
+    }
+
+    func isDescendant(_ view: UIView, of ancestor: UIView) -> Bool {
+        view === ancestor || view.isDescendant(of: ancestor)
+    }
+
+    func waitForView<T>(in root: UIView, _ match: (UIView) -> T?) async throws -> T {
+        for _ in 0..<120 {
+            root.setNeedsLayout()
+            root.layoutIfNeeded()
+            if let result = descendants(of: root).compactMap(match).first { return result }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        throw NSError(domain: "FloatingRootTabBarTests", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: "The expected hosted view did not appear"])
+    }
+}
+
+/// An overlay simulates a navigation host losing the outer safe-area reservation.
+/// The production avoidance modifier must reserve only the missing distance.
+private struct FloatingBarBottomInsetHarness: View {
+    @State private var barTop: CGFloat?
+    var body: some View {
+        NavigationStack {
+            Form {
+                ForEach(0..<20, id: \.self) { index in
+                    Text("Settings row \(index)").frame(minHeight: 48)
+                }
+                BottomInsetProbe(isButton: true)
+                    .frame(height: 48)
+            }
+            .avoidsFloatingRootTabBar()
+            .navigationTitle("Settings")
+        }
+        .overlay(alignment: .bottom) {
+            FloatingRootTabBar(tabs: [.bookshelf, .settings, .search], selection: .constant(.settings))
+                .background { BottomInsetProbe(isButton: false) }
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { barTop = $0 }
+        }
+        .environment(\.rootTabBarTop, barTop)
+    }
+}
+
+private struct BottomInsetProbe: UIViewRepresentable {
+    let isButton: Bool
+    func makeUIView(context: Context) -> UIView {
+        if isButton {
+            let button = UIButton(type: .system)
+            button.setTitle("关于轻云出岫", for: .normal)
+            button.accessibilityIdentifier = "settings.about"
+            return button
+        }
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.accessibilityIdentifier = "floatingBar.measurement"
+        return view
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }

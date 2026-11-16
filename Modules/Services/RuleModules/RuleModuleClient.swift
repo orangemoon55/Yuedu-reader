@@ -42,14 +42,9 @@ extension RuleModule.Entry {
     /// it has none, the option in `language` when it follows it), the reader's own for this
     /// section, then the page's position.
     func values(_ parameters: [String: String], position: Int, keyword: String? = nil, language: String?) -> [String: String] {
-        var values: [String: String] = [:]
-        for param in params {
-            switch param.kind {
-            case .page, .offset:
-                values[param.name] = String(position)
-            default:
-                values[param.name] = param.currentValue(in: parameters, language: language)
-            }
+        var values = RuleModule.Param.currentValues(of: params, in: parameters, language: language)
+        for param in params where param.kind == .page || param.kind == .offset {
+            values[param.name] = String(position)
         }
         if let keyword { values["keyword"] = keyword }
         return values
@@ -59,9 +54,73 @@ extension RuleModule.Entry {
     var editableParams: [RuleModule.Param] {
         params.filter { [.input, .count, .enumeration].contains($0.kind) }
     }
+
+    /// The editable parameters the values shown make visible (`belongTo`, format 3.0.2).
+    func shownParams(in parameters: [String: String], language: String?) -> [RuleModule.Param] {
+        let values = RuleModule.Param.currentValues(of: params, in: parameters, language: language)
+        return editableParams.filter { $0.isShown(among: values) }
+    }
+}
+
+extension RuleModule {
+    /// What each `globalParams` entry is now, by name: the reader's own, which
+    /// `RuleModuleLibrary` wrote into its `value`, else its default. Merged into every request's
+    /// values; the validator lets no list parameter share a global's name.
+    func globalValues(language: String?) -> [String: String] {
+        RuleModule.Param.currentValues(of: globalParams ?? [], in: [:], language: language)
+    }
+
+    /// `values` with the global ones added: the template values of any request of the module.
+    func withGlobalValues(_ values: [String: String], language: String?) -> [String: String] {
+        guard globalParams?.isEmpty == false else { return values }
+        return globalValues(language: language).merging(values) { _, own in own }
+    }
+
+    /// The module with the reader's own value for each global parameter (by name) as its `value`.
+    /// A name the module no longer has is left out; a value no option of an enumeration has
+    /// any longer leaves its default.
+    func applyingGlobalValues(_ values: [String: String]) -> RuleModule {
+        guard !values.isEmpty, var params = globalParams else { return self }
+        for (index, param) in params.enumerated() {
+            guard let value = values[param.name] else { continue }
+            if param.kind == .enumeration, !(param.enumOptions ?? []).contains(where: { $0.value == value }) { continue }
+            if param.kind == .constant { continue }
+            params[index].value = value
+        }
+        var module = self
+        module.globalParams = params
+        return module
+    }
 }
 
 extension RuleModule.Param {
+    /// Each parameter's value by name: the reader's own, else as `currentValue` defaults it; a
+    /// parameter its `belongTo` hides sends its default instead (Forward hides it the same way).
+    /// Whether a parameter is hidden follows from the values its target sends, so a chain is
+    /// settled one link per pass; the validator refuses a cycle.
+    static func currentValues(of params: [RuleModule.Param], in parameters: [String: String],
+                              language: String?) -> [String: String] {
+        let own = Dictionary(params.map { ($0.name, $0.currentValue(in: parameters, language: language)) },
+                             uniquingKeysWith: { first, _ in first })
+        var values = own
+        for _ in 0..<max(params.count, 1) {
+            var next = own
+            for param in params where !param.isShown(among: values) {
+                next[param.name] = param.currentValue(in: [:], language: language)
+            }
+            if next == values { break }
+            values = next
+        }
+        return values
+    }
+
+    /// Visible while the parameter its `belongTo` names has one of the listed values; always
+    /// without a `belongTo`.
+    func isShown(among values: [String: String]) -> Bool {
+        guard let belongTo else { return true }
+        return belongTo.value.contains(values[belongTo.paramName] ?? "")
+    }
+
     /// The section's own value, else the option in `language` (the reader's 中繼資料語言偏好推薦,
     /// a `MetadataLanguage` tag) for a parameter that follows it, else the default, else an
     /// enumeration's first option.
@@ -80,8 +139,9 @@ extension RuleModule.Param {
 }
 
 /// Reads a module's pages: the request its entry describes, through `WebFetcher` under the
-/// module's `rateLimit`, then its list rules on a bare `ModernRuleEngine` (no JS evaluator,
-/// never `BookSourceSession`), through the mapping 來源配置 use.
+/// module's `rateLimit`, then its list rules on a `ModernRuleEngine` (never `BookSourceSession`;
+/// with the module's own scripts when it declares `javascript`, `RuleModuleScriptRuntime`),
+/// through the mapping 來源配置 use.
 ///
 /// Every address it sends to passes `safeURL` and the module's `hosts`, a redirect included;
 /// a refused redirect is never sent.
@@ -103,10 +163,11 @@ struct RuleModuleClient: Sendable {
     ///   one file per keyword would pile up.
     func page(of entry: RuleModule.Entry, in module: RuleModule, values: [String: String],
               keepsForHome: Bool = false) async throws -> RuleModulePage {
+        let values = module.withGlobalValues(values, language: nil)
         let entryID = entry.id ?? "search"
         let cacheFile = cacheFile(module: module.id, entry: entryID, values: values)
         let duration = TimeInterval(max(entry.cacheDuration ?? 0, 0))
-        if duration > 0, let cached = cached(cacheFile), cached.version == module.version,
+        if duration > 0, let cached = cached(RuleModulePage.self, at: cacheFile), cached.version == module.version,
            now().timeIntervalSince(cached.fetchedAt) < duration {
             return cached
         }
@@ -124,7 +185,8 @@ struct RuleModuleClient: Sendable {
     /// draws while `page` fetches it again. Off the main actor: it reads and decodes a file.
     @concurrent
     func savedPage(of entry: RuleModule.Entry, in module: RuleModule, values: [String: String]) async -> RuleModulePage? {
-        guard let saved = cached(cacheFile(module: module.id, entry: entry.id ?? "search", values: values)),
+        let values = module.withGlobalValues(values, language: nil)
+        guard let saved = cached(RuleModulePage.self, at: cacheFile(module: module.id, entry: entry.id ?? "search", values: values)),
               saved.version == module.version else { return nil }
         return saved
     }
@@ -132,15 +194,9 @@ struct RuleModuleClient: Sendable {
     // MARK: - Request
 
     private func fetch(_ entry: RuleModule.Entry, in module: RuleModule, values: [String: String]) async throws -> [RuleListItem] {
-        let request = entry.request
-        let address = Self.fill(request.url, values, encode: true)
-        let bodyEncoding: TemplateEncoding = request.bodyEncoding == RuleModule.BodyEncoding.json.rawValue ? .json : .percent
-        let page = try await send(address, method: (request.method ?? "GET").uppercased(),
-                                  body: request.body.map { Self.fill($0, values, encoding: bodyEncoding) },
-                                  headers: (request.headers ?? [:]).mapValues { Self.fill($0, values, encode: false) },
-                                  charset: request.charset, in: module)
+        let page = try await perform(entry.request, values: values, in: module)
         let list = entry.list
-        return RuleListMapping.items(engine: ModernRuleEngine(), content: page.text, baseURL: page.baseURL,
+        return RuleListMapping.items(engine: module.ruleEngine(), content: page.text, baseURL: page.baseURL,
                                      listRule: list.items, fields: list.fields)
     }
 
@@ -148,16 +204,10 @@ struct RuleModuleClient: Sendable {
     /// its empty description and tags given from it. `{{url}}` is the item's `url`, as it is at
     /// the start of the address, percent-encoded anywhere else.
     func detailed(_ item: RuleListItem, by detail: RuleModule.Detail, in module: RuleModule) async throws -> RuleListItem {
-        let request = detail.request
-        let values = ["url": item.bookUrl]
-        let leading = request.url.trimmingCharacters(in: .whitespaces).hasPrefix("{{url}}")
-        let bodyEncoding: TemplateEncoding = request.bodyEncoding == RuleModule.BodyEncoding.json.rawValue ? .json : .percent
+        let values = module.withGlobalValues(["url": item.bookUrl], language: nil)
         let started = SourcePerfTrace.now
-        let page = try await send(Self.fill(request.url, values, encode: !leading), method: (request.method ?? "GET").uppercased(),
-                                  body: request.body.map { Self.fill($0, values, encoding: bodyEncoding) },
-                                  headers: (request.headers ?? [:]).mapValues { Self.fill($0, values, encode: false) },
-                                  charset: request.charset, in: module)
-        let engine = ModernRuleEngine()
+        let page = try await perform(detail.request, values: values, ofRecord: true, in: module)
+        let engine = module.ruleEngine()
         engine.setContent(page.text, baseUrl: page.baseURL)
         var item = item
         if item.intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let rule = detail.intro, !rule.isEmpty {
@@ -168,6 +218,29 @@ struct RuleModuleClient: Sendable {
         }
         SourcePerfTrace.record("module.detail", "module=\(module.id)", since: started, thresholdMs: 0)
         return item
+    }
+
+    /// A request as the module wrote it, sent: its templates filled with `values`, then its
+    /// `script` (a module that declares `javascript`), then `send`, which holds whatever address
+    /// came of both to the module's hosts. `ofRecord`: `{{url}}` at the start of the address is a
+    /// record's own address and goes in as it is; anywhere else a value is percent-encoded.
+    func perform(_ request: RuleModule.Request, values: [String: String], ofRecord: Bool = false,
+                 in module: RuleModule) async throws -> (text: String, baseURL: String) {
+        let leading = ofRecord && request.url.trimmingCharacters(in: .whitespaces).hasPrefix("{{url}}")
+        let bodyEncoding: TemplateEncoding = request.bodyEncoding == RuleModule.BodyEncoding.json.rawValue ? .json : .percent
+        var filled = RuleModuleScriptRuntime.Request(
+            url: Self.fill(request.url, values, encode: !leading), method: (request.method ?? "GET").uppercased(),
+            body: request.body.map { Self.fill($0, values, encoding: bodyEncoding) },
+            headers: (request.headers ?? [:]).mapValues { Self.fill($0, values, encode: false) })
+        if let script = request.script, let scripts = module.scripts {
+            filled = try scripts.rewrite(filled, by: script, values: values)
+            // The validator checked the method as written; the script's own is held to the same two.
+            guard filled.method == "GET" || filled.method == "POST" else {
+                throw SourceFailure(kind: .parse, underlying: RuleModuleScriptError.requestScriptFailed(module: module.id))
+            }
+        }
+        return try await send(filled.url, method: filled.method, body: filled.body, headers: filled.headers,
+                              charset: request.charset, in: module)
     }
 
     /// One request of the module's: `safeURL` and its hosts on the address and every redirect,
@@ -365,24 +438,24 @@ struct RuleModuleClient: Sendable {
     // MARK: - Cache
 
     /// One file per entry and its values, so a section's own parameters keep their own pages.
-    private func cacheFile(module: String, entry: String, values: [String: String]) -> URL {
+    func cacheFile(module: String, entry: String, values: [String: String]) -> URL {
         let key = values.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
         let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return store.cacheDirectory(id: module).appendingPathComponent("\(entry)-\(digest.prefix(32)).json")
     }
 
     /// A cache that cannot be read is a miss: the page is fetched again and the file replaced.
-    private func cached(_ file: URL) -> RuleModulePage? {
+    func cached<Page: Decodable>(_ type: Page.Type, at file: URL) -> Page? {
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
         do {
-            return try JSONDecoder().decode(RuleModulePage.self, from: Data(contentsOf: file))
+            return try JSONDecoder().decode(type, from: Data(contentsOf: file))
         } catch {
             AppLogger.cache("Module page cache unreadable", error: error, context: ["file": file.lastPathComponent], level: .warning)
             return nil
         }
     }
 
-    private func save(_ page: RuleModulePage, to file: URL) {
+    func save<Page: Encodable>(_ page: Page, to file: URL) {
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(page).write(to: file, options: .atomic)

@@ -21,6 +21,8 @@ struct RuleListFields: Sendable {
     var series: String = ""
     var seriesCovers: String = ""
     var contentKind: String = ""
+    /// The record's own site id (module format 3.0.1).
+    var id: String = ""
 }
 
 /// One list item as its rules read it.
@@ -44,6 +46,8 @@ struct RuleListItem: Codable, Equatable, Sendable {
     var series: String? = nil
     var seriesCovers: [String]? = nil
     var contentKind: String? = nil
+    /// The site id passed to a module's comments and reviews requests.
+    var id: String? = nil
     /// What the item's rules put (`@put`, `java.put`) on top of the list's own puts: Legado's
     /// `SearchBook.variable`, which travels with the book into its detail, TOC and content.
     /// Nil when nothing was put, or when the caller gave no item scope.
@@ -146,6 +150,7 @@ enum RuleListMapping {
                 series: value(engine, fields.series),
                 seriesCovers: values(engine, fields.seriesCovers),
                 contentKind: value(engine, fields.contentKind),
+                id: value(engine, fields.id),
                 runtimeVariables: scope.flatMap { $0.variableMap.isEmpty ? nil : $0.variableMap }
             ))
         }
