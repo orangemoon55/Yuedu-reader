@@ -44,6 +44,7 @@ python3 scripts/prepare_trollstore_test.py prepare
 unset GOOGLE_SERVICE_INFO_BASE64
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 xcodebuild -version
+bash scripts/ensure_metal_toolchain.sh
 printf '源码提交：%s\n' "$(git rev-parse HEAD)"
 ARGS=(
   -project Yuedu-Reader.xcodeproj

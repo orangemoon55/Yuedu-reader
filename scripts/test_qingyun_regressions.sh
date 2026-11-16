@@ -31,6 +31,7 @@ trap finish EXIT
 : > "$PRIVATE/test.log"
 python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
+bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
 echo '正在模拟器检查圆盘分区、章节定位和退出过渡。'
 xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
