@@ -19,6 +19,15 @@ on:
         default: false
         type: boolean
 
+      regression_scope:
+        description: 验证范围（已通过的应用不必重复打包）
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - settings-ui
+
 permissions:
   contents: read
 
@@ -37,6 +46,7 @@ jobs:
         env:
           TEST_BUNDLE_ID: ${{ inputs.bundle_id }}
           TEST_DISPLAY_NAME: ${{ inputs.display_name }}
+          QINGYUN_REGRESSION_SCOPE: ${{ inputs.regression_scope }}
         run: bash scripts/test_qingyun_regressions.sh
       - name: 保存回归日志和结果
         if: always()

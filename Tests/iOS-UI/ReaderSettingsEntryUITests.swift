@@ -17,6 +17,12 @@ final class ReaderSettingsEntryUITests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    private func element(_ id: String, in app: XCUIApplication) -> XCUIElement {
+        // SwiftUI accessibilityElement may wrap a Button in an Other element.
+        // Match its stable identity and still tap it; do not assume UIKit type.
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
     @MainActor
     func testHeaderFooterAndFloatingNavigationStayResponsive() throws {
         _ = try StoreKitTestSessions.fresh(StoreKitTestSessions.yueduPro())
@@ -30,7 +36,7 @@ final class ReaderSettingsEntryUITests: XCTestCase {
             "-yd_scroll_mode", "NO", "-yd_page_turn_style", "滑動"
         ]
         app.launch()
-        let shelf = app.buttons["rootTab.bookshelf"].firstMatch
+        let shelf = element("rootTab.bookshelf", in: app)
         XCTAssertTrue(shelf.waitForExistence(timeout: 30), app.debugDescription)
         shelf.tap()
         let book = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", title + "，")).firstMatch
@@ -38,7 +44,7 @@ final class ReaderSettingsEntryUITests: XCTestCase {
         book.tap()
         let content = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "这是设置入口测试正文")).firstMatch
         XCTAssertTrue(content.waitForExistence(timeout: 30), app.debugDescription)
-        let floatingBar = app.otherElements["rootTab.floatingBar"].firstMatch
+        let floatingBar = element("rootTab.floatingBar", in: app)
         XCTAssertTrue(floatingBar.waitForNonExistence(timeout: 10), "Floating navigation must hide on the reader page")
 
         for cycle in 0..<3 {
@@ -48,14 +54,14 @@ final class ReaderSettingsEntryUITests: XCTestCase {
             }
             XCTAssertTrue(settings.waitForExistence(timeout: 10), app.debugDescription)
             settings.tap()
-            let headerFooter = app.buttons["reader.quickTool.headerFooter"].firstMatch
+            let headerFooter = element("reader.quickTool.headerFooter", in: app)
             if !headerFooter.waitForExistence(timeout: 5) { app.swipeUp() }
             XCTAssertTrue(headerFooter.waitForExistence(timeout: 10), app.debugDescription)
             headerFooter.tap()
-            let editor = app.buttons["reader.settings.headerFooter.editor"].firstMatch
+            let editor = element("reader.settings.headerFooter.editor", in: app)
             XCTAssertTrue(editor.waitForExistence(timeout: 10), app.debugDescription)
             XCTAssertTrue(editor.isHittable)
-            let done = app.buttons["reader.settings.done"].firstMatch
+            let done = element("reader.settings.done", in: app)
             XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
             if cycle == 0 {
                 let image = XCTAttachment(screenshot: app.screenshot())
@@ -81,7 +87,7 @@ final class ReaderSettingsEntryUITests: XCTestCase {
         screenshot.name = "floating-tabs-after-reader"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        let settingsTab = app.buttons["rootTab.settings"].firstMatch
+        let settingsTab = element("rootTab.settings", in: app)
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 5))
         settingsTab.tap()
         XCTAssertTrue(settingsTab.isSelected)

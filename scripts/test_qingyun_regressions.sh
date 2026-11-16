@@ -11,6 +11,8 @@ finish() {
   trap - EXIT
   python3 scripts/prepare_trollstore_test.py redact "$PRIVATE/test.log" trollstore-output/regressions.log || true
   if [[ -f "$PRIVATE/result.xcresult/Info.plist" ]]; then
+    mkdir -p trollstore-output/layout-preview
+    xcrun xcresulttool export attachments --path "$PRIVATE/result.xcresult" --output-path trollstore-output/layout-preview >/dev/null 2>&1 || true
     ditto -c -k --norsrc --keepParent "$PRIVATE/result.xcresult" trollstore-output/regressions.xcresult.zip || true
   fi
   if [[ -n "${DEST:-}" ]]; then
@@ -33,35 +35,41 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-echo '正在模拟器检查圆盘分区、章节定位和退出过渡。'
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == settings-ui ]]; then
+  TEST_SELECTION=(-only-testing:'yuedu appUITests/ReaderSettingsEntryUITests')
+else
+  TEST_SELECTION=(
+  -only-testing:'yuedu appTests/BookshelfRingTests'
+  -only-testing:'yuedu appTests/BookshelfRingPresentationTests'
+  -only-testing:'yuedu appTests/BookshelfRingLayoutTests'
+  -only-testing:'yuedu appTests/BookshelfTangMirrorTests'
+  -only-testing:'yuedu appTests/QingyunNightCopperThemeTests'
+  -only-testing:'yuedu appTests/BookshelfDrawRecommendationTests'
+  -only-testing:'yuedu appTests/BookshelfRingDrawStateTests'
+  -only-testing:'yuedu appTests/DiscoverySourcePinsTests'
+  -only-testing:'yuedu appTests/OnlineCoverSourceSearchTests'
+  -only-testing:'yuedu appTests/ChapterListOrderTests'
+  -only-testing:'yuedu appTests/ReaderCardTransitionMathTests'
+  -only-testing:'yuedu appTests/ReaderNavigationOpeningGateTests'
+  -only-testing:'yuedu appTests/ReaderCardCloseFallbackTests'
+  -only-testing:'yuedu appTests/ReaderNavigationCoordinatorTests'
+  -only-testing:'yuedu appTests/ReaderSwipeUpExitMotionTests'
+  -only-testing:'yuedu appTests/ReaderQuickPanelNavigationTests'
+  -only-testing:'yuedu appTests/ReaderQuickPanelPresentationTests'
+  -only-testing:'yuedu appTests/ReaderQuickThemePanelLayoutTests'
+  -only-testing:'yuedu appTests/ReaderSettingsPublicationTests'
+  -only-testing:'yuedu appTests/DismissalSequencedPresentationTests'
+  -only-testing:'yuedu appTests/ReaderBarEditorRenderingTests'
+  -only-testing:'yuedu appTests/FloatingRootTabBarTests'
+  -only-testing:'yuedu appUITests/ReaderSettingsEntryUITests'
+  )
+fi
+echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"
 xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
   -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
   -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-  -only-testing:'yuedu appTests/BookshelfRingTests' \
-  -only-testing:'yuedu appTests/BookshelfRingPresentationTests' \
-  -only-testing:'yuedu appTests/BookshelfRingLayoutTests' \
-  -only-testing:'yuedu appTests/BookshelfTangMirrorTests' \
-  -only-testing:'yuedu appTests/QingyunNightCopperThemeTests' \
-  -only-testing:'yuedu appTests/BookshelfDrawRecommendationTests' \
-  -only-testing:'yuedu appTests/BookshelfRingDrawStateTests' \
-  -only-testing:'yuedu appTests/DiscoverySourcePinsTests' \
-  -only-testing:'yuedu appTests/OnlineCoverSourceSearchTests' \
-  -only-testing:'yuedu appTests/ChapterListOrderTests' \
-  -only-testing:'yuedu appTests/ReaderCardTransitionMathTests' \
-  -only-testing:'yuedu appTests/ReaderNavigationOpeningGateTests' \
-  -only-testing:'yuedu appTests/ReaderCardCloseFallbackTests' \
-  -only-testing:'yuedu appTests/ReaderNavigationCoordinatorTests' \
-  -only-testing:'yuedu appTests/ReaderSwipeUpExitMotionTests' \
-  -only-testing:'yuedu appTests/ReaderQuickPanelNavigationTests' \
-  -only-testing:'yuedu appTests/ReaderQuickPanelPresentationTests' \
-  -only-testing:'yuedu appTests/ReaderQuickThemePanelLayoutTests' \
-  -only-testing:'yuedu appTests/ReaderSettingsPublicationTests' \
-  -only-testing:'yuedu appTests/DismissalSequencedPresentationTests' \
-  -only-testing:'yuedu appTests/ReaderBarEditorRenderingTests' \
-  -only-testing:'yuedu appTests/FloatingRootTabBarTests' \
-  -only-testing:'yuedu appUITests/ReaderSettingsEntryUITests' \
-  >> "$PRIVATE/test.log" 2>&1
+  "${TEST_SELECTION[@]}" >> "$PRIVATE/test.log" 2>&1
 python3 - "$PRIVATE/test.log" <<'PY'
 from pathlib import Path
 import sys
