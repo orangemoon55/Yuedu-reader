@@ -48,7 +48,7 @@ struct BookshelfRingSectorArtwork: View {
 /// The centre is an opaque brand badge, independent of rotor angle and book tint.
 struct BookshelfRingCenterBadge: View {
     let diameter: CGFloat
-    let isDrawing: Bool
+    var isDrawing = false
     var onDraw: (() -> Void)? = nil
 
     var body: some View {
@@ -77,8 +77,8 @@ struct BookshelfRingCenterBadge: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isDrawing)
-                .accessibilityLabel(localized(isDrawing ? "抽签中" : "书架抽签"))
-                .accessibilityHint(localized(isDrawing ? "正在旋转" : "随机推荐一本书"))
+                .accessibilityLabel(localized(isDrawing ? "抽籤中" : "書架抽籤"))
+                .accessibilityHint(localized(isDrawing ? "正在旋轉" : "隨機推薦一本書"))
             } else {
                 badge
             }

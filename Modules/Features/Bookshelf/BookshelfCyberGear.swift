@@ -8,6 +8,7 @@ struct BookshelfCyberGear: View {
     var isSpinning = false
     var selectedSlot = 0
     var isDrawing = false
+    var angularVelocity: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var pulse: Double = 0
@@ -24,8 +25,9 @@ struct BookshelfCyberGear: View {
     private var mutedGold: Color { Color(red: 0.72, green: 0.57, blue: 0.30) }
 
     var body: some View {
-        let direction = rotation < 0 ? -1.0 : 1.0
-        let trailAngle = Double(rotation * 0.72) - direction * 34
+        let direction = angularVelocity < 0 ? -1.0 : 1.0
+        let speed: CGFloat = min(max(abs(angularVelocity) / 720, 0.15), 1)
+        let trailAngle = Double(rotation) - direction * 34
         ZStack {
             CyberGearShape()
                 .fill(LinearGradient(colors: colorScheme == .dark
@@ -55,7 +57,7 @@ struct BookshelfCyberGear: View {
                         lineWidth: max(0.7, diameter * 0.0018))
                 .opacity(0.62 + pulse * 0.34)
                 .rotationEffect(.degrees(Double(rotation)))
-            Circle().trim(from: 0.04, to: 0.21)
+            Circle().trim(from: 0.04, to: 0.14 + speed * 0.11)
                 .stroke(AngularGradient(colors: [crimson.opacity(0.18), crimson, magenta, violet.opacity(0.8)], center: .center),
                         style: StrokeStyle(lineWidth: max(1.4, diameter * 0.006), lineCap: .round))
                 .padding(diameter * 0.019)
@@ -85,7 +87,6 @@ struct BookshelfCyberGear: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .accessibilityIdentifier("bookshelf.ring.cyberGear")
-        .animation(.easeOut(duration: reduceMotion ? 0 : 0.3), value: isSpinning)
         .task(id: Event(slot: selectedSlot, spinning: isSpinning, drawing: isDrawing)) {
             guard !reduceMotion else { pulse = 0; return }
             withAnimation(.easeOut(duration: 0.07)) { pulse = 1 }
@@ -139,7 +140,7 @@ struct CyberGearShape: Shape {
     }
 }
 
-private struct CyberGearFacets: Shape {
+struct CyberGearFacets: Shape {
     private static let unitPath: Path = {
         var path = Path()
         let step = 2 * CGFloat.pi / CGFloat(CyberGearShape.toothCount)

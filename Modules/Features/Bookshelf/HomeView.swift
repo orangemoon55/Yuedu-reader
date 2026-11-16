@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 /// between, or a group opened from its folder on 全部.
 private enum ShelfPage: Hashable {
     case all
+    case completeList
     case group(String)
     case folder(String)
 
@@ -18,7 +19,10 @@ private enum ShelfPage: Hashable {
 
     /// One of the pages the shelf swipes between, not a folder's page pushed over it.
     var isOnPager: Bool {
-        if case .folder = self { false } else { true }
+        switch self {
+        case .folder, .completeList: false
+        default: true
+        }
     }
 }
 
@@ -259,6 +263,7 @@ struct HomeView: View {
     @State private var selectedGroup: String = ""
     /// The group whose folder was opened from 全部, its page pushed over the shelf.
     @State private var openedFolder: String?
+    @State private var showsCompleteShelf = false
     @State private var selectedBookIds: Set<UUID> = []
     @State private var showBulkDeleteAlert = false
     @State private var showAddToGroupSheet = false
@@ -273,6 +278,7 @@ struct HomeView: View {
     @ObservedObject private var subscription = SubscriptionStore.shared
     @AppStorage("bookLayoutIsGrid") private var isGridMode = false
     @AppStorage("bookshelfRingMode") private var isRingMode = true
+    @AppStorage("qingyunRingDefaultBuild10") private var didApplyRingDefault = false
     @AppStorage("bookshelfFattenedBookIDs") private var fattenedBookIDsData = Data()
     @AppStorage(BookSortOrder.storageKey) private var sortOrder = BookSortOrder.manual.rawValue
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -541,7 +547,8 @@ struct HomeView: View {
     /// The page the shelf's buttons act on: a group opened from its folder, otherwise the
     /// page in view on the shelf.
     private var activePage: ShelfPage {
-        openedFolder.map(ShelfPage.folder) ?? ShelfPage(pagerGroup: selectedGroup)
+        if showsCompleteShelf { return .completeList }
+        return openedFolder.map(ShelfPage.folder) ?? ShelfPage(pagerGroup: selectedGroup)
     }
 
     /// The books 選取 can take on that page: on 全部, the ones outside a folder.
@@ -566,6 +573,8 @@ struct HomeView: View {
 
     private func computeEntries(onPage page: ShelfPage) -> [ShelfEntry] {
         switch page {
+        case .completeList:
+            return sortedBooks(inGroup: nil).filter(\.isInBookshelf).map(ShelfEntry.book)
         case .group(let group), .folder(let group):
             return sortedBooks(inGroup: group).map(ShelfEntry.book)
         case .all:
@@ -663,12 +672,7 @@ struct HomeView: View {
                                 readerGeometryStore.update(frame, for: book.id, onPage: .all)
                             },
                             onContextAction: { book, action in performBookContextAction(book, action) },
-                            onShowMore: {
-                                selectedGroup = ""
-                                openedFolder = nil
-                                isRingMode = false
-                                isGridMode = false
-                            }
+                            onShowMore: { showsCompleteShelf = true }
                         )
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                     } else {
@@ -678,6 +682,12 @@ struct HomeView: View {
                 }
             }
             .themedAppSurface(for: .bookshelf)
+            .onAppear {
+                if !didApplyRingDefault {
+                    isRingMode = true
+                    didApplyRingDefault = true
+                }
+            }
             .animation(DSAnimation.standard, value: store.books.isEmpty)
             .rootTabTitle(localized("書架"), onScroll: .fadesTitle)
             .toolbar { shelfToolbar(addsBooks: true) }
@@ -693,6 +703,14 @@ struct HomeView: View {
                 if let openedFolder, !groups.contains(openedFolder) {
                     self.openedFolder = nil
                 }
+            }
+            .navigationDestination(isPresented: $showsCompleteShelf) {
+                AdaptiveContentContainer(maxWidth: DSLayout.readableShelfWidth) {
+                    bookList(entries: entries(onPage: .completeList), page: .completeList, isInView: true)
+                }
+                .themedAppSurface(for: .bookshelf)
+                .navigationTitle(localized("更多書籍"))
+                .toolbarTitleDisplayMode(.inline)
             }
             .navigationDestination(item: $openedFolder) { group in
                 folderPage(group)

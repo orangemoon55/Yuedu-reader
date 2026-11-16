@@ -3,8 +3,7 @@ import UIKit
 import Observation
 import AudioToolbox
 
-/// One sector per visible book, with at most nine books and no ring pagination.
-/// Rotation never changes a slot's book, decode size, or view identity.
+/// The stage never scrolls; only the wheel rotates within its fixed square.
 struct BookshelfRingView: View {
     let books: [ReadingBook]
     let allBooksForDraw: [ReadingBook]
@@ -18,205 +17,98 @@ struct BookshelfRingView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @ScaledMetric(relativeTo: .headline) private var promptLineHeight: CGFloat = 46
+    @ScaledMetric(relativeTo: .subheadline) private var chapterLineHeight: CGFloat = 22
+    @ScaledMetric(relativeTo: .subheadline) private var cardHeight: CGFloat = 156
     @State private var motion = BookshelfRingMotion()
-    @State private var selectedID: UUID?
+    @State private var draw = BookshelfRingDrawState()
     @State private var isVisible = false
     @State private var coverSources = BookshelfRingCoverSources()
     @State private var loadedChapterContext: (book: ReadingBook, context: BookshelfRingChapterContext)?
-    @State private var currentVisibleBooks: [ReadingBook] = []
-    @State private var isDrawing = false
-    @State private var drawRecommendation: (bookID: UUID, text: String)?
-    @State private var displayedBookOverride: UUID?
-    @State private var cachedDrawCategory: (bookID: UUID, category: String)?
-    @State private var drawDisplaySlot: Int?
-    @State private var pendingDrawBookID: UUID?
-
 
     private struct ChapterRequest: Equatable {
         let book: ReadingBook?
         let isActive: Bool
     }
-
-    private var visibleBooks: [ReadingBook] {
-        if isDrawing { return currentVisibleBooks }
-        if let displayedBookOverride {
-            return BookshelfDrawRecommendation.visibleBooks(from: books,
-                preserving: selectedID, including: displayedBookOverride)
-        }
-        return BookshelfDrawRecommendation.safeVisibleBooks(from: books, including: selectedID)
+    private var pool: [ReadingBook] { allBooksForDraw.isEmpty ? books : allBooksForDraw }
+    private var shownBooks: [ReadingBook] {
+        draw.displayedBooks.isEmpty ? Array(BookshelfDrawRecommendation.eligible(in: books).prefix(9)) : draw.displayedBooks
     }
-    private var selectedBook: ReadingBook? {
-        let visible = visibleBooks
-        let slot = (isDrawing ? drawDisplaySlot : nil) ??
-            BookshelfDrawRecommendation.slot(for: displayedBookOverride ?? selectedID, in: visible, fallback: motion.selectedSlot)
-        return visible.indices.contains(slot) ? visible[slot] : nil
-    }
-
-    private func startDrawing() {
-        guard !isDrawing else { return }
-        let pool = BookshelfDrawRecommendation.eligible(in: allBooksForDraw.isEmpty ? books : allBooksForDraw)
-        guard !pool.isEmpty else { return }
-        var generator = SystemRandomNumberGenerator()
-        guard let winner = BookshelfDrawRecommendation.choose(from: pool, using: &generator) else { return }
-        let shown = BookshelfDrawRecommendation.visibleBooks(from: pool, preserving: selectedID, including: winner.id)
-        guard let slot = shown.firstIndex(where: { $0.id == winner.id }) else { return }
-
-        let priorID = selectedID
-        currentVisibleBooks = shown
-        pendingDrawBookID = winner.id
-        displayedBookOverride = winner.id
-        drawRecommendation = nil
-        cachedDrawCategory = nil
-        drawDisplaySlot = slot
-        isDrawing = true
-        let priorSlot = BookshelfDrawRecommendation.slot(for: priorID, in: shown, fallback: motion.selectedSlot)
-        motion.configure(count: shown.count, slot: priorSlot)
-
-        let sourceID = winner.bookSourceId
-        let infoURL = winner.bookInfoURL?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let variables = winner.runtimeVariables
-        Task.detached(priority: .utility) {
-            let rawCategory: String?
-            if let sourceID, let infoURL, !infoURL.isEmpty {
-                var source = BookSource()
-                source.id = sourceID
-                rawCategory = BookSourceFetcher.shared.loadBookInfoPackageSync(url: infoURL, source: source, maximumAge: nil)?.kind
-            } else { rawCategory = nil }
-            let clean = rawCategory?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let category = (clean?.isEmpty == false ? clean : nil)
-                ?? ["kind", "category", "genre"].compactMap { variables?[$0] }
-                    .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-            await MainActor.run {
-                guard pendingDrawBookID == winner.id else { return }
-                cachedDrawCategory = category.map { (winner.id, $0) }
-            }
-        }
-
-        motion.draw(slot: slot, reduceMotion: reduceMotion) { _ in
-            guard pendingDrawBookID == winner.id else { return }
-            isDrawing = false
-            pendingDrawBookID = nil
-            selectedID = winner.id
-            displayedBookOverride = winner.id
-            drawRecommendation = (winner.id, BookshelfDrawRecommendation.message(
-                for: winner,
-                category: cachedDrawCategory?.bookID == winner.id ? cachedDrawCategory?.category : nil
-            ))
-        }
-    }
-
-    private func resetDrawState() {
-        guard !isDrawing else { return }
-        currentVisibleBooks = []
-        pendingDrawBookID = nil
-        drawRecommendation = nil
-        displayedBookOverride = nil
-        cachedDrawCategory = nil
-        motion.cancelAndSnap()
-    }
-
+    private var selectedBook: ReadingBook? { draw.selectedBook ?? shownBooks.first }
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            shelfStage(scrollHeader: false)
-            shelfStage(scrollHeader: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("bookshelf.ring")
-    }
-
-    @ViewBuilder
-    private func shelfStage(scrollHeader: Bool) -> some View {
         GeometryReader { proxy in
-            let showsMore = books.count > BookshelfRingGeometry.maximumCount
-            let sidebarWidth: CGFloat = showsMore ? 64 : 0
-            let sidebarGap: CGFloat = showsMore ? 8 : 0
-            let gearSide = min(440, proxy.size.width - sidebarWidth - sidebarGap,
-                               max(240, proxy.size.height - 18))
-            let header: AnyView = AnyView(headerContent)
-
-            VStack(spacing: 14) {
-                if scrollHeader {
-                    ScrollView(.vertical) { header }.scrollIndicators(.hidden)
-                        .frame(height: max(0, proxy.size.height - gearSide - 14))
-                } else {
-                    header.fixedSize(horizontal: false, vertical: true)
+            let layout = BookshelfRingStageLayout(
+                size: proxy.size, headerHeight: promptLineHeight + chapterLineHeight + 6 + cardHeight + 12
+            )
+            VStack(spacing: 12) {
+                if let book = selectedBook {
+                    let context = context(for: book)
+                    BookshelfRingReadingPrompt(
+                        book: book, context: context, recommendation: draw.recommendation,
+                        onOpen: { open(book) }
+                    )
+                    .disabled(draw.isDrawing)
+                    BookshelfRingSelectedCard(book: book, context: context, colorScheme: colorScheme,
+                                              onOpen: { open(book) })
+                        .contextMenu { if !draw.isDrawing { bookMenu(book) } }
+                        .disabled(draw.isDrawing)
                 }
-                HStack(spacing: sidebarGap) {
+                ZStack(alignment: .topTrailing) {
                     BookshelfRingRotor(
-                        books: visibleBooks, colorScheme: colorScheme, motion: motion,
+                        books: shownBooks, colorScheme: colorScheme, motion: motion,
                         reduceMotion: reduceMotion, isFattened: isFattened,
                         coverSources: coverSources, onCoverFrameChange: onCoverFrameChange,
-                        onOpen: open, onContextAction: performContextAction,
-                        onDraw: startDrawing
+                        onOpen: open, onContextAction: performContextAction, onDraw: startDrawing
                     )
-                    .frame(width: gearSide, height: gearSide)
-                    if showsMore {
-                        moreBooksControl
-                            .frame(width: sidebarWidth, height: gearSide)
+                    .frame(width: layout.diameter, height: layout.diameter)
+                    if pool.filter(\.isInBookshelf).count > 9 {
+                        Button {
+                            guard !draw.isDrawing else { return }
+                            motion.cancelAndSnap()
+                            onShowMore()
+                        } label: {
+                            Text(localized("更多書籍"))
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                                .frame(width: layout.moreSize.width, height: layout.moreSize.height)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.blue)
+                        .disabled(draw.isDrawing)
+                        .accessibilityIdentifier("bookshelf.ring.more")
+                        .offset(x: 12, y: -12)
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: showsMore ? .leading : .center)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-    }
-
-    @ViewBuilder
-    private var headerContent: some View {
-        if let book = selectedBook {
-            let context = context(for: book)
-            BookshelfRingReadingPrompt(
-                book: book, context: context,
-                recommendation: drawRecommendation?.bookID == book.id ? drawRecommendation?.text : nil,
-                onOpen: { open(book) }
-            )
-            BookshelfRingSelectedCard(book: book, context: context, colorScheme: colorScheme,
-                                      onOpen: { open(book) })
-                .contextMenu { bookMenu(book) }
-        } else if let recommendation = drawRecommendation {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(recommendation.text)
-                    .font(.headline).foregroundStyle(DSColor.textPrimary).lineLimit(2)
-                Button(localized("再抽一次"), action: startDrawing)
-                    .font(.caption).foregroundStyle(DSColor.accent)
-            }
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-        } else {
-            Text(localized("抽签提示语"))
-                .font(.headline).foregroundStyle(DSColor.textSecondary)
-                .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-        }
-    }
-
-    private var moreBooksControl: some View {
-        Button {
-            guard !isDrawing else { return }
-            motion.cancelAndSnap()
-            onShowMore()
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "books.vertical").font(.title3)
-                Text(localized("更多书籍"))
-                    .font(.caption.weight(.medium)).multilineTextAlignment(.center)
-                Text(books.count, format: .number)
-                    .font(.caption2.monospacedDigit()).foregroundStyle(DSColor.textSecondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).foregroundStyle(DSColor.accent)
-        .accessibilityIdentifier("bookshelf.ring.more")
-        .disabled(isDrawing)
-
+        .accessibilityIdentifier("bookshelf.ring")
         .task(id: ChapterRequest(book: selectedBook, isActive: scenePhase == .active)) {
             guard scenePhase == .active, let book = selectedBook else { return }
-            let context = await chapterContext(book)
+            let result = await chapterContext(book)
             guard !Task.isCancelled else { return }
-            loadedChapterContext = (book, context)
+            loadedChapterContext = (book, result)
+        }
+        .task(id: draw.run?.id) {
+            guard let run = draw.run else { return }
+            let query = BookshelfDrawCategoryQuery(book: run.winner)
+            let work = Task.detached(priority: .utility) { query.load() }
+            let category = await withTaskCancellationHandler {
+                await work.value
+            } onCancel: { work.cancel() }
+            guard !Task.isCancelled else { return }
+            draw.setCategory(category, runID: run.id)
         }
         .onAppear {
             isVisible = true
-            reconcileBooks()
+            draw.synchronize(base: books, all: pool)
+            motion.configure(count: shownBooks.count, slot: selectedSlot)
+            coverSources.retain(books: shownBooks)
             motion.isActive = scenePhase == .active
         }
         .onDisappear {
@@ -225,41 +117,57 @@ struct BookshelfRingView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             motion.isActive = isVisible && phase == .active
+            if motion.isActive, !draw.isDrawing {
+                motion.configure(count: shownBooks.count, slot: selectedSlot)
+            }
         }
-        .onChange(of: reduceMotion) { _, _ in motion.cancelAndSnap() }
-        .onChange(of: books.map(\.id)) { _, _ in reconcileBooks() }
-        .onChange(of: motion.selectedSlot) { _, _ in
-            if !isDrawing, displayedBookOverride == nil { selectedID = selectedBook?.id }
+        .onChange(of: reduceMotion) { _, _ in
+            if draw.isDrawing { motion.finishDrawing() } else { motion.cancelAndSnap() }
         }
+        .onChange(of: books.map(\.id)) { _, _ in synchronizeShelf() }
+        .onChange(of: pool.map(\.id)) { _, _ in synchronizeShelf() }
+        .onChange(of: pool) { _, updated in draw.refreshInformation(from: updated) }
+        .onChange(of: motion.selectedSlot) { _, slot in draw.select(slot: slot) }
     }
 
+    private var selectedSlot: Int { shownBooks.firstIndex { $0.id == draw.selectedID } ?? 0 }
     private func context(for book: ReadingBook) -> BookshelfRingChapterContext {
         if let loadedChapterContext, loadedChapterContext.book == book { return loadedChapterContext.context }
         return BookshelfRingChapterContext(book: book, chapters: [], textPosition: nil)
     }
-
-    private func reconcileBooks() {
-        let visible = visibleBooks
-        let index = selectedID.flatMap { id in visible.firstIndex { $0.id == id } }
-            ?? min(motion.selectedSlot, max(0, visible.count - 1))
-        coverSources.retain(books: visible)
-        motion.configure(count: visible.count, slot: index)
-        selectedID = selectedBook?.id
+    private func synchronizeShelf() {
+        if draw.isDrawing, let run = draw.run, !pool.contains(where: { $0.id == run.winner.id && $0.isInBookshelf }) {
+            motion.cancelAndSnap()
+        }
+        draw.synchronize(base: books, all: pool)
+        coverSources.retain(books: shownBooks)
+        if !draw.isDrawing { motion.configure(count: shownBooks.count, slot: selectedSlot) }
     }
 
+    private func startDrawing() {
+        guard motion.isActive, !draw.isDrawing else { return }
+        var random = SystemRandomNumberGenerator()
+        guard let run = draw.begin(base: books, all: pool, using: &random) else { return }
+        coverSources.retain(books: draw.displayedBooks)
+        motion.configure(count: draw.displayedBooks.count, slot: run.previousSlot)
+        let started = motion.draw(slot: run.slot, reduceMotion: reduceMotion,
+                                  onCancel: { draw.cancel(base: books) }) { slot in
+            _ = draw.finish(runID: run.id, slot: slot)
+        }
+        if !started { draw.cancel(base: books) }
+    }
     private func open(_ book: ReadingBook) {
-        // Capture the tapped artwork before stopping/snap-aligning the rotor.
+        guard !draw.isDrawing else { return }
         let tapped = coverSources.tappedCover(for: book.id)
         motion.confirmReading()
         onOpen(book, tapped)
     }
-
     private func performContextAction(_ book: ReadingBook, _ action: BookshelfBookContextAction) {
+        guard !draw.isDrawing else { return }
         if case .open = action { open(book); return }
         motion.cancelAndSnap()
         onContextAction(book, action)
     }
-
     private func bookMenu(_ book: ReadingBook) -> some View {
         BookshelfBookContextMenu(
             book: book, isFattened: isFattened(book.id),
@@ -269,6 +177,23 @@ struct BookshelfRingView: View {
             onToggleFatten: { performContextAction(book, .toggleFatten) },
             onDelete: { performContextAction(book, .delete) }
         )
+    }
+}
+
+struct BookshelfRingStageLayout {
+    let diameter: CGFloat
+    let moreSize: CGSize
+
+    init(size: CGSize, headerHeight: CGFloat) {
+        guard size.width.isFinite, size.height.isFinite, headerHeight.isFinite else {
+            diameter = 0; moreSize = .zero; return
+        }
+        let width = max(0, size.width - 24)
+        let height = max(0, size.height - headerHeight - 28)
+        diameter = min(440, width, height)
+        // The wheel is a circle inside this square. Its top-right corner is free
+        // without shrinking the wheel or creating a full-height side column.
+        moreSize = CGSize(width: min(64, diameter * 0.21), height: min(44, diameter * 0.145))
     }
 }
 
@@ -335,7 +260,8 @@ private struct BookshelfRingRotor: View {
                 .rotationEffect(.degrees(Double(angle)))
                 .allowsHitTesting(false)
                 BookshelfCyberGear(diameter: diameter, rotation: angle, colorScheme: colorScheme,
-                                   isSpinning: motion.isSpinning, selectedSlot: motion.selectedSlot)
+                                   isSpinning: motion.isSpinning, selectedSlot: motion.selectedSlot,
+                                   isDrawing: motion.isDrawing, angularVelocity: motion.angularVelocity)
                 Circle().stroke(BookshelfRingPalette.jade.opacity(0.18), lineWidth: 0.65)
                     .padding(diameter * (0.5 - BookshelfRingGeometry.innerRadius))
                     .allowsHitTesting(false)
@@ -363,8 +289,8 @@ private struct BookshelfRingRotor: View {
                 }
                 BookshelfRingCenterBadge(
                     diameter: diameter * BookshelfRingGeometry.innerRadius * 2,
-                    isDrawing: isDrawing,
-                    onDraw: books.isEmpty || isDrawing ? nil : onDraw
+                    isDrawing: motion.isDrawing,
+                    onDraw: books.isEmpty ? nil : onDraw
                 )
                     .position(center)
                 if !books.isEmpty {
@@ -398,7 +324,7 @@ private struct BookshelfRingRotor: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityAdjustableAction { direction in
-            guard !books.isEmpty else { return }
+            guard !books.isEmpty, !motion.isDrawing else { return }
             switch direction {
             case .increment: motion.select((motion.selectedSlot + 1) % books.count, reduceMotion: reduceMotion)
             case .decrement: motion.select((motion.selectedSlot + books.count - 1) % books.count, reduceMotion: reduceMotion)
@@ -412,7 +338,7 @@ private struct BookshelfRingRotor: View {
             .updating($gestureIsActive) { _, active, _ in active = true }
             .onChanged { value in
                 let radius = hypot(value.startLocation.x - center.x, value.startLocation.y - center.y)
-                guard radius >= diameter * BookshelfRingGeometry.innerRadius,
+                guard !motion.isDrawing, radius >= max(22, diameter * BookshelfRingGeometry.innerRadius),
                       radius <= diameter * BookshelfRingGeometry.outerRadius else { return }
                 motion.drag(value, center: center, reduceMotion: reduceMotion)
             }
@@ -756,12 +682,10 @@ final class BookshelfRingMotion {
     private(set) var rotation: CGFloat = 0
     private(set) var selectedSlot = 0
     private(set) var isSpinning = false
-    private(set) var drawTargetSlot: Int?
-    private(set) var drawIntensity: CGFloat = 0
+    private(set) var isDrawing = false
+    private(set) var angularVelocity: CGFloat = 0
     var isActive = false {
-        didSet {
-            if !isActive { cancelAndSnap() }
-        }
+        didSet { if !isActive { cancelAndSnap() } }
     }
 
     @ObservationIgnored private var count = 0
@@ -772,99 +696,95 @@ final class BookshelfRingMotion {
     @ObservationIgnored private let openFeedback = UIImpactFeedbackGenerator(style: .rigid)
     @ObservationIgnored private var lastFeedbackTime: TimeInterval = -.infinity
     @ObservationIgnored private var lastDragTime: TimeInterval = -.infinity
+    @ObservationIgnored private var completion: (@MainActor (Int) -> Void)?
+    @ObservationIgnored private var cancellation: (@MainActor () -> Void)?
+    @ObservationIgnored private let usesDisplayLink: Bool
+    @ObservationIgnored private let clock: @MainActor () -> TimeInterval
 
-    var canOpenSector: Bool {
-        isActive && dragState == nil && CACurrentMediaTime() - lastDragTime > 0.12
+    init(usesDisplayLink: Bool = true, clock: @escaping @MainActor () -> TimeInterval = { CACurrentMediaTime() }) {
+        self.usesDisplayLink = usesDisplayLink
+        self.clock = clock
     }
-
+    var canOpenSector: Bool {
+        isActive && !isDrawing && !isSpinning && dragState == nil && clock() - lastDragTime > 0.12
+    }
     private struct DragState {
-        // Immutable for one gesture: selection updates never rebase the rotor.
         let baseRotation: CGFloat
         var accumulated: CGFloat = 0
         var lastAngle: CGFloat?
         var lastTime: TimeInterval
         var velocity: CGFloat = 0
     }
-
     private struct Settlement {
         let start: CGFloat
         let target: CGFloat
-        @ObservationIgnored var drawTarget: CGFloat?
-        @ObservationIgnored var drawTargetSlot: Int?
+        let startedAt: TimeInterval
+        let drawSlot: Int?
     }
-
     func configure(count: Int, slot: Int) {
-        stop()
-        dragState = nil
-        onDrawSettled = nil
-        drawTargetSlot = nil
-        drawIntensity = 0
-        let nextCount = min(max(count, 0), BookshelfRingGeometry.maximumCount)
-        self.count = nextCount
+        cancelAndSnap()
+        self.count = min(max(count, 0), BookshelfRingGeometry.maximumCount)
         selectedSlot = min(max(slot, 0), max(0, self.count - 1))
         rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: self.count)
     }
-
-    func draw(slot: Int, reduceMotion: Bool, callback: @escaping (Int) -> Void) {
-        guard isActive, count > 0, (0..<count).contains(slot), dragState == nil else { return }
-        stop()
-        drawTargetSlot = slot
-        drawIntensity = 1
+    @discardableResult
+    func draw(slot: Int, reduceMotion: Bool, onCancel: @escaping @MainActor () -> Void = {},
+              callback: @escaping @MainActor (Int) -> Void) -> Bool {
+        guard isActive, !isDrawing, dragState == nil, (0..<count).contains(slot) else { return false }
+        stopLink()
+        completion = callback
+        cancellation = onCancel
+        isDrawing = true
         let target = BookshelfDrawMotion.target(slot: slot, count: count, from: rotation)
-        onDrawSettled = callback
-        isSpinning = !reduceMotion
-        if reduceMotion {
-            completeDraw(slot: slot)
-            return
-        }
-        settling = Settlement(start: rotation, target: target, startedAt: CACurrentMediaTime(),
-                              drawTarget: target, drawTargetSlot: slot)
-        ticker.start { [weak self, weak ticker = ticker] time in
-            guard let self else { ticker?.stop(); return }
-            self.tick(time)
-        }
+        settling = Settlement(start: rotation, target: target, startedAt: clock(), drawSlot: slot)
+        if reduceMotion { finishDrawing(); return true }
+        isSpinning = true
+        selectionFeedback.prepare()
+        startLink()
+        return true
     }
-
-    private func completeDraw(slot: Int) {
+    func finishDrawing() {
+        guard isDrawing, let slot = settling?.drawSlot else { return }
+        let callback = completion
+        completion = nil
+        cancellation = nil
+        stopLink()
+        isDrawing = false
         selectedSlot = slot
         rotation = -CGFloat(slot) * BookshelfRingGeometry.step(count: count)
-        let callback = onDrawSettled
-        onDrawSettled = nil
-        settling = nil
-        isSpinning = false
-        drawIntensity = 0.7
+        feedback(openFeedback)
         callback?(slot)
     }
-
+    func cancelAndSnap() {
+        let onCancel = isDrawing ? cancellation : nil
+        completion = nil
+        cancellation = nil
+        stopLink()
+        dragState = nil
+        isDrawing = false
+        rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
+        onCancel?()
+    }
     func drag(_ value: DragGesture.Value, center: CGPoint, reduceMotion: Bool) {
-        guard isActive, count > 0 else { return }
-        lastDragTime = CACurrentMediaTime()
+        guard isActive, !isDrawing, count > 0 else { return }
+        lastDragTime = clock()
         if dragState == nil {
-            // rotation is the actual displayed angle, not an animation's future target.
-            stop()
+            stopLink()
             selectionFeedback.prepare()
-            dragState = DragState(
-                baseRotation: rotation,
+            dragState = DragState(baseRotation: rotation,
                 lastAngle: BookshelfRingGeometry.angle(value.startLocation, around: center),
-                lastTime: value.time.timeIntervalSinceReferenceDate - 1 / 60
-            )
+                lastTime: value.time.timeIntervalSinceReferenceDate - 1 / 60)
         }
         isSpinning = true
         updateDrag(value, center: center, reduceMotion: reduceMotion)
     }
-
     private func updateDrag(_ value: DragGesture.Value, center: CGPoint, reduceMotion: Bool) {
         guard var drag = dragState else { return }
         let now = value.time.timeIntervalSinceReferenceDate
         let angle = BookshelfRingGeometry.angle(value.location, around: center)
-        // Crossing the center makes atan2 ill-conditioned. Pause there instead
-        // of turning a nearly zero-radius movement into a half revolution.
         guard hypot(value.location.x - center.x, value.location.y - center.y) > 18 else {
-            drag.lastAngle = nil
-            drag.lastTime = now
-            drag.velocity = 0
-            dragState = drag
-            return
+            drag.lastAngle = nil; drag.lastTime = now; drag.velocity = 0
+            dragState = drag; angularVelocity = 0; return
         }
         let delta = drag.lastAngle.map { BookshelfRingGeometry.shortest(angle - $0) } ?? 0
         let elapsed = now - drag.lastTime
@@ -873,14 +793,12 @@ final class BookshelfRingMotion {
             drag.velocity = elapsed > 0.12 ? sample : drag.velocity * 0.35 + sample * 0.65
         }
         drag.accumulated += delta
-        drag.lastAngle = angle
-        drag.lastTime = now
-        dragState = drag
-        let rawAngle = drag.baseRotation + drag.accumulated
-        updateSelection(for: rawAngle)
-        rotation = reduceMotion ? BookshelfRingGeometry.target(slot: selectedSlot, near: rawAngle, count: count) : rawAngle
+        drag.lastAngle = angle; drag.lastTime = now; dragState = drag
+        angularVelocity = reduceMotion ? 0 : drag.velocity
+        let raw = drag.baseRotation + drag.accumulated
+        updateSelection(for: raw)
+        rotation = reduceMotion ? BookshelfRingGeometry.target(slot: selectedSlot, near: raw, count: count) : raw
     }
-
     func endDrag(_ value: DragGesture.Value, center: CGPoint, reduceMotion: Bool) {
         guard dragState != nil else { return }
         updateDrag(value, center: center, reduceMotion: reduceMotion)
@@ -890,103 +808,86 @@ final class BookshelfRingMotion {
         let extra = reduceMotion ? 0 : min(max(drag.velocity * 0.12, -limit), limit)
         settle(projected: drag.baseRotation + drag.accumulated + extra, reduceMotion: reduceMotion)
     }
-
-    func cancelDrag() {
-        guard dragState != nil else { return }
-        cancelAndSnap()
-    }
-
-    func cancelAndSnap() {
-        stop()
-        dragState = nil
-        // Equivalent 360-degree positions are normalized only once motion stops.
-        rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
-    }
-
+    func cancelDrag() { if dragState != nil { cancelAndSnap() } }
     func select(_ slot: Int, reduceMotion: Bool) {
-        guard isActive, (0..<count).contains(slot), dragState == nil else { return }
-        stop()
+        guard isActive, !isDrawing, (0..<count).contains(slot), dragState == nil else { return }
+        stopLink()
         selectionFeedback.prepare()
         if slot == selectedSlot { feedback(selectionFeedback) }
         settle(projected: BookshelfRingGeometry.target(slot: slot, near: rotation, count: count), reduceMotion: reduceMotion)
     }
-
     func confirmReading() {
+        guard !isDrawing else { return }
         cancelAndSnap()
         guard isActive else { return }
         openFeedback.prepare()
         feedback(openFeedback)
     }
-
     private func settle(projected: CGFloat, reduceMotion: Bool) {
         let slot = BookshelfRingGeometry.nearestSlot(to: projected, count: count)
         let target = BookshelfRingGeometry.target(slot: slot, near: projected, count: count)
         guard !reduceMotion, isActive, abs(target - rotation) > 0.01 else {
             updateSelection(for: target)
             rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
-            isSpinning = false
-            return
+            stopLink(); return
         }
         isSpinning = true
-        settling = Settlement(start: rotation, target: target, startedAt: CACurrentMediaTime(),
-                              drawTarget: nil, drawTargetSlot: nil)
-        ticker.start { [weak self, weak ticker = ticker] time in
-            guard let self else { ticker?.stop(); return }
-            self.tick(time)
-        }
+        settling = Settlement(start: rotation, target: target, startedAt: clock(), drawSlot: nil)
+        startLink()
     }
-
-    private func tick(_ time: TimeInterval) {
-        guard isActive, let settling else { stop(); return }
-        if let drawSlot = settling.drawTargetSlot {
-            let progress = Double(max(0, time - settling.startedAt) / 1.85)
-            rotation = BookshelfDrawMotion.angle(from: settling.start, to: settling.target, progress: progress)
-            if progress >= 1 {
-                completeDraw(slot: drawSlot)
-                stop()
-            }
+    /// Deterministic timestamp entry point also used by the integration regression.
+    func advance(to time: TimeInterval) {
+        guard isActive, time.isFinite, let state = settling else { return }
+        let elapsed = max(0, time - state.startedAt)
+        if state.drawSlot != nil {
+            let progress = Double(elapsed / 2.8)
+            let previous = rotation
+            rotation = BookshelfDrawMotion.angle(from: state.start, to: state.target, progress: progress)
+            // Derivative of the same ease-out curve. It supplies the actual
+            // direction to the flame trail, not the sign of a normalized angle.
+            angularVelocity = (state.target - state.start) * 4 * pow(max(0, 1 - CGFloat(progress)), 3) / 2.8
+            if previous != rotation { updateSelection(for: rotation) }
+            if progress >= 1 { finishDrawing() }
             return
         }
-        let elapsed = time - settling.startedAt
         if elapsed >= 0.56 {
-            updateSelection(for: settling.target)
+            updateSelection(for: state.target)
             rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
-            stop()
-            return
+            stopLink(); return
         }
-        // Closed-form damped spring: frame-rate independent, bounded overshoot,
-        // and no delayed completion that can outlive a gesture or book changes.
-        let t = CGFloat(max(0, elapsed))
-        let decay = exp(-14 * t)
-        let fraction = 1 - decay * (cos(18 * t) + (14.0 / 18.0) * sin(18 * t))
-        rotation = settling.start + (settling.target - settling.start) * fraction
+        let t = CGFloat(elapsed)
+        let fraction = 1 - exp(-14 * t) * (cos(18 * t) + (14.0 / 18.0) * sin(18 * t))
+        let previous = rotation
+        rotation = state.start + (state.target - state.start) * fraction
+        angularVelocity = (rotation - previous) * 60
         updateSelection(for: rotation)
     }
-
     private func updateSelection(for angle: CGFloat) {
         let next = BookshelfRingGeometry.nearestSlot(to: angle, count: count)
         guard next != selectedSlot else { return }
         selectedSlot = next
         feedback(selectionFeedback)
     }
-
     private func feedback(_ generator: UIImpactFeedbackGenerator) {
-        let now = CACurrentMediaTime()
+        let now = clock()
         guard isActive, now - lastFeedbackTime >= 0.09 else { return }
         lastFeedbackTime = now
         generator.impactOccurred(intensity: 1)
-        // A short system click, synchronized with the detent. The silent switch
-        // and system sound volume still apply; do not change AVAudioSession or
-        // interrupt audiobook/TTS playback just to force a UI sound to be heard.
         AudioServicesPlaySystemSound(1104)
         generator.prepare()
     }
-
-    private func stop() {
+    private func startLink() {
+        guard usesDisplayLink else { return }
+        ticker.start { [weak self, weak ticker = ticker] time in
+            guard let self else { ticker?.stop(); return }
+            self.advance(to: time)
+        }
+    }
+    private func stopLink() {
         ticker.stop()
         settling = nil
         isSpinning = false
-        if onDrawSettled == nil && drawTargetSlot == nil { drawIntensity = 0 }
+        angularVelocity = 0
     }
 }
 

@@ -36,6 +36,19 @@ enum BookshelfDrawRecommendation {
         return visible
     }
 
+    static func visibleBooks(from base: [ReadingBook], preserving selectedID: UUID?, including winner: ReadingBook,
+                             from all: [ReadingBook]) -> [ReadingBook] {
+        var shown = visibleBooks(from: base, including: selectedID)
+        guard winner.isInBookshelf, all.contains(where: { $0.id == winner.id && $0.isInBookshelf }),
+              !shown.contains(where: { $0.id == winner.id }) else { return shown }
+        if shown.count >= BookshelfRingGeometry.maximumCount {
+            let replacement = shown.indices.reversed().first { shown[$0].id != selectedID } ?? shown.count - 1
+            shown.remove(at: replacement)
+        }
+        shown.append(winner)
+        return shown
+    }
+
     static func safeVisibleBooks(from books: [ReadingBook], including id: UUID?) -> [ReadingBook] {
         let shelf = eligible(in: books)
         var visible = Array(shelf.prefix(BookshelfRingGeometry.maximumCount))

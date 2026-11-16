@@ -40,10 +40,13 @@ struct BookshelfCyberGearTests {
         let tip = CGPoint(x: center.x + cos(tipAngle) * diameter * 0.495,
                           y: center.y + sin(tipAngle) * diameter * 0.495)
         let rootAngle = -CGFloat.pi / 2
-        let root = CGPoint(x: center.x + cos(rootAngle) * diameter * 0.47,
-                           y: center.y + sin(rootAngle) * diameter * 0.47)
+        let outsideRoot = CGPoint(x: center.x + cos(rootAngle) * diameter * 0.47,
+                                  y: center.y + sin(rootAngle) * diameter * 0.47)
+        let rootBand = CGPoint(x: center.x + cos(rootAngle) * diameter * 0.467,
+                               y: center.y + sin(rootAngle) * diameter * 0.467)
         #expect(path.contains(tip))
-        #expect(path.contains(root))
+        #expect(!path.contains(outsideRoot))
+        #expect(path.contains(rootBand))
         for index in 0..<720 {
             let angle = CGFloat(index) * .pi / 360
             let coverEdge = CGPoint(x: center.x + cos(angle) * diameter * 0.465,

@@ -4523,6 +4523,8 @@
 "傳統書架" = "Classic Bookshelf";
 "更多設定" = "More Settings";
 "書架抽籤" = "Shelf Draw";
+"抽籤中" = "Drawing";
+"正在旋轉" = "The wheel is spinning";
 "隨機推薦一本書" = "Randomly recommend a book";
 "抽籤提示語" = "Tap the center icon to draw a book";
 "再抽一次" = "Draw again";
