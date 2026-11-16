@@ -53,26 +53,76 @@ final class ReaderChapterTitlePresentationTests: XCTestCase {
     }
 
     func testHeaderFooterRouteHasNoEmbeddedChapterTitleForm() async throws {
-        let presentation = try await present(.headerFooter)
-        let host = presentation.host
-        do {
-        _ = try await waitForView(in: host.view) { view -> UIView? in
-            view.accessibilityIdentifier == "reader.settings.headerFooter.editor" ? view : nil
+        try await withAccessibilityAutomation {
+            let presentation = try await self.present(.headerFooter)
+            let host = presentation.host
+            do {
+                self.attach(presentation.window, name: "header-footer-before-accessibility-query")
+                try await self.waitUntil {
+                    self.accessibleElements(in: host.view).contains {
+                        self.identifier(of: $0) == "reader.settings.headerFooter.editor"
+                            || $0.accessibilityLabel == localized("頁首頁尾編輯")
+                    }
+                }
+                let elements = self.accessibleElements(in: host.view)
+                let editor = try XCTUnwrap(elements.first {
+                    self.identifier(of: $0) == "reader.settings.headerFooter.editor"
+                        || $0.accessibilityLabel == localized("頁首頁尾編輯")
+                })
+                XCTAssertTrue(editor.accessibilityTraits.contains(.button),
+                              "The visible header/footer editor must be actionable")
+                XCTAssertFalse(elements.contains {
+                    self.identifier(of: $0) == "reader.chapterTitleStyle.form"
+                        || self.identifier(of: $0) == "reader.chapterTitleStyle.advancedCSS"
+                        || $0.accessibilityLabel == localized("高級 CSS 樣式")
+                }, "The header/footer page must not contain the independent chapter-title Form")
+                XCTAssertTrue(editor.accessibilityActivate(), "The editor entry must accept activation")
+                try await self.waitUntil {
+                    self.accessibleElements(in: host.view).contains {
+                        $0.accessibilityLabel == localized("頁面類型")
+                            || $0.accessibilityLabel == localized("顯示頁眉")
+                            || $0.accessibilityLabel == localized("顯示頁腳")
+                    }
+                }
+                self.attach(presentation.window, name: "header-footer-editor-opened")
+            } catch {
+                await self.close(presentation)
+                throw error
+            }
+            await self.close(presentation)
         }
-        XCTAssertNil(
-            descendants(of: host.view).first { $0.accessibilityIdentifier == "reader.chapterTitleStyle.form" },
-            "Header/footer must not instantiate a nested chapter-title Form"
-        )
-        XCTAssertNil(
-            descendants(of: host.view).first { $0.accessibilityIdentifier == "reader.chapterTitleStyle.advancedCSS" },
-            "Header/footer must not expose the chapter-title control"
-        )
-        attach(presentation.window, name: "header-footer-without-title-form")
-        } catch {
-            await close(presentation)
-            throw error
+    }
+
+    private func withAccessibilityAutomation(_ body: () async throws -> Void) async throws {
+        let library = try XCTUnwrap(dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW))
+        defer { dlclose(library) }
+        typealias Get = @convention(c) () -> Bool
+        typealias Set = @convention(c) (Bool) -> Void
+        let get = unsafeBitCast(try XCTUnwrap(dlsym(library, "_AXSAutomationEnabled")), to: Get.self)
+        let set = unsafeBitCast(try XCTUnwrap(dlsym(library, "_AXSSetAutomationEnabled")), to: Set.self)
+        let previous = get()
+        set(true)
+        defer { set(previous) }
+        try await body()
+    }
+
+    private func identifier(of element: NSObject) -> String {
+        let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
+        return element.responds(to: getter)
+            ? (element.value(forKey: "accessibilityIdentifier") as? String ?? "") : ""
+    }
+
+    private func accessibleElements(in root: NSObject) -> [NSObject] {
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ object: NSObject) -> [NSObject] {
+            guard visited.count < 5000, visited.insert(ObjectIdentifier(object)).inserted,
+                  !object.accessibilityElementsHidden else { return [] }
+            if let view = object as? UIView, view.isHidden || view.alpha < 0.01 { return [] }
+            let children = (object.accessibilityElements as? [NSObject]) ?? []
+            let views: [NSObject] = (object as? UIView)?.subviews ?? []
+            return [object] + (children + views).flatMap(visit)
         }
-        await close(presentation)
+        return visit(root)
     }
 
     private struct Presentation {
