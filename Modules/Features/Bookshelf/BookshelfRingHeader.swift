@@ -9,6 +9,7 @@ struct BookshelfRingReadingPrompt: View {
     let onOpen: () -> Void
     @ScaledMetric(relativeTo: .headline) private var messageHeight: CGFloat = 46
     @ScaledMetric(relativeTo: .subheadline) private var chapterHeight: CGFloat = 22
+    @ScaledMetric(relativeTo: .headline) private var resultHeight: CGFloat = 46
 
     var body: some View {
         Button(action: onOpen) {
@@ -19,7 +20,7 @@ struct BookshelfRingReadingPrompt: View {
                     .lineLimit(2, reservesSpace: true)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .frame(height: messageHeight, alignment: .topLeading)
+                    .frame(height: recommendation == nil ? messageHeight : resultHeight, alignment: .topLeading)
                 Text(context.readingPrompt)
                     .font(.subheadline)
                     .foregroundStyle(DSColor.textSecondary)

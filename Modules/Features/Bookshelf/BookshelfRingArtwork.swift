@@ -48,17 +48,37 @@ struct BookshelfRingSectorArtwork: View {
 /// The centre is an opaque brand badge, independent of rotor angle and book tint.
 struct BookshelfRingCenterBadge: View {
     let diameter: CGFloat
+    let isDrawing: Bool
     var onDraw: (() -> Void)? = nil
 
     var body: some View {
         Group {
             if let onDraw {
                 Button(action: onDraw) {
-                    badge
+                    ZStack {
+                        badge
+                        if isDrawing {
+                            ProgressView()
+                                .tint(.white)
+                                .padding(8)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .accessibilityHidden(true)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: diameter * 0.18, weight: .bold))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.75), radius: 3, x: 0, y: 1)
+                                .frame(width: diameter * 0.38, height: diameter * 0.38)
+                                .background(Color.accentColor.opacity(0.78), in: Circle())
+                                .offset(x: diameter * 0.28, y: diameter * 0.28)
+                                .accessibilityHidden(true)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(localized("书架抽签"))
-                .accessibilityHint(localized("随机推荐一本书"))
+                .disabled(isDrawing)
+                .accessibilityLabel(localized(isDrawing ? "抽签中" : "书架抽签"))
+                .accessibilityHint(localized(isDrawing ? "正在旋转" : "随机推荐一本书"))
             } else {
                 badge
             }

@@ -21,8 +21,53 @@ struct BookshelfCyberGearTests {
                                  y: center.y + sin(angle) * diameter * 0.46)
             #expect(!path.contains(inside))
         }
-        let band = CGPoint(x: center.x + diameter * 0.47, y: center.y)
+        let toothMidpoint = .pi / CGFloat(CyberGearShape.toothCount)
+        let band = CGPoint(x: center.x + cos(toothMidpoint) * diameter * 0.47,
+                           y: center.y + sin(toothMidpoint) * diameter * 0.47)
         #expect(path.contains(band))
+    }
+
+    @Test("28 deep teeth keep the book annulus clear and the tips prominent")
+    func toothProfileAndClearance() {
+        #expect(CyberGearShape.toothCount == 28)
+        #expect(CyberGearShape.innerRadius == 0.466)
+        #expect(CyberGearShape.rootRadius == 0.468)
+        #expect(CyberGearShape.tipRadius == 0.497)
+        let diameter: CGFloat = 320
+        let center = CGPoint(x: diameter / 2, y: diameter / 2)
+        let path = CyberGearShape().path(in: CGRect(origin: .zero, size: CGSize(width: diameter, height: diameter)))
+        let tipAngle = -CGFloat.pi / 2 + CGFloat.pi / CGFloat(CyberGearShape.toothCount)
+        let tip = CGPoint(x: center.x + cos(tipAngle) * diameter * 0.495,
+                          y: center.y + sin(tipAngle) * diameter * 0.495)
+        let rootAngle = -CGFloat.pi / 2
+        let root = CGPoint(x: center.x + cos(rootAngle) * diameter * 0.47,
+                           y: center.y + sin(rootAngle) * diameter * 0.47)
+        #expect(path.contains(tip))
+        #expect(path.contains(root))
+        for index in 0..<720 {
+            let angle = CGFloat(index) * .pi / 360
+            let coverEdge = CGPoint(x: center.x + cos(angle) * diameter * 0.465,
+                                    y: center.y + sin(angle) * diameter * 0.465)
+            #expect(!path.contains(coverEdge))
+        }
+    }
+
+    @Test("Gear facets stay within bounds and avoid book covers")
+    func facetsStayOnOuterRim() {
+        let rect = CGRect(x: 16, y: 22, width: 320, height: 320)
+        let path = CyberGearFacets().path(in: rect)
+        #expect(!path.isEmpty)
+        #expect(rect.contains(path.boundingRect))
+        #expect(path.boundingRect.maxY <= rect.maxY)
+        #expect(path.boundingRect.minY >= rect.minY)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        #expect(!path.contains(center))
+        for index in 0..<360 {
+            let angle = CGFloat(index) * .pi / 180
+            let coverPoint = CGPoint(x: center.x + cos(angle) * rect.width * 0.465,
+                                     y: center.y + sin(angle) * rect.width * 0.465)
+            #expect(!path.contains(coverPoint))
+        }
     }
 
     @Test("Empty and invalid geometry produces no path")

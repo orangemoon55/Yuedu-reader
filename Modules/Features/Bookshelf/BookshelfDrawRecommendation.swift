@@ -125,8 +125,12 @@ enum BookshelfDrawMotion {
     static func target(slot: Int, count: Int, from start: CGFloat, turns: Int = 4) -> CGFloat {
         guard count > 0, start.isFinite else { return 0 }
         let base = BookshelfRingGeometry.target(slot: slot, near: start, count: count)
-        let forward = (base - start).truncatingRemainder(dividingBy: 360)
-        return start + (forward < 0 ? forward + 360 : forward) + CGFloat(max(3, turns)) * 360
+        let minTurns = max(3, turns)
+        // The rotor's pointer is at -90°, matching the shelf's sector-zero anchor.
+        // Rotate forward (clockwise in the drawn coordinate system) into the slot.
+        var travel = (base - start).truncatingRemainder(dividingBy: 360)
+        if travel < 0 { travel += 360 }
+        return start + CGFloat(minTurns) * 360 + travel
     }
 
     static func angle(from start: CGFloat, to target: CGFloat, progress: Double) -> CGFloat {

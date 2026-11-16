@@ -7,6 +7,7 @@ import AudioToolbox
 /// Rotation never changes a slot's book, decode size, or view identity.
 struct BookshelfRingView: View {
     let books: [ReadingBook]
+    let allBooksForDraw: [ReadingBook]
     let colorScheme: ColorScheme
     let isFattened: (UUID) -> Bool
     let chapterContext: @MainActor (ReadingBook) async -> BookshelfRingChapterContext
@@ -27,6 +28,8 @@ struct BookshelfRingView: View {
     @State private var drawRecommendation: (bookID: UUID, text: String)?
     @State private var displayedBookOverride: UUID?
     @State private var cachedDrawCategory: (bookID: UUID, category: String)?
+    @State private var drawDisplaySlot: Int?
+    @State private var pendingDrawBookID: UUID?
 
 
     private struct ChapterRequest: Equatable {
@@ -35,160 +38,176 @@ struct BookshelfRingView: View {
     }
 
     private var visibleBooks: [ReadingBook] {
-        guard let displayedBookOverride else {
-            return BookshelfDrawRecommendation.visibleBooks(from: books, including: selectedID)
+        if isDrawing { return currentVisibleBooks }
+        if let displayedBookOverride {
+            return BookshelfDrawRecommendation.visibleBooks(from: books,
+                preserving: selectedID, including: displayedBookOverride)
         }
-        return BookshelfDrawRecommendation.visibleBooks(from: books, preserving: selectedID,
-                                                         including: displayedBookOverride)
+        return BookshelfDrawRecommendation.safeVisibleBooks(from: books, including: selectedID)
     }
     private var selectedBook: ReadingBook? {
         let visible = visibleBooks
-        let id = isDrawing ? displayedBookOverride : selectedID
-        let slot = BookshelfDrawRecommendation.slot(for: id, in: visible, fallback: motion.selectedSlot)
+        let slot = (isDrawing ? drawDisplaySlot : nil) ??
+            BookshelfDrawRecommendation.slot(for: displayedBookOverride ?? selectedID, in: visible, fallback: motion.selectedSlot)
         return visible.indices.contains(slot) ? visible[slot] : nil
     }
 
     private func startDrawing() {
         guard !isDrawing else { return }
-        let pool = BookshelfDrawRecommendation.eligible(in: books)
+        let pool = BookshelfDrawRecommendation.eligible(in: allBooksForDraw.isEmpty ? books : allBooksForDraw)
         guard !pool.isEmpty else { return }
         var generator = SystemRandomNumberGenerator()
         guard let winner = BookshelfDrawRecommendation.choose(from: pool, using: &generator) else { return }
-        let visible = BookshelfDrawRecommendation.visibleBooks(from: pool, preserving: selectedID, including: winner.id)
-        guard let slot = visible.firstIndex(where: { $0.id == winner.id }) else { return }
-        currentVisibleBooks = visible
+        let shown = BookshelfDrawRecommendation.visibleBooks(from: pool, preserving: selectedID, including: winner.id)
+        guard let slot = shown.firstIndex(where: { $0.id == winner.id }) else { return }
+
+        let priorID = selectedID
+        currentVisibleBooks = shown
+        pendingDrawBookID = winner.id
         displayedBookOverride = winner.id
         drawRecommendation = nil
         cachedDrawCategory = nil
+        drawDisplaySlot = slot
         isDrawing = true
-        reconcileBooks()
-        motion.draw(slot: slot, reduceMotion: reduceMotion) { completedSlot in
-            guard currentVisibleBooks.indices.contains(completedSlot) else { return }
-            let winner = currentVisibleBooks[completedSlot]
-            drawRecommendation = (winner.id, BookshelfDrawRecommendation.message(for: winner, category: cachedDrawCategory?.bookID == winner.id ? cachedDrawCategory?.category : nil))
-            isDrawing = false
-            selectedID = winner.id
-            displayedBookOverride = winner.id
-            cachedDrawCategory = nil
-        }
+        let priorSlot = BookshelfDrawRecommendation.slot(for: priorID, in: shown, fallback: motion.selectedSlot)
+        motion.configure(count: shown.count, slot: priorSlot)
+
         let sourceID = winner.bookSourceId
         let infoURL = winner.bookInfoURL?.trimmingCharacters(in: .whitespacesAndNewlines)
         let variables = winner.runtimeVariables
         Task.detached(priority: .utility) {
-            let cachedKind: String?
+            let rawCategory: String?
             if let sourceID, let infoURL, !infoURL.isEmpty {
                 var source = BookSource()
                 source.id = sourceID
-                cachedKind = BookSourceFetcher.shared.loadBookInfoPackageSync(
-                    url: infoURL, source: source, maximumAge: nil
-                )?.kind
-            } else {
-                cachedKind = nil
-            }
-            let trimmed = cachedKind?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let category = (trimmed?.isEmpty == false ? trimmed : nil)
+                rawCategory = BookSourceFetcher.shared.loadBookInfoPackageSync(url: infoURL, source: source, maximumAge: nil)?.kind
+            } else { rawCategory = nil }
+            let clean = rawCategory?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let category = (clean?.isEmpty == false ? clean : nil)
                 ?? ["kind", "category", "genre"].compactMap { variables?[$0] }
                     .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
             await MainActor.run {
-                if displayedBookOverride == winner.id {
-                    cachedDrawCategory = category.map { (winner.id, $0) }
-                }
+                guard pendingDrawBookID == winner.id else { return }
+                cachedDrawCategory = category.map { (winner.id, $0) }
             }
+        }
+
+        motion.draw(slot: slot, reduceMotion: reduceMotion) { _ in
+            guard pendingDrawBookID == winner.id else { return }
+            isDrawing = false
+            pendingDrawBookID = nil
+            selectedID = winner.id
+            displayedBookOverride = winner.id
+            drawRecommendation = (winner.id, BookshelfDrawRecommendation.message(
+                for: winner,
+                category: cachedDrawCategory?.bookID == winner.id ? cachedDrawCategory?.category : nil
+            ))
         }
     }
 
     private func resetDrawState() {
-        isDrawing = false
+        guard !isDrawing else { return }
         currentVisibleBooks = []
+        pendingDrawBookID = nil
         drawRecommendation = nil
         displayedBookOverride = nil
         cachedDrawCategory = nil
         motion.cancelAndSnap()
     }
 
+
     var body: some View {
-        VStack(spacing: 14) {
-            if let book = selectedBook {
-                let context = context(for: book)
-                BookshelfRingReadingPrompt(
-                    book: book, context: context,
-                    recommendation: drawRecommendation?.bookID == book.id ? drawRecommendation?.text : nil,
-                    onOpen: { open(book) }
-                )
-                BookshelfRingSelectedCard(book: book, context: context, colorScheme: colorScheme,
-                                          onOpen: { open(book) })
-                .contextMenu { bookMenu(book) }
-            } else if let drawRecommendation {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(drawRecommendation.text)
-                        .font(.headline)
-                        .foregroundStyle(DSColor.textPrimary)
-                        .lineLimit(2)
-                    Button(localized("再抽一次")) { startDrawing() }
-                        .font(.caption)
-                        .foregroundStyle(DSColor.accent)
+        ViewThatFits(in: .vertical) {
+            shelfStage(scrollHeader: false)
+            shelfStage(scrollHeader: true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("bookshelf.ring")
+    }
+
+    @ViewBuilder
+    private func shelfStage(scrollHeader: Bool) -> some View {
+        GeometryReader { proxy in
+            let showsMore = books.count > BookshelfRingGeometry.maximumCount
+            let sidebarWidth: CGFloat = showsMore ? 64 : 0
+            let sidebarGap: CGFloat = showsMore ? 8 : 0
+            let gearSide = min(440, proxy.size.width - sidebarWidth - sidebarGap,
+                               max(240, proxy.size.height - 18))
+            let header: AnyView = AnyView(headerContent)
+
+            VStack(spacing: 14) {
+                if scrollHeader {
+                    ScrollView(.vertical) { header }.scrollIndicators(.hidden)
+                        .frame(height: max(0, proxy.size.height - gearSide - 14))
+                } else {
+                    header.fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-            } else {
-                Text(localized("抽签提示语"))
-                    .font(.headline)
-                    .foregroundStyle(DSColor.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-            }
-            GeometryReader { proxy in
-                let showsMore = books.count > BookshelfRingGeometry.maximumCount
-                let gearSide = max(0, min(440, proxy.size.height, proxy.size.width - (showsMore ? 72 : 0)))
-                let sidebar = showsMore ? min(64, max(0, proxy.size.width - gearSide - 8)) : CGFloat(0)
-                let sidebarGap: CGFloat = showsMore ? 8 : 0
-                ZStack {
-                    let rotor = BookshelfRingRotor(
+                HStack(spacing: sidebarGap) {
+                    BookshelfRingRotor(
                         books: visibleBooks, colorScheme: colorScheme, motion: motion,
                         reduceMotion: reduceMotion, isFattened: isFattened,
                         coverSources: coverSources, onCoverFrameChange: onCoverFrameChange,
-                        onOpen: open,
-                        onContextAction: performContextAction,
+                        onOpen: open, onContextAction: performContextAction,
                         onDraw: startDrawing
                     )
                     .frame(width: gearSide, height: gearSide)
                     if showsMore {
-                        HStack(spacing: 8) {
-                            rotor
-                            Button {
-                                guard !isDrawing else { return }
-                                motion.cancelAndSnap()
-                                onShowMore()
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "books.vertical")
-                                        .font(.title3)
-                                    Text(localized("更多書籍"))
-                                        .font(.caption.weight(.medium))
-                                        .multilineTextAlignment(.center)
-                                    Text(books.count, format: .number)
-                                        .font(.caption2.monospacedDigit())
-                                        .foregroundStyle(DSColor.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(DSColor.accent)
-                            .accessibilityIdentifier("bookshelf.ring.more")
-                            .disabled(isDrawing)
-                            .frame(width: sidebar, height: diameter)
-                        }
-                        .frame(width: gearSide + sidebarGap + sidebar, height: gearSide, alignment: .center)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        rotor
-                            .frame(width: diameter, height: diameter)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        moreBooksControl
+                            .frame(width: sidebarWidth, height: gearSide)
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: showsMore ? .leading : .center)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("bookshelf.ring")
+    }
+
+    @ViewBuilder
+    private var headerContent: some View {
+        if let book = selectedBook {
+            let context = context(for: book)
+            BookshelfRingReadingPrompt(
+                book: book, context: context,
+                recommendation: drawRecommendation?.bookID == book.id ? drawRecommendation?.text : nil,
+                onOpen: { open(book) }
+            )
+            BookshelfRingSelectedCard(book: book, context: context, colorScheme: colorScheme,
+                                      onOpen: { open(book) })
+                .contextMenu { bookMenu(book) }
+        } else if let recommendation = drawRecommendation {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recommendation.text)
+                    .font(.headline).foregroundStyle(DSColor.textPrimary).lineLimit(2)
+                Button(localized("再抽一次"), action: startDrawing)
+                    .font(.caption).foregroundStyle(DSColor.accent)
+            }
+            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        } else {
+            Text(localized("抽签提示语"))
+                .font(.headline).foregroundStyle(DSColor.textSecondary)
+                .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        }
+    }
+
+    private var moreBooksControl: some View {
+        Button {
+            guard !isDrawing else { return }
+            motion.cancelAndSnap()
+            onShowMore()
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "books.vertical").font(.title3)
+                Text(localized("更多书籍"))
+                    .font(.caption.weight(.medium)).multilineTextAlignment(.center)
+                Text(books.count, format: .number)
+                    .font(.caption2.monospacedDigit()).foregroundStyle(DSColor.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).foregroundStyle(DSColor.accent)
+        .accessibilityIdentifier("bookshelf.ring.more")
+        .disabled(isDrawing)
+
         .task(id: ChapterRequest(book: selectedBook, isActive: scenePhase == .active)) {
             guard scenePhase == .active, let book = selectedBook else { return }
             let context = await chapterContext(book)
@@ -344,7 +363,8 @@ private struct BookshelfRingRotor: View {
                 }
                 BookshelfRingCenterBadge(
                     diameter: diameter * BookshelfRingGeometry.innerRadius * 2,
-                    onDraw: books.isEmpty ? nil : onDraw
+                    isDrawing: isDrawing,
+                    onDraw: books.isEmpty || isDrawing ? nil : onDraw
                 )
                     .position(center)
                 if !books.isEmpty {
@@ -736,6 +756,8 @@ final class BookshelfRingMotion {
     private(set) var rotation: CGFloat = 0
     private(set) var selectedSlot = 0
     private(set) var isSpinning = false
+    private(set) var drawTargetSlot: Int?
+    private(set) var drawIntensity: CGFloat = 0
     var isActive = false {
         didSet {
             if !isActive { cancelAndSnap() }
@@ -767,18 +789,17 @@ final class BookshelfRingMotion {
     private struct Settlement {
         let start: CGFloat
         let target: CGFloat
-        let startedAt: TimeInterval
-        let drawTarget: CGFloat?
-        let drawTargetSlot: Int?
+        @ObservationIgnored var drawTarget: CGFloat?
+        @ObservationIgnored var drawTargetSlot: Int?
     }
 
-    private var onDrawSettled: ((Int) -> Void)?
-
     func configure(count: Int, slot: Int) {
-        let nextCount = min(max(count, 0), BookshelfRingGeometry.maximumCount)
-        guard nextCount != self.count else { return }
         stop()
         dragState = nil
+        onDrawSettled = nil
+        drawTargetSlot = nil
+        drawIntensity = 0
+        let nextCount = min(max(count, 0), BookshelfRingGeometry.maximumCount)
         self.count = nextCount
         selectedSlot = min(max(slot, 0), max(0, self.count - 1))
         rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: self.count)
@@ -787,9 +808,11 @@ final class BookshelfRingMotion {
     func draw(slot: Int, reduceMotion: Bool, callback: @escaping (Int) -> Void) {
         guard isActive, count > 0, (0..<count).contains(slot), dragState == nil else { return }
         stop()
+        drawTargetSlot = slot
+        drawIntensity = 1
         let target = BookshelfDrawMotion.target(slot: slot, count: count, from: rotation)
         onDrawSettled = callback
-        isSpinning = true
+        isSpinning = !reduceMotion
         if reduceMotion {
             completeDraw(slot: slot)
             return
@@ -805,11 +828,12 @@ final class BookshelfRingMotion {
     private func completeDraw(slot: Int) {
         selectedSlot = slot
         rotation = -CGFloat(slot) * BookshelfRingGeometry.step(count: count)
-        let completion = onDrawSettled
+        let callback = onDrawSettled
         onDrawSettled = nil
         settling = nil
         isSpinning = false
-        completion?(slot)
+        drawIntensity = 0.7
+        callback?(slot)
     }
 
     func drag(_ value: DragGesture.Value, center: CGPoint, reduceMotion: Bool) {
@@ -914,15 +938,20 @@ final class BookshelfRingMotion {
 
     private func tick(_ time: TimeInterval) {
         guard isActive, let settling else { stop(); return }
-        let elapsed = time - settling.startedAt
-        if elapsed >= (settling.drawTarget == nil ? 0.56 : 2.2) {
-            if let drawSlot = settling.drawTargetSlot {
+        if let drawSlot = settling.drawTargetSlot {
+            let progress = Double(max(0, time - settling.startedAt) / 1.85)
+            rotation = BookshelfDrawMotion.angle(from: settling.start, to: settling.target, progress: progress)
+            if progress >= 1 {
                 completeDraw(slot: drawSlot)
-            } else {
-                updateSelection(for: settling.target)
-                rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
                 stop()
             }
+            return
+        }
+        let elapsed = time - settling.startedAt
+        if elapsed >= 0.56 {
+            updateSelection(for: settling.target)
+            rotation = -CGFloat(selectedSlot) * BookshelfRingGeometry.step(count: count)
+            stop()
             return
         }
         // Closed-form damped spring: frame-rate independent, bounded overshoot,
@@ -957,6 +986,7 @@ final class BookshelfRingMotion {
         ticker.stop()
         settling = nil
         isSpinning = false
+        if onDrawSettled == nil && drawTargetSlot == nil { drawIntensity = 0 }
     }
 }
 

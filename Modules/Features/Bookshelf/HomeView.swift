@@ -640,6 +640,7 @@ struct HomeView: View {
                     } else if isRingMode, editMode != .active {
                         BookshelfRingView(
                             books: sortedBooks(inGroup: nil),
+                            allBooksForDraw: store.books,
                             colorScheme: colorScheme,
                             isFattened: { isFattenedBookIDs.contains($0) },
                             chapterContext: { book in
