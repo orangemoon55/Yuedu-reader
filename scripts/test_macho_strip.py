@@ -11,10 +11,11 @@ from macho_strip import snapshot
 import prepare_trollstore_test as packaging
 
 
-def image(local=True, debug=True, global_name=b'_public', code=b'CODE', metadata=b'META', exports=b'EXPORT'):
+def image(local=True, debug=True, global_name=b'_public', code=b'CODE', metadata=b'META', exports=b'EXPORT', sentinel=False):
     strings = bytearray(b'\0')
     symbols = []
-    for name, kind, section, value in [(b'_local', 0xe, 1, 0x1000)] * local + \
+    for name, kind, section, value in [(b'radr://5614542', 0x3c, 0, 0x05614542)] * sentinel + \
+            [(b'_local', 0xe, 1, 0x1000)] * local + \
             [(b'debug', 0x24, 1, 0x1000)] * debug + \
             [(global_name, 0xf, 1, 0x1000), (b'_import', 1, 0, 0)]:
         symbols.append(struct.pack('<IBBHQ', len(strings), kind, section, 0, value))
@@ -73,6 +74,19 @@ class StripGuardTests(unittest.TestCase):
 
         before, after, _ = self.apply(alias(image()), alias(image(local=False, debug=False)))
         self.assertEqual(before[0]['runtime'], after[0]['runtime'])
+
+    def test_apple_dyld_compatibility_sentinel_is_allowed(self):
+        before, after, _ = self.apply(image(), image(local=False, debug=False, sentinel=True))
+        self.assertEqual(after[0]['sentinel'], 1)
+        self.assertEqual((after[0]['local'], after[0]['debug']), (0, 0))
+        self.assertEqual(before[0]['runtime'], after[0]['runtime'])
+
+    def test_fake_sentinel_is_not_accepted(self):
+        data = bytearray(image(local=False, debug=False, sentinel=True))
+        symoff = struct.unpack_from('<I', data, 32 + 24 + 8)[0]
+        struct.pack_into('<Q', data, symoff + 8, 0)
+        with self.assertRaisesRegex(ValueError, '本地或调试符号'):
+            self.apply(image(), data)
 
     def test_reject_noop_strip_with_local_symbols(self):
         with self.assertRaisesRegex(ValueError, '本地或调试符号'):

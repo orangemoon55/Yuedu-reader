@@ -19,6 +19,12 @@ on:
         default: false
         type: boolean
 
+      build_only:
+        description: 仅重跑真机打包，复用同一应用代码的通过回归
+        required: false
+        default: false
+        type: boolean
+
       regression_scope:
         description: 验证范围（已通过的应用不必重复打包）
         required: false
@@ -36,7 +42,8 @@ permissions:
 
 jobs:
   regressions:
-    name: 核查圆盘、目录和阅读退出回归
+    if: ${{ !inputs.build_only }}
+    name: 核查首页、底栏与阅读菜单回归
     runs-on: xcode-27
     timeout-minutes: 70
     steps:
