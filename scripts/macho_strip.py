@@ -72,7 +72,7 @@ def snapshot(path):
                 cursor += size
             if cursor != end:
                 raise ValueError('Mach-O 指令长度不一致')
-            local = debug = 0
+            local = debug = sentinel = 0
             globals_ = []
             if symbols:
                 symoff, nsyms, stroff, strsize = symbols
@@ -92,7 +92,13 @@ def snapshot(path):
                 for n in range(nsyms):
                     record = base + symoff + n * 16
                     index, kind, section, desc, value = unpack(endian + 'IBBHQ', record)
-                    if kind & 0xe0:  # N_STAB
+                    # Apple cctools strip adds this exact first N_OPT sentinel when
+                    # indirect symbols exist (dyld workaround radr://5614542).
+                    if (n == 0 and kind == 0x3c and section == desc == 0
+                            and value == 0x05614542
+                            and symbol_name(index) == struct.pack('<I', 14) + b'radr://5614542'):
+                        sentinel += 1
+                    elif kind & 0xe0:  # N_STAB
                         debug += 1
                     elif kind & 1:  # N_EXT (defined and undefined, including weak symbols)
                         # N_INDR n_value is another string index, not a runtime address.
@@ -105,5 +111,5 @@ def snapshot(path):
                 exports.update(entry)
             result.append({'runtime': (header[1:4], header[6:], sections, loader,
                                        len(globals_), exports.hexdigest()),
-                           'local': local, 'debug': debug, 'global': len(globals_)})
+                           'local': local, 'debug': debug, 'sentinel': sentinel, 'global': len(globals_)})
         return result
