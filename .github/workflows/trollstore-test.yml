@@ -35,6 +35,7 @@ on:
           - settings-ui
           - chapter-title
           - toc-pins
+          - ui-polish
 
 permissions:
   contents: read
