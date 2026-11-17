@@ -252,18 +252,7 @@ struct HomeSectionCards: View {
     // MARK: 封面簡介大卡
 
     private var coverIntroCards: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: DSSpacing.md) {
-                ForEach(cards.indices, id: \.self) { index in
-                    button(index, in: cards, value: cards[index].featuredAccessibilityValue) {
-                        HomeCoverIntroCard(content: cards[index])
-                    }
-                    .homePageCardWidth(perScreen: horizontalSizeClass == .regular ? 2 : 1, count: cards.count)
-                }
-            }
-            .scrollTargetLayout()
-        }
-        .modifier(HomeSidewaysScroll())
+        HomeRankCarousel(cards: cards, open: open)
     }
 
     // MARK: 大型閱讀卡片

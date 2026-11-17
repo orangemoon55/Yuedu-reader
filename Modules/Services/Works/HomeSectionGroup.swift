@@ -155,7 +155,7 @@ enum HomeScopeFilter {
                 entries[row.id] = hidesRead ? kept.filter { !(readFilter?.isRead($0) ?? false) } : kept
             }
             return HomeSectionGroup(section: section, rows: rows, entries: entries,
-                                    languages: keepsOrder(section.binding) ? nil : languages)
+                                    languages: (section.rotatingRank != nil || keepsOrder(section.binding)) ? nil : languages)
         }
     }
 

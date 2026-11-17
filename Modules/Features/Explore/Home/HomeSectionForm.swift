@@ -610,8 +610,10 @@ struct HomeSectionForm: View {
         switch mode {
         case .choose:
             if draft.layout.style == .coverIntroCard {
-                HomeSourceBookPicker(current: draft.binding, isPushed: isPushed) { book in
-                    editor.choose(.sourceBook(book))
+                HomeRankingPicker(current: draft.binding, pushed: isPushed) { choice, source in
+                    var section = draft.section ?? HomeSection(layout: .coverIntroCard, binding: choice.binding)
+                    section.configureRotatingRank(choice, source: source)
+                    editor.choose(section.binding, parameters: section.parameters, itemTitle: choice.itemTitle)
                     closePicker()
                 } cancel: { closePicker() }
             } else {

@@ -34,6 +34,7 @@ final class BookSourceProvider: HomeSectionProviding {
     var rateLimit: String? { BookSourceManifest.rateLimit(of: source) }
 
     func loadPolicy(for section: HomeSection) -> SectionLoadPolicy? {
+        if section.rotatingRank != nil { return .serialPerSource }
         if case .sourceBook(let book) = section.binding {
             return book.sourceURL == source.bookSourceUrl ? .local : nil
         }
@@ -44,6 +45,10 @@ final class BookSourceProvider: HomeSectionProviding {
     /// The first page of the section's category: a row's books, or one card of a section of lists
     /// (`HomeSection.listCards`, a card per category), each the request a row of the category makes too.
     func load(_ section: HomeSection) async throws -> [CollectionEntry] {
+        if let rank = section.rotatingRank, rank.sourceURL == source.bookSourceUrl, rank.cardItem != nil {
+            let books = try await firstPages.firstPage(of: rank, in: source).value
+            return books.prefix(30).map { entry($0) }
+        }
         if case .sourceBook(let selection) = section.binding {
             return selection.onlineBook(in: source).map { [entry($0)] } ?? []
         }
