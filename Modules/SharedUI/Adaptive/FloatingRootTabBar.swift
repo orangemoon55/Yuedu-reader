@@ -1,39 +1,44 @@
 import SwiftUI
 import UIKit
 
-/// Geometry shared by the real controls and the layout tests. Never shrink a touch
-/// target below 44pt; an unusually narrow container scrolls instead of clipping it.
+/// Geometry shared by the real controls and the layout tests. The bar never owns a
+/// horizontal scroll view: on narrow widths it wraps into a second row instead of moving
+/// under the user's finger. Artwork stays compact; each control keeps a 48pt hit frame.
 struct FloatingRootTabBarLayout: Equatable {
-    static let minimumHitSize = DSLayout.minimumTapTarget
+    static let minimumHitSize: CGFloat = 48
     static let surfacePadding = DSSpacing.xs
-    static let bottomSpacing = DSSpacing.xs
-    static let topSpacing = DSSpacing.xs
     static let defaultIconSize: CGFloat = 26
-    static let compactHeight = minimumHitSize + surfacePadding * 2
+    static let compactHeight = DSLayout.minimumTapTarget + surfacePadding * 2
     static let maximumItemWidth: CGFloat = 80
     static let maximumWidth: CGFloat = 560
-    static let shadowPadding = DSSpacing.xs
+    static let hitExpansion: CGFloat = 6
 
     let itemWidth: CGFloat
     let capsuleWidth: CGFloat
     let searchDiameter: CGFloat
+    let searchHitWidth: CGFloat
     let gap: CGFloat
     let contentWidth: CGFloat
     let viewportWidth: CGFloat
     let height: CGFloat
+    let columns: Int
+    let rows: Int
 
     init(availableWidth: CGFloat, mainTabCount: Int, hasSearch: Bool, height: CGFloat) {
         let count = max(0, mainTabCount)
         self.height = max(Self.compactHeight, height)
-        searchDiameter = hasSearch ? min(self.height, Self.compactHeight) : 0
+        searchDiameter = hasSearch ? Self.compactHeight : 0
+        searchHitWidth = hasSearch ? searchDiameter + Self.hitExpansion * 2 : 0
         gap = count > 0 && hasSearch ? DSSpacing.sm : 0
         let padding = count > 0 ? Self.surfacePadding * 2 : 0
         let available = max(0, availableWidth.isFinite ? availableWidth : 0)
         let usable = max(0, min(available - DSSpacing.lg * 2, Self.maximumWidth))
-        let candidate = count > 0 ? (usable - searchDiameter - gap - padding) / CGFloat(count) : 0
-        itemWidth = count > 0 ? max(Self.minimumHitSize, min(Self.maximumItemWidth, candidate)) : 0
-        capsuleWidth = CGFloat(count) * itemWidth + padding
-        contentWidth = capsuleWidth + gap + searchDiameter
+        let mainSpace = max(0, usable - searchHitWidth - gap - padding)
+        columns = count > 0 ? min(count, max(1, Int(mainSpace / Self.minimumHitSize))) : 0
+        rows = columns > 0 ? (count + columns - 1) / columns : 0
+        itemWidth = columns > 0 ? max(Self.minimumHitSize, min(Self.maximumItemWidth, mainSpace / CGFloat(columns))) : 0
+        capsuleWidth = columns > 0 ? CGFloat(columns) * itemWidth + padding : 0
+        contentWidth = capsuleWidth + gap + searchHitWidth
         viewportWidth = min(available, contentWidth)
     }
 }
@@ -76,35 +81,31 @@ struct FloatingRootTabBar: View {
                 availableWidth: geometry.size.width, mainTabCount: mainTabs.count,
                 hasSearch: hasSearch, height: barHeight
             )
-            ScrollView(.horizontal) {
-                HStack(spacing: layout.gap) {
-                    if !mainTabs.isEmpty {
-                        HStack(spacing: 0) {
-                            ForEach(mainTabs) { tab in
-                                tabButton(tab, width: layout.itemWidth,
-                                          height: layout.height - FloatingRootTabBarLayout.surfacePadding * 2)
-                            }
+            HStack(spacing: layout.gap) {
+                if !mainTabs.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.itemWidth), spacing: 0),
+                                             count: layout.columns), spacing: DSSpacing.xs) {
+                        ForEach(mainTabs) { tab in
+                            tabButton(tab, width: layout.itemWidth,
+                                      height: layout.height - FloatingRootTabBarLayout.surfacePadding * 2)
                         }
-                        .padding(FloatingRootTabBarLayout.surfacePadding)
-                        .background { surface }
                     }
-                    if hasSearch {
-                        searchButton(diameter: layout.searchDiameter)
-                    }
+                    .padding(.horizontal, FloatingRootTabBarLayout.surfacePadding)
+                    .frame(width: layout.capsuleWidth)
+                    .background { surface }
                 }
-                .frame(width: layout.contentWidth, height: layout.height)
-                // Shadow room stays outside the measured control surface.
-                .padding(.vertical, FloatingRootTabBarLayout.shadowPadding)
+                if hasSearch { searchButton(diameter: layout.searchDiameter) }
             }
-            .scrollIndicators(.hidden)
-            .scrollClipDisabled(layout.contentWidth <= layout.viewportWidth)
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(width: layout.viewportWidth,
-                   height: layout.height + FloatingRootTabBarLayout.shadowPadding * 2)
-            .frame(maxWidth: .infinity)
+            .frame(width: layout.contentWidth, height: layout.rows > 1 ? layout.height * CGFloat(layout.rows) : layout.height)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .frame(height: barHeight + FloatingRootTabBarLayout.shadowPadding * 2)
+        .frame(height: barHeight * CGFloat(max(1, measuredRows)) + FloatingRootTabBarLayout.surfacePadding * 2)
         .accessibilityIdentifier("rootTab.floatingBar")
+    }
+
+    private var measuredRows: Int {
+        FloatingRootTabBarLayout(availableWidth: UIScreen.main.bounds.width, mainTabCount: mainTabs.count,
+                                 hasSearch: hasSearch, height: barHeight).rows
     }
 
     private func tabButton(_ tab: RootTabItem, width: CGFloat, height: CGFloat) -> some View {
@@ -132,7 +133,7 @@ struct FloatingRootTabBar: View {
                         }
                 }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
@@ -152,7 +153,8 @@ struct FloatingRootTabBar: View {
                 icon(for: .search).foregroundStyle(Color.primary)
             }
             .frame(width: diameter, height: diameter)
-            .contentShape(Circle())
+            .padding(FloatingRootTabBarLayout.hitExpansion)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)

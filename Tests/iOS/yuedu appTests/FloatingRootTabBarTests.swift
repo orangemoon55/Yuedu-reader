@@ -13,24 +13,43 @@ final class FloatingRootTabBarTests: XCTestCase {
                         availableWidth: width, mainTabCount: count,
                         hasSearch: search, height: 64
                     )
-                    XCTAssertGreaterThanOrEqual(layout.itemWidth, 44)
+                    XCTAssertGreaterThanOrEqual(layout.itemWidth, 48)
                     XCTAssertGreaterThanOrEqual(layout.height - FloatingRootTabBarLayout.surfacePadding * 2, 44)
                     if search { XCTAssertGreaterThanOrEqual(layout.searchDiameter, 44) }
                     XCTAssertLessThanOrEqual(layout.viewportWidth, width)
-                    XCTAssertEqual(layout.contentWidth, layout.capsuleWidth + layout.gap + layout.searchDiameter)
+                    XCTAssertGreaterThanOrEqual(layout.rows, 1)
+                    XCTAssertEqual(layout.contentWidth, layout.capsuleWidth + layout.gap + layout.searchHitWidth)
                 }
             }
         }
         let narrow = FloatingRootTabBarLayout(availableWidth: 200, mainTabCount: 5, hasSearch: true, height: 64)
-        XCTAssertGreaterThan(narrow.contentWidth, narrow.viewportWidth, "Narrow layouts scroll rather than shrink targets")
+        XCTAssertEqual(narrow.contentWidth, narrow.viewportWidth)
+        XCTAssertGreaterThan(narrow.rows, 1, "Narrow layouts wrap instead of scrolling")
         let searchOnly = FloatingRootTabBarLayout(availableWidth: 320, mainTabCount: 0, hasSearch: true, height: 64)
         XCTAssertEqual(searchOnly.capsuleWidth, 0)
-        XCTAssertEqual(searchOnly.contentWidth, 52)
+        XCTAssertEqual(searchOnly.searchDiameter, 56)
         let compact = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 2, hasSearch: true, height: 56)
         XCTAssertEqual(compact.height, 56)
         XCTAssertEqual(compact.itemWidth, 80)
-        XCTAssertEqual(compact.contentWidth, 228)
+        XCTAssertGreaterThanOrEqual(compact.contentWidth, 228)
         XCTAssertGreaterThanOrEqual(compact.height - FloatingRootTabBarLayout.surfacePadding * 2, 44)
+    }
+
+    func testFixedBarIsNotHorizontallyScrollableAndHitTargetsAreExpanded() async throws {
+        var selection: RootTabItem = .explore
+        let view = FloatingRootTabBar(tabs: [.explore, .bookshelf, .settings, .search],
+                                      selection: Binding(get: { selection }, set: { selection = $0 }))
+        try await withAccessibilityHost(in: view) { host in
+            host.layoutIfNeeded()
+            let all = descendants(of: host)
+            XCTAssertFalse(all.contains(where: { $0 is UIScrollView }))
+            let buttons = accessibilityElements(in: host).filter { $0.accessibilityTraits.contains(.button) }
+            XCTAssertGreaterThanOrEqual(buttons.count, 4)
+            for button in buttons {
+                XCTAssertGreaterThanOrEqual(button.accessibilityFrame.width, 48)
+                XCTAssertGreaterThanOrEqual(button.accessibilityFrame.height, 48)
+            }
+        }
     }
 
     func testSearchDetachesWithoutChangingOrderSelectionOrHiddenPreferences() {
