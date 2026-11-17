@@ -544,7 +544,6 @@ struct HomeView: View {
     /// The page the shelf's buttons act on: a group opened from its folder, otherwise the
     /// page in view on the shelf.
     private var activePage: ShelfPage {
-        if showsCompleteShelf { return .completeList }
         return openedFolder.map(ShelfPage.folder) ?? ShelfPage(pagerGroup: selectedGroup)
     }
 
