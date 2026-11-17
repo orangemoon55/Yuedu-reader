@@ -78,7 +78,6 @@ enum ReaderCustomBackgroundMode: String, CaseIterable, Identifiable {
 // MARK: - Reader Theme
 
 enum ReaderTheme: String, CaseIterable {
-    case nightCopper = "夜銅"
     case night = "夜間"
     case white = "白天"
     case green = "護眼綠"
@@ -100,7 +99,6 @@ enum ReaderTheme: String, CaseIterable {
 
     var titleKey: String {
         switch self {
-        case .nightCopper: return "夜銅"
         case .night: return "黑色"
         case .white: return "白色"
         case .green: return "護眼綠"
@@ -109,11 +107,12 @@ enum ReaderTheme: String, CaseIterable {
     }
 
     var localizedTitle: String { localized(titleKey) }
-    var isDark: Bool { self == .night || self == .nightCopper }
+    var isDark: Bool { self == .night }
 
     static func loadPersisted() -> ReaderTheme {
+        ReaderThemeStorageMigration.migrateDefaults(.standard)
         let raw = UserDefaults.standard.string(forKey: userDefaultsKey) ?? ""
-        return ReaderTheme(rawValue: raw) ?? .white
+        return ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)) ?? .white
     }
 
     /// Whether the reader has ever been given a background: none is stored until one is.
@@ -125,13 +124,13 @@ enum ReaderTheme: String, CaseIterable {
     /// while the reader sits on 黑色.
     static var lastLightTheme: ReaderTheme {
         let raw = UserDefaults.standard.string(forKey: lastLightThemeKey) ?? ""
-        guard let theme = ReaderTheme(rawValue: raw), !theme.isDark else { return .white }
+        guard let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)), !theme.isDark else { return .white }
         return theme
     }
 
     static var lastDarkTheme: ReaderTheme {
         let raw = UserDefaults.standard.string(forKey: lastDarkThemeKey) ?? ""
-        guard let theme = ReaderTheme(rawValue: raw), theme.isDark else { return .night }
+        guard let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)), theme.isDark else { return .night }
         return theme
     }
 
@@ -184,7 +183,6 @@ enum ReaderTheme: String, CaseIterable {
 
     private var intrinsicUIBackgroundColor: UIColor {
         switch self {
-        case .nightCopper: return UIColor(red: 0x15 / 255, green: 0x23 / 255, blue: 0x1E / 255, alpha: 1)
         case .white: return Self.weChatDayBackground
         case .green: return Self.eyeComfortGreenBackground
         case .sepia: return UIColor(red: 244 / 255, green: 236 / 255, blue: 216 / 255, alpha: 1)
@@ -211,7 +209,6 @@ enum ReaderTheme: String, CaseIterable {
 
     private var intrinsicUITextColor: UIColor {
         switch self {
-        case .nightCopper: return UIColor(red: 0xED / 255, green: 0xE3 / 255, blue: 0xCB / 255, alpha: 1)
         case .white: return UIColor(red: 51 / 255, green: 51 / 255, blue: 51 / 255, alpha: 1)
         case .green: return UIColor(red: 47 / 255, green: 61 / 255, blue: 47 / 255, alpha: 1)
         case .sepia: return UIColor(red: 91 / 255, green: 70 / 255, blue: 54 / 255, alpha: 1)
@@ -229,7 +226,6 @@ enum ReaderTheme: String, CaseIterable {
     /// parchment). A comment card template's `${accent}`.
     var commentCardAccent: UIColor {
         switch self {
-        case .nightCopper: return UIColor(red: 0x9B / 255, green: 0x6D / 255, blue: 0x32 / 255, alpha: 1)
         case .white, .night: return UIColor(red: 217 / 255, green: 58 / 255, blue: 53 / 255, alpha: 1)
         case .green: return UIColor(red: 63 / 255, green: 125 / 255, blue: 76 / 255, alpha: 1)
         case .sepia: return UIColor(red: 151 / 255, green: 106 / 255, blue: 5 / 255, alpha: 1)
@@ -243,7 +239,6 @@ enum ReaderTheme: String, CaseIterable {
     var uiBarColor: UIColor {
         if let preset = activeAppearancePreset { return preset.bar }
         switch self {
-        case .nightCopper: return UIColor(red: 0x29 / 255, green: 0x3A / 255, blue: 0x30 / 255, alpha: 1)
         case .white: return .white
         case .green:
             return UIColor(red: 191 / 255, green: 218 / 255, blue: 188 / 255, alpha: 1)
@@ -254,7 +249,6 @@ enum ReaderTheme: String, CaseIterable {
 
     var epubJSName: String {
         switch self {
-        case .nightCopper: return "nightCopper"
         case .white: return "white"
         case .green: return "green"
         case .sepia: return "sepia"
@@ -282,7 +276,6 @@ enum ReaderBoundTheme: Hashable, Identifiable {
     /// wrong at the top of a list). The saved backgrounds follow these.
     static let builtInMenuOptions: [ReaderBoundTheme] = [
         .followAppearanceTheme,
-        .reading(.nightCopper),
         .reading(.white),
         .reading(.green),
         .reading(.sepia),
@@ -303,7 +296,7 @@ enum ReaderBoundTheme: Hashable, Identifiable {
     }
 
     init(storageValue: String) {
-        if let theme = ReaderTheme(rawValue: storageValue) {
+        if let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(storageValue)) {
             self = .reading(theme)
         } else if storageValue.hasPrefix(Self.customStoragePrefix),
                   let id = UUID(uuidString: String(storageValue.dropFirst(Self.customStoragePrefix.count))) {
@@ -2259,6 +2252,7 @@ class GlobalSettings {
     }
 
     private init() {
+        ReaderThemeStorageMigration.migrateDefaults(.standard)
         let retiredNightCopper = QingyunNightCopperRetirementMigration.runIfNeeded(defaults: .standard)
         UserDefaults.standard.removeObject(forKey: "yd_app_lang")
         // Before anything below reads the stores it rewrites.

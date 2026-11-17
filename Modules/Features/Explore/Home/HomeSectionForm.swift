@@ -609,11 +609,16 @@ struct HomeSectionForm: View {
     private func picker(_ mode: HomeSectionPickerMode, isPushed: Bool) -> some View {
         switch mode {
         case .choose:
-            HomeContentSourcePicker(current: draft.binding, parameters: draft.parameters, isPushed: isPushed) { choice in
-                editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
-                closePicker()
-            } cancel: {
-                closePicker()
+            if draft.layout.style == .coverIntroCard {
+                HomeSourceBookPicker(current: draft.binding, isPushed: isPushed) { book in
+                    editor.choose(.sourceBook(book))
+                    closePicker()
+                } cancel: { closePicker() }
+            } else {
+                HomeContentSourcePicker(current: draft.binding, parameters: draft.parameters, isPushed: isPushed) { choice in
+                    editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
+                    closePicker()
+                } cancel: { closePicker() }
             }
         case .addLists:
             HomeContentSourcePicker(current: nil, isPushed: isPushed, title: localized("加入清單")) { choice in

@@ -25,6 +25,8 @@ struct HomeSectionLayout: RawRepresentable, Codable, Hashable, Sendable {
     /// 精簡閱讀卡片 (5d-3c): a small cover and the title, author, kind and progress on the
     /// cover's colour, as Apple Books' Continue.
     static let compactReadingCard = Self(rawValue: "compactReadingCard")
+    /// Equal halves: the cover on the left and the selected book’s introduction on the right.
+    static let coverIntroCard = Self(rawValue: "coverIntroCard")
     /// 多行橫向輪播 (5d-3).
     static let multiRow = Self(rawValue: "multiRow")
     /// 固定封面網格 (5d-3).
@@ -72,7 +74,7 @@ struct HomeSectionLayout: RawRepresentable, Codable, Hashable, Sendable {
     var componentKind: CustomExploreComponent.Kind? { .init(rawValue: rawValue) }
 
     var isKnown: Bool {
-        componentKind != nil || [.tiles, .row, .readingCard, .compactReadingCard, .multiRow, .coverGrid, .list, .rankedList,
+        componentKind != nil || [.tiles, .row, .readingCard, .compactReadingCard, .coverIntroCard, .multiRow, .coverGrid, .list, .rankedList,
                                  .featured, .collection, .band, .largeRow, .heroGrid, .rankedRow, .categoryCards,
                                  .collageCards, .bannerCards, .colorBand].contains(self)
     }
@@ -96,6 +98,8 @@ enum HomeSectionBinding: Hashable, Sendable {
     case latest
     /// Categories of one book source: 加入首頁配置's, and a custom page's block moved in (5d-4).
     case sourceCategories([ExploreCategoryReference])
+    /// One exact book manually chosen from one installed source.
+    case sourceBook(HomeSourceBook)
     case opdsFeed(connectionID: String, url: String)
     /// A list bundled with the app (`PublicLibraryCollection`); sends no request.
     case gutenbergCollection(id: String)
@@ -150,11 +154,11 @@ enum HomeSectionBinding: Hashable, Sendable {
 
 extension HomeSectionBinding: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, categories, connectionID, url, id, kind, moduleID, entryID, cards
+        case type, categories, connectionID, url, id, kind, moduleID, entryID, cards, book
     }
 
     private enum Kind: String {
-        case myLibrary, continueReading, bookshelf, latest, sourceCategories, opdsFeed
+        case myLibrary, continueReading, bookshelf, latest, sourceCategories, sourceBook, opdsFeed
         case gutenbergCollection, gutenbergLists, gutenbergFeed, gutenbergShelf, aozoraNew, aozoraIndex, related, nextInSeries
         case subscriptionArticles, module, aiRecommendations, lists
     }
@@ -173,6 +177,8 @@ extension HomeSectionBinding: Codable {
         case .latest: self = .latest
         case .sourceCategories:
             self = .sourceCategories(try container.decode([ExploreCategoryReference].self, forKey: .categories))
+        case .sourceBook:
+            self = .sourceBook(try container.decode(HomeSourceBook.self, forKey: .book))
         case .opdsFeed:
             self = .opdsFeed(connectionID: try container.decode(String.self, forKey: .connectionID),
                              url: try container.decode(String.self, forKey: .url))
@@ -211,6 +217,9 @@ extension HomeSectionBinding: Codable {
         case .sourceCategories(let categories):
             try container.encode(Kind.sourceCategories.rawValue, forKey: .type)
             try container.encode(categories, forKey: .categories)
+        case .sourceBook(let book):
+            try container.encode(Kind.sourceBook.rawValue, forKey: .type)
+            try container.encode(book, forKey: .book)
         case .opdsFeed(let connectionID, let url):
             try container.encode(Kind.opdsFeed.rawValue, forKey: .type)
             try container.encode(connectionID, forKey: .connectionID)

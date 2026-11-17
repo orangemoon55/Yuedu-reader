@@ -34,12 +34,19 @@ final class BookSourceProvider: HomeSectionProviding {
     var rateLimit: String? { BookSourceManifest.rateLimit(of: source) }
 
     func loadPolicy(for section: HomeSection) -> SectionLoadPolicy? {
-        category(for: section) == nil ? nil : .serialPerSource
+        if case .sourceBook(let book) = section.binding {
+            return book.sourceURL == source.bookSourceUrl ? .local : nil
+        }
+        guard DiscoverViewModel.isExploreSource(source) else { return nil }
+        return category(for: section) == nil ? nil : .serialPerSource
     }
 
     /// The first page of the section's category: a row's books, or one card of a section of lists
     /// (`HomeSection.listCards`, a card per category), each the request a row of the category makes too.
     func load(_ section: HomeSection) async throws -> [CollectionEntry] {
+        if case .sourceBook(let selection) = section.binding {
+            return selection.onlineBook(in: source).map { [entry($0)] } ?? []
+        }
         guard let category = category(for: section), category.cardItem != nil else { return [] }
         do {
             let books = try await firstPages.firstPage(of: category, in: source).value

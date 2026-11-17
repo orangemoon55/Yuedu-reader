@@ -73,13 +73,13 @@ struct ReaderModernBookCard: View {
             cover
             VStack(alignment: .leading, spacing: DSSpacing.xs) {
                 Text(bookTitle)
-                    .font(DSFont.headline)
+                    .font(DSFont.readerMenu(.headline))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 if !author.isEmpty {
                     Text(author)
-                        .font(DSFont.subheadline)
-                        .foregroundStyle(palette.panelText.opacity(0.62))
+                        .font(DSFont.readerMenu(.subheadline))
+                        .foregroundStyle(palette.panelText)
                         .lineLimit(1)
                 }
                 // Stacked, not side by side. Two capsules sharing one line had to fit
@@ -124,11 +124,11 @@ struct ReaderModernBookCard: View {
                 .imageScale(.small)
                 .foregroundStyle(palette.bottomAccent)
             Text(title)
-                .foregroundStyle(palette.panelText.opacity(0.62))
+                .foregroundStyle(palette.panelText)
             Text(value)
                 .fontWeight(.medium)
         }
-        .font(DSFont.caption)
+        .font(DSFont.readerMenu(.caption))
         .padding(.horizontal, DSSpacing.sm)
         .padding(.vertical, DSSpacing.xs)
         .background(palette.panelText.opacity(0.1), in: Capsule())
@@ -229,7 +229,7 @@ struct ReaderModernBookCard: View {
                     .overlay(alignment: .topTrailing) {
                         if cell.isLocked {
                             Image(systemName: "lock.fill")
-                                .font(DSFont.caption2)
+                                .font(DSFont.readerMenu(.caption2))
                                 .foregroundStyle(DSColor.accent)
                                 .offset(x: DSSpacing.xs, y: -DSSpacing.xs)
                                 .accessibilityHidden(true)
@@ -238,7 +238,7 @@ struct ReaderModernBookCard: View {
                 // Two lines rather than a shrunk one: at four across, a label such as
                 // 「ソースにサインイン」 does not fit on one line and wrapping keeps it legible.
                 Text(cell.label)
-                    .font(DSFont.caption)
+                    .font(DSFont.readerMenu(.caption))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
             }

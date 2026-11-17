@@ -13,6 +13,27 @@ struct RootTabKeyboardObserver: UIViewRepresentable {
             && intersection.height > max(0, bottomSafeArea) + 1
     }
 
+    /// Presented sheets have a separate controller ancestry even in the same
+    /// UIWindow. Their keyboard must not relayout the covered tab's bottom slot.
+    @MainActor
+    static func belongsToRoot(_ responder: UIView, observer: UIView) -> Bool {
+        func owner(of view: UIView) -> UIViewController? {
+            var current: UIResponder? = view
+            while let value = current {
+                if let controller = value as? UIViewController { return controller }
+                current = value.next
+            }
+            return nil
+        }
+        guard let root = owner(of: observer) else { return false }
+        var current = owner(of: responder)
+        while let controller = current {
+            if controller === root { return true }
+            current = controller.parent
+        }
+        return false
+    }
+
     func makeUIView(context: Context) -> KeyboardView {
         let view = KeyboardView()
         view.isUserInteractionEnabled = false
@@ -63,7 +84,8 @@ struct RootTabKeyboardObserver: UIViewRepresentable {
             }
             // Keyboard notifications are process-wide. A different scene's field
             // must never put this root's tabs away (isLocal means app, not scene).
-            guard containsFirstResponder(in: window) else { publish(false); return }
+            guard let responder = firstResponder(in: window) else { return }
+            guard RootTabKeyboardObserver.belongsToRoot(responder, observer: self) else { return }
             guard notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey] as? Bool != false,
                   let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
             else { return }
@@ -74,8 +96,12 @@ struct RootTabKeyboardObserver: UIViewRepresentable {
             ))
         }
 
-        private func containsFirstResponder(in view: UIView) -> Bool {
-            view.isFirstResponder || view.subviews.contains { containsFirstResponder(in: $0) }
+        private func firstResponder(in view: UIView) -> UIView? {
+            if view.isFirstResponder { return view }
+            for child in view.subviews {
+                if let responder = firstResponder(in: child) { return responder }
+            }
+            return nil
         }
 
         @objc private func keyboardHidden(_ notification: Notification) {

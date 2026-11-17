@@ -48,22 +48,17 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == toc-pins ]]; then
   )
 else
   TEST_SELECTION=(
-  -only-testing:'yuedu appTests/BookshelfTangMirrorTests'
-  -only-testing:'yuedu appTests/BookshelfRingDrawStateTests'
-  -only-testing:'yuedu appTests/QingyunNightCopperThemeTests'
-  -only-testing:'yuedu appTests/ReaderNightCopperBackgroundTests'
-  -only-testing:'yuedu appTests/ReaderChapterTitlePresentationTests'
-  -only-testing:'yuedu appTests/FloatingRootTabBarTests'
-  -only-testing:'yuedu appTests/ReaderQuickPanelNavigationTests'
-  -only-testing:'yuedu appTests/ReaderQuickPanelPresentationTests'
-  -only-testing:'yuedu appTests/ReaderQuickThemePanelLayoutTests'
-  -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests'
-  -only-testing:'yuedu appTests/QingyunModuleCompatibilityTests'
-  -only-testing:'yuedu appTests/RuleModuleTests'
-  -only-testing:'yuedu appTests/BrowserChapterAdditionsTests'
-  -only-testing:'yuedu appTests/BrowserChapterReplacementTests'
-  -only-testing:'yuedu appTests/BrowserReviewCardGlassTests'
-  -only-testing:'yuedu appTests/ReaderOpeningRestoreTests'
+    -only-testing:'yuedu appTests/HomeSourceBookTests'
+    -only-testing:'yuedu appTests/HomeSectionTests'
+    -only-testing:'yuedu appTests/LayoutPreviewTests'
+    -only-testing:'yuedu appTests/HomeModelTests'
+    -only-testing:'yuedu appTests/FloatingRootTabBarTests'
+    -only-testing:'yuedu appTests/ReaderMenuAppearanceTests'
+    -only-testing:'yuedu appTests/ReaderNightCopperBackgroundTests'
+    -only-testing:'yuedu appTests/ReaderQuickPanelNavigationTests'
+    -only-testing:'yuedu appTests/ReaderQuickPanelPresentationTests'
+    -only-testing:'yuedu appTests/ReaderQuickThemePanelLayoutTests'
+    -only-testing:'yuedu appTests/QingyunNightCopperThemeTests'
   )
 fi
 echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"

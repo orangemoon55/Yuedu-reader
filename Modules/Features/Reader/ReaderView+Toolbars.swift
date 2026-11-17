@@ -26,9 +26,10 @@ extension ReaderView {
 
     // MARK: - Top chrome
 
-    /// The chrome colours 自定義 can override; see `ReaderChromePalette`.
+    /// A menu colour is resolved against its own opaque surface, not the page.
     var modernPalette: ReaderChromePalette {
         ReaderChromePalette(theme: readerTheme, settings: settings)
+            .readable(scheme: readerColorScheme, contrast: .standard)
     }
 
     /// Three glass islands: 返回 (circle) · 書名 (capsule) · 封面 (circle), each in
@@ -93,16 +94,17 @@ extension ReaderView {
         } label: {
             VStack(spacing: 0) {
                 Text(modernBookTitle)
-                    .font(DSFont.subheadline)
+                    .font(DSFont.readerMenu(.subheadline))
                     .foregroundStyle(modernPalette.topIcon)
                 Text(modernSourceText)
-                    .font(DSFont.caption2)
-                    .foregroundStyle(modernPalette.topIcon.opacity(0.62))
+                    .font(DSFont.readerMenu(.caption2))
+                    .foregroundStyle(modernPalette.topIcon)
             }
             .lineLimit(1)
             .frame(minWidth: DSLayout.readerModernTitleMinWidth)
         }
         .buttonStyle(ReaderTitleCapsuleButtonStyle(
+            fill: modernPalette.panelFill,
             onLongPress: canChangeModernSource ? { showChangeSourceSheet = true } : nil
         ))
         .accessibilityLabel(
@@ -146,10 +148,7 @@ extension ReaderView {
                 // it still is with 毛玻璃 off. A plain rectangle because the popover
                 // does the clipping.
                 .presentationBackground {
-                    Color.clear.floatingSurfaceBackground(
-                        in: Rectangle(),
-                        fill: modernPalette.panelFill
-                    )
+                    modernPalette.panelFill
                     // Drawn by the presentation, outside the card's environment: the
                     // scheme set on the card below never reaches it, and the glass stayed
                     // light over a night page (feedback #78, checked on iOS 26.5).
@@ -528,7 +527,7 @@ extension ReaderView {
                 jumpBackToTTSChapter()
             } label: {
                 Label(localized("原進度"), systemImage: "arrow.uturn.backward")
-                    .font(DSFont.subheadline.weight(.semibold))
+                    .font(DSFont.readerMenu(.subheadline).weight(.semibold))
                     .lineLimit(1)
             }
             .buttonStyle(.borderless)
@@ -541,7 +540,7 @@ extension ReaderView {
                 startTTSFromPromptChapter()
             } label: {
                 Label(localized("從本章開始聽"), systemImage: "headphones")
-                    .font(DSFont.subheadline.weight(.semibold))
+                    .font(DSFont.readerMenu(.subheadline).weight(.semibold))
                     .lineLimit(1)
             }
             .buttonStyle(.borderless)
@@ -593,15 +592,17 @@ extension ReaderView {
 /// glass at all, so the title keeps the plain look it has always had there.
 private struct ReaderTitleCapsuleButtonStyle: PrimitiveButtonStyle {
     /// Nil when there is nothing to do on a long press.
+    let fill: Color
     let onLongPress: (() -> Void)?
 
     func makeBody(configuration: Configuration) -> some View {
-        ReaderTitleCapsuleButtonBody(configuration: configuration, onLongPress: onLongPress)
+        ReaderTitleCapsuleButtonBody(configuration: configuration, fill: fill, onLongPress: onLongPress)
     }
 }
 
 private struct ReaderTitleCapsuleButtonBody: View {
     let configuration: PrimitiveButtonStyleConfiguration
+    let fill: Color
     let onLongPress: (() -> Void)?
 
     var body: some View {
@@ -609,7 +610,7 @@ private struct ReaderTitleCapsuleButtonBody: View {
             .padding(.horizontal, DSSpacing.lg)
             .frame(minHeight: DSLayout.minimumTapTarget)
             .contentShape(Capsule())
-            .titleCapsuleGlass()
+            .readerMenuSurface(in: Capsule(), fill: fill)
         if let onLongPress {
             if #available(iOS 18.0, *) {
                 // One gesture with the long press first, so exactly one of the two can win.
@@ -638,20 +639,5 @@ private struct ReaderTitleCapsuleButtonBody: View {
         } else {
             capsule.onTapGesture { configuration.trigger() }
         }
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func titleCapsuleGlass() -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            glassEffect(.regular.interactive(), in: Capsule())
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
     }
 }

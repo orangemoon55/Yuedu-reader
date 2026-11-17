@@ -101,6 +101,7 @@ class PackageTests(unittest.TestCase):
             strips = [i for i, call in enumerate(calls) if call[:3] == ('xcrun', 'strip', '-S')]
             signatures = [i for i, call in enumerate(calls) if call[:2] == ('/usr/bin/codesign', '--force')]
             self.assertEqual(len(strips), 3)
+            self.assertTrue(all(calls[index][:4] == ('xcrun', 'strip', '-S', '-x') for index in strips))
             self.assertEqual(len(signatures), 3)
             self.assertLess(max(strips), min(signatures))
             with zipfile.ZipFile(output) as archive:
@@ -126,8 +127,8 @@ class StripTests(unittest.TestCase):
             calls = []
 
             def strip(*args):
-                self.assertEqual(args[:3], ('xcrun', 'strip', '-S'))
-                path = args[3]
+                self.assertEqual(args[:4], ('xcrun', 'strip', '-S', '-x'))
+                path = args[4]
                 calls.append(path)
                 path.write_bytes(path.read_bytes().removesuffix(b'debug padding'))
                 return ''

@@ -25,11 +25,11 @@ final class FloatingRootTabBarTests: XCTestCase {
         XCTAssertGreaterThan(narrow.contentWidth, narrow.viewportWidth, "Narrow layouts scroll rather than shrink targets")
         let searchOnly = FloatingRootTabBarLayout(availableWidth: 320, mainTabCount: 0, hasSearch: true, height: 64)
         XCTAssertEqual(searchOnly.capsuleWidth, 0)
-        XCTAssertEqual(searchOnly.contentWidth, 56)
+        XCTAssertEqual(searchOnly.contentWidth, 52)
         let compact = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 2, hasSearch: true, height: 56)
         XCTAssertEqual(compact.height, 56)
-        XCTAssertEqual(compact.itemWidth, 88)
-        XCTAssertEqual(compact.contentWidth, 248)
+        XCTAssertEqual(compact.itemWidth, 80)
+        XCTAssertEqual(compact.contentWidth, 228)
         XCTAssertGreaterThanOrEqual(compact.height - FloatingRootTabBarLayout.surfacePadding * 2, 44)
     }
 
@@ -237,10 +237,9 @@ private extension FloatingRootTabBarTests {
     }
 }
 
-/// An overlay simulates a navigation host losing the outer safe-area reservation.
-/// The production avoidance modifier must reserve only the missing distance.
+/// Uses the production container and root-stack reservation: every pushed page
+/// must inherit the same inset, without requiring a modifier on its Form.
 private struct FloatingBarBottomInsetHarness: View {
-    @State private var barTop: CGFloat?
     var body: some View {
         NavigationStack {
             Form {
@@ -250,15 +249,12 @@ private struct FloatingBarBottomInsetHarness: View {
                 BottomInsetProbe(isButton: true)
                     .frame(height: 48)
             }
-            .avoidsFloatingRootTabBar()
             .navigationTitle("Settings")
         }
-        .overlay(alignment: .bottom) {
+        .modifier(FloatingRootTabBarContainer(isPresented: true) {
             FloatingRootTabBar(tabs: [.bookshelf, .settings, .search], selection: .constant(.settings))
                 .background { BottomInsetProbe(isButton: false) }
-                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { barTop = $0 }
-        }
-        .environment(\.rootTabBarTop, barTop)
+        })
     }
 }
 

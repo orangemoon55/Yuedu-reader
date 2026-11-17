@@ -42,8 +42,8 @@ struct LayoutPreviewTests {
 
     @Test("Each layout shows as many books as its preview has room for on a phone")
     func counts() {
-        let expected: [HomeLayoutStyle: Int] = [.featured: 3, .readingCard: 3, .compactReadingCard: 3, .list: 3,
-                                                .row: 6, .multiRow: 12, .coverGrid: 12, .largeRow: 4, .colorBand: 4,
+        let expected: [HomeLayoutStyle: Int] = [.featured: 3, .readingCard: 3, .compactReadingCard: 3, .coverIntroCard: 1, .list: 3,
+                                                .row: 5, .multiRow: 12, .coverGrid: 12, .largeRow: 4, .colorBand: 4,
                                                 .heroGrid: 6]
         #expect(HomeLayoutSample.books.mapValues(\.count) == expected)
     }

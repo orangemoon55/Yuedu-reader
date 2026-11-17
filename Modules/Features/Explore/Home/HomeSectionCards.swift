@@ -81,6 +81,7 @@ struct HomeSectionCards: View {
                 switch style {
                 case .readingCard: readingCards
                 case .compactReadingCard: compactReadingCards
+                case .coverIntroCard: coverIntroCards
                 case .row: rail(coverWidth: rowCoverWidth)
                 case .multiRow: multiRow
                 // 編輯首頁 draws every section sideways (`homeDrawsSideways`): the grid's covers in
@@ -246,6 +247,23 @@ struct HomeSectionCards: View {
         }
         .modifier(HomeSidewaysScroll())
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { heroWidth = $0 }
+    }
+
+    // MARK: 封面簡介大卡
+
+    private var coverIntroCards: some View {
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: DSSpacing.md) {
+                ForEach(cards.indices, id: \.self) { index in
+                    button(index, in: cards, value: cards[index].featuredAccessibilityValue) {
+                        HomeCoverIntroCard(content: cards[index])
+                    }
+                    .homePageCardWidth(perScreen: horizontalSizeClass == .regular ? 2 : 1, count: cards.count)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .modifier(HomeSidewaysScroll())
     }
 
     // MARK: 大型閱讀卡片

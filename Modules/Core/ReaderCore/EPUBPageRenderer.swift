@@ -863,10 +863,8 @@ final class EPUBPageRenderer: ObservableObject {
         let textColor: UIColor
         let bgColor: UIColor
         switch theme {
-        case "nightCopper":
-            textColor = UIColor(red: 237.0 / 255, green: 227.0 / 255, blue: 203.0 / 255, alpha: 1)
-            bgColor = UIColor(red: 21.0 / 255, green: 35.0 / 255, blue: 30.0 / 255, alpha: 1)
-        case "dark", "night":
+        // Older cached/imported rendering requests use this identifier.
+        case "dark", "night", "nightCopper":
             textColor = .white
             bgColor = .black
         case "sepia":

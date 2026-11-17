@@ -6,16 +6,16 @@ struct ReaderQuickPageTurnChip: View {
     let selected: Bool
     let action: () -> Void
 
-    private var fill: Color { selected ? DSColor.accent : DSColor.neutralControlFill }
+    private var fill: Color { selected ? DSColor.readerMenuSelection : DSColor.neutralControlFill }
     private var ink: AnyShapeStyle {
-        selected ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textPrimary)
+        selected ? AnyShapeStyle(DSColor.readerMenuOnSelection) : AnyShapeStyle(DSColor.readerMenuText)
     }
-    private var border: Color { selected ? .clear : DSColor.separator }
+    private var border: Color { selected ? .clear : DSColor.readerMenuSeparator }
 
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: option.iconName)
-                .font(DSFont.subheadline.weight(.medium))
+                .font(DSFont.readerMenu(.subheadline).weight(.medium))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(ink)
