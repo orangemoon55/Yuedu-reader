@@ -169,6 +169,15 @@ final class FloatingRootTabBarTests: XCTestCase {
 
         let aboutFrame = about.convert(about.bounds, to: window)
         let barFrame = bar.convert(bar.bounds, to: window)
+        let viewport = scroll.convert(scroll.bounds, to: window)
+        XCTAssertGreaterThan(viewport.maxY, barFrame.maxY - 1,
+                             "The scroll viewport must extend behind the floating capsule, not stop above it")
+        let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        attachment.name = "floating15-settings-last-row"
+        attachment.lifetime = .keepAlways
+        add(attachment)
         XCTAssertTrue(barFrame.minY.isFinite)
         XCTAssertTrue(aboutFrame.maxY.isFinite)
         XCTAssertLessThanOrEqual(
@@ -180,6 +189,42 @@ final class FloatingRootTabBarTests: XCTestCase {
             hit.map { isDescendant($0, of: about) } == true,
             "The visible About row must remain touchable"
         )
+    }
+
+    func testPushedFormKeepsFullViewportAndReachableFinalAction() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: FloatingBarPushedFormHarness())
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        let bar = try await waitForView(in: host.view) { $0.accessibilityIdentifier == "floatingBar.measurement" ? $0 : nil }
+        let scroll = try await waitForView(in: host.view) { view -> UIScrollView? in
+            guard let result = view as? UIScrollView, result.contentSize.height > result.bounds.height + 100 else { return nil }
+            return result
+        }
+        for _ in 0..<3 {
+            host.view.layoutIfNeeded()
+            scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top,
+                scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)), animated: false)
+            await Task.yield()
+        }
+        let action = try await waitForView(in: host.view) { $0.accessibilityIdentifier == "settings.about" ? $0 : nil }
+        let barFrame = bar.convert(bar.bounds, to: window)
+        let viewport = scroll.convert(scroll.bounds, to: window)
+        let actionFrame = action.convert(action.bounds, to: window)
+        XCTAssertGreaterThan(viewport.maxY, barFrame.maxY - 1)
+        XCTAssertLessThanOrEqual(actionFrame.maxY, barFrame.minY + 1)
+        XCTAssertTrue(window.hitTest(CGPoint(x: actionFrame.midX, y: actionFrame.midY), with: nil)
+            .map { isDescendant($0, of: action) } == true)
+        let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        })
+        attachment.name = "floating15-pushed-module-form"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     func testUIKitReaderHostingReceivesRootVisibilityAndReleasesItsRequest() async throws {
@@ -237,8 +282,7 @@ private extension FloatingRootTabBarTests {
     }
 }
 
-/// Uses the production container and root-stack reservation: every pushed page
-/// must inherit the same inset, without requiring a modifier on its Form.
+/// Uses the production overlay: its Form stays full height behind the capsule.
 private struct FloatingBarBottomInsetHarness: View {
     var body: some View {
         NavigationStack {
@@ -273,4 +317,27 @@ private struct BottomInsetProbe: UIViewRepresentable {
         return view
     }
     func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+private struct FloatingBarPushedFormHarness: View {
+    @State private var path = [1]
+    var body: some View {
+        NavigationStack(path: $path) {
+            Color.clear.navigationTitle("Settings")
+                .navigationDestination(for: Int.self) { _ in
+                    Form {
+                        ForEach(0..<25, id: \.self) { index in
+                            Text("Module option \(index)").frame(minHeight: 48)
+                        }
+                        BottomInsetProbe(isButton: true).frame(height: 48)
+                    }
+                    .navigationTitle("Module details")
+                    .toolbarTitleDisplayMode(.inline)
+                }
+        }
+        .modifier(FloatingRootTabBarContainer(isPresented: true) {
+            FloatingRootTabBar(tabs: [.explore, .bookshelf, .settings, .search], selection: .constant(.settings))
+                .background { BottomInsetProbe(isButton: false) }
+        })
+    }
 }

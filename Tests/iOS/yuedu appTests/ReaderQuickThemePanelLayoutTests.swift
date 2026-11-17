@@ -19,7 +19,7 @@ final class ReaderQuickThemePanelLayoutTests: XCTestCase {
             var measuredHeight: CGFloat = 0
             let root = Color.gray.sheet(isPresented: .constant(true)) {
                 ReaderQuickThemePanelView(
-                    fontSize: .constant(18), readerTheme: .constant(.white),
+                    fontSize: .constant(19), readerTheme: .constant(appearance == .dark ? .night : .white),
                     pageTurnOption: .fastFade, isVerticalWritingMode: false,
                     onSelectPageTurnOption: { _ in }, onSelectRoute: { _ in }
                 )

@@ -16,6 +16,9 @@ extension DSFont {
 extension DSColor {
     static var readerMenuBackground: Color { Color(uiColor: .systemBackground) }
     static var readerMenuText: Color { Color(uiColor: .label) }
+    static var readerMenuControlFill: Color { Color(uiColor: .secondarySystemBackground) }
+    static var readerMenuAccent: Color { Color(uiColor: .systemBlue) }
+    static var readerMenuSelectionFill: Color { readerMenuAccent.opacity(0.10) }
     static var readerMenuSecondaryText: Color { Color(uiColor: .secondaryLabel) }
     static var readerMenuSeparator: Color { Color(uiColor: .separator) }
     static var readerMenuSelection: Color { Color(uiColor: .label) }

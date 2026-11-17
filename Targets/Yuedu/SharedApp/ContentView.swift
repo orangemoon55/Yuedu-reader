@@ -382,9 +382,8 @@ struct ContentView: View {
                     .background {
                         RootTabBarHider(visibility: rootTabBar, isFloating: usesFloatingRootTabBar)
                     }
-                    // A real slot constrains the entire NavigationStack, including
-                    // pushed pages and native bottom toolbars. No per-page padding or
-                    // additionalSafeAreaInsets mutation; LNPopupUI keeps its own space.
+                    // Keep navigation full-height: capsule overlays live content.
+                    // Only scroll-content margins reserve the reachable last row.
                     .modifier(FloatingRootTabBarContainer(isPresented: rootTabBar.showsFloatingTabBar(
                         isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
                     )) {

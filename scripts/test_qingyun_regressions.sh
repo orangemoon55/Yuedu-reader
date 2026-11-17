@@ -46,6 +46,17 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == toc-pins ]]; then
     -only-testing:'yuedu appTests/ChapterListOrderTests'
     -only-testing:'yuedu appTests/DiscoverySourcePinsTests'
   )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ui-polish ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/FloatingRootTabBarTests'
+    -only-testing:'yuedu appTests/ReaderMenuAppearanceTests'
+    -only-testing:'yuedu appTests/ReaderQuickPanelNavigationTests'
+    -only-testing:'yuedu appTests/ReaderQuickPanelPresentationTests'
+    -only-testing:'yuedu appTests/ReaderQuickThemePanelLayoutTests'
+    -only-testing:'yuedu appTests/ReaderQuickPanelRedesignTests'
+    -only-testing:'yuedu appTests/ReaderQuickPanelBackgroundTileTests'
+    -only-testing:'yuedu appTests/AccessibilityStepperTests/quickPanelFontSize()'
+  )
 else
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/HomeSourceBookTests'
@@ -65,7 +76,7 @@ echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"
 xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
   -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
-  -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+  -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
   "${TEST_SELECTION[@]}" >> "$PRIVATE/test.log" 2>&1
 python3 - "$PRIVATE/test.log" <<'PY'
 from pathlib import Path

@@ -1,30 +1,32 @@
 import SwiftUI
 
-/// A real layout slot outside each tab's NavigationStack. An outer safeAreaInset
-/// alone is not reliably forwarded through TabView/NavigationStack on iOS 17;
-/// overlays then cover pushed Forms and native bottom toolbars. Constraining the
-/// navigation container's proposed height reserves space for both, at every depth.
-///
-/// Never write additionalSafeAreaInsets here: LNPopupUI owns its player reservation,
-/// and changing a covered navigation controller during sheet presentation can feed
-/// another layout pass back into the bar measurement. The parent safe area (player,
-/// keyboard and home indicator) is consumed once, by this stack's layout.
+/// The capsule is an overlay on a full-size navigation surface. Only its transparent
+/// scroll-safe region is reserved: rows can pass behind it, and the last row can still
+/// be scrolled clear. Never allocate a VStack slot or shorten a navigation viewport.
+/// The reservation follows the actual bar height, including accessibility text.
+/// Native player and home-indicator safe areas remain owned by their existing hosts.
 struct FloatingRootTabBarContainer<Bar: View>: ViewModifier {
     let isPresented: Bool
     @ViewBuilder var bar: () -> Bar
+    @State private var barHeight: CGFloat = 0
 
     func body(content: Content) -> some View {
-        VStack(spacing: 0) {
-            // Keep this identity in every state: hiding the bar must not rebuild a
-            // NavigationStack or change any tab's path, search field, or presenter.
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if isPresented {
-                bar()
-                    .fixedSize(horizontal: false, vertical: true)
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Content margins affect scrollable content/indicators, never the
+            // full-size navigation viewport. Transparent gaps keep live content.
+            .contentMargins(.bottom, isPresented ? barHeight : 0, for: .scrollContent)
+            .contentMargins(.bottom, isPresented ? barHeight : 0, for: .scrollIndicators)
+            .overlay(alignment: .bottom) {
+                if isPresented {
+                    bar()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            guard height.isFinite, height > 0, abs(height - barHeight) > 0.5 else { return }
+                            barHeight = height
+                        }
+                }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -3,10 +3,8 @@ import Testing
 import UIKit
 @testable import yuedu_app
 
-/// Feedback #12 (iPad): a saved reading background whose picture was landscape came
-/// out wider than its cell in the quick panel's row, and its star badge sat over the
-/// ＋自定義 tile beside it. The picture was framed by `maxWidth: .infinity` alone, so a
-/// scaled-to-fill picture wider than the tile's 74×82 grew the whole tile.
+/// Background samples must fit their offered half/quarter-page column with labels
+/// underneath; saved landscape pictures must clip to the same responsive sample frame.
 @MainActor
 struct ReaderQuickPanelBackgroundTileTests {
     private static let tileSize = CGSize(
@@ -37,14 +35,14 @@ struct ReaderQuickPanelBackgroundTileTests {
         )
         let host = UIHostingController(rootView: tile)
 
-        // What the row offers each tile, and an offer far larger than that: neither
-        // may come back wider than the tile.
-        for proposal in [Self.tileSize, CGSize(width: 1000, height: 1000)] {
-            let fitted = host.sizeThatFits(in: proposal)
-            #expect(fitted.width == Self.tileSize.width,
-                    "picture \(pictureSize) offered \(proposal) fitted \(fitted)")
-            #expect(fitted.height == Self.tileSize.height,
-                    "picture \(pictureSize) offered \(proposal) fitted \(fitted)")
+        // A responsive sample occupies exactly its offered column, even when the
+        // imported image is landscape. The label sits below the 48pt sample.
+        for width: CGFloat in [64, 74, 96, 140] {
+            let fitted = host.sizeThatFits(in: CGSize(width: width, height: 300))
+            #expect(abs(fitted.width - width) < 1,
+                    "picture \(pictureSize) offered \(width) fitted \(fitted)")
+            #expect(fitted.height > DSLayout.readerQuickPanelBackgroundSampleHeight)
+            #expect(fitted.height < 220)
         }
     }
 }

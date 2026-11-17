@@ -950,6 +950,12 @@ enum DSLayout {
     static let readerQuickPanelTopMenuWidth: CGFloat = 120
     /// Height of a landscape reading-background preview button.
     static let readerQuickPanelReadingBackgroundTileHeight: CGFloat = 82
+    /// Small landscape samples leave their names outside the artwork.
+    static let readerQuickPanelBackgroundSampleHeight: CGFloat = 48
+    static let readerQuickPanelBackgroundLastLineWidth: CGFloat = 28
+    static let readerQuickPanelBackgroundLineHeight: CGFloat = 2
+    static let readerQuickPanelToolRowHeight: CGFloat = 48
+    static let readerQuickPanelToolIconWidth: CGFloat = 22
     /// Width of one background tile in the quick panel's scrolling row. Sized so a
     /// compact phone shows four and a half of them — enough that the fifth is
     /// visibly cut off, which is what tells the reader the row scrolls.
