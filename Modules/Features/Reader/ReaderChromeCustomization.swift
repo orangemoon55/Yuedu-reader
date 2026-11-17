@@ -307,6 +307,39 @@ struct ReaderChromePalette {
         panelText = picked(.panelText) ?? theme.textColor
     }
 
+    /// Render-time palette. Stored colour picks stay intact for the editor; live
+    /// menus flatten alpha and repair unreadable text/fill pairs from theme packs.
+    func readable(scheme: ColorScheme, contrast: ColorSchemeContrast) -> ReaderChromePalette {
+        let traits = UITraitCollection(traitsFrom: [
+            UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light),
+            UITraitCollection(accessibilityContrast: contrast == .increased ? .high : .normal)
+        ])
+        let ground = UIColor.systemBackground.resolvedColor(with: traits)
+        let bottom = ReaderMenuColors.opaque(UIColor(bottomFill), over: ground, traits: traits)
+        let panel = ReaderMenuColors.opaque(UIColor(panelFill), over: ground, traits: traits)
+        func ink(_ color: Color, on fill: UIColor) -> Color {
+            Color(uiColor: ReaderMenuColors.legible(UIColor(color), on: fill, traits: traits))
+        }
+        return ReaderChromePalette(
+            topIcon: ink(topIcon, on: panel),
+            bottomFill: Color(uiColor: bottom),
+            bottomIcon: ink(bottomIcon, on: bottom),
+            bottomAccent: ink(bottomAccent, on: bottom),
+            panelFill: Color(uiColor: panel),
+            panelText: ink(panelText, on: panel)
+        )
+    }
+
+    private init(topIcon: Color, bottomFill: Color, bottomIcon: Color,
+                 bottomAccent: Color, panelFill: Color, panelText: Color) {
+        self.topIcon = topIcon
+        self.bottomFill = bottomFill
+        self.bottomIcon = bottomIcon
+        self.bottomAccent = bottomAccent
+        self.panelFill = panelFill
+        self.panelText = panelText
+    }
+
     /// The resolved colour behind one slot, so a settings row can open its picker on
     /// what is actually on screen without re-deriving the fallback.
     func color(for slot: ReaderChromeSlot) -> Color {

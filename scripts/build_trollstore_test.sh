@@ -62,7 +62,8 @@ ARGS=(
   DEAD_CODE_STRIPPING=YES
   MTL_ENABLE_DEBUG_INFO=NO
   SWIFT_REFLECTION_METADATA_LEVEL=all
-  # 禁止 Xcode 默认的更激进 strip；打包脚本仅在签名前执行 strip -S。
+  # 禁止 Xcode 提前 strip；独立打包阶段在签名前以 Darwin -S -x 去 debug/local，
+  # 保留全部全局符号并逐项核验 Swift/ObjC/代码/导出信息。
   COPY_PHASE_STRIP=NO
   STRIP_INSTALLED_PRODUCT=NO
   STRIP_STYLE=debugging

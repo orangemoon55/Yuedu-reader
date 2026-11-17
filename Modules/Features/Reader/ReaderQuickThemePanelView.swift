@@ -62,6 +62,9 @@ struct ReaderQuickThemePanelView: View {
     @Bindable private var settings = GlobalSettings.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .caption) private var backgroundTileWidth = DSLayout.readerQuickPanelBackgroundTileWidth
+    @ScaledMetric(relativeTo: .caption) private var backgroundTileHeight = DSLayout.readerQuickPanelReadingBackgroundTileHeight
     /// The saved-background page pushed in this panel's own navigation.
     @State private var backgroundEditor: ReaderBackgroundEditorRoute?
     @State var panelNavigation = ReaderQuickPanelNavigation()
@@ -82,7 +85,10 @@ struct ReaderQuickThemePanelView: View {
             // sizes that content is taller than any detent.
             ScrollView {
                 VStack(alignment: .leading, spacing: DSSpacing.lg) {
-                    HStack(spacing: DSSpacing.md) {
+                    brightnessSlider
+                    (dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: DSSpacing.md))
+                        : AnyLayout(HStackLayout(spacing: DSSpacing.md))) {
                         fontSizeStepper
                         fontChoiceMenu
                     }
@@ -117,7 +123,7 @@ struct ReaderQuickThemePanelView: View {
             .ignoresSafeArea(.container, edges: .bottom)
             .frame(maxWidth: DSLayout.readableCompactWidth, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
-            .pageBackgroundToolbar(for: .settings)
+            .background(DSColor.readerMenuBackground.ignoresSafeArea())
             // No title bar and no close button: the panel is a short sheet the
             // reader flicks away, and a navigation chrome on top of it ate height
             // the controls could use.
@@ -153,6 +159,15 @@ struct ReaderQuickThemePanelView: View {
                     onRequestPaywall: { selectTool(.paywall($0)) }
                 )
             }
+        }
+        .font(DSFont.readerMenu(.body))
+        .foregroundStyle(DSColor.readerMenuText)
+        .tint(DSColor.readerMenuText)
+        .background(DSColor.readerMenuBackground)
+        .environment(\.colorScheme, readerTheme.isDark ? .dark : .light)
+        .presentationBackground {
+            DSColor.readerMenuBackground
+                .environment(\.colorScheme, readerTheme.isDark ? .dark : .light)
         }
         .background {
             GeometryReader { proxy in
@@ -198,14 +213,14 @@ struct ReaderQuickThemePanelView: View {
     /// number hidden: nothing read the size, before a press or after it.
     private var fontSizeStepper: some View {
         HStack(spacing: 0) {
-            fontSizeStepButton(-1, textFont: DSFont.body.weight(.semibold))
+            fontSizeStepButton(-1, textFont: DSFont.readerMenu(.body).weight(.semibold))
 
             Text("\(Int(fontSize))")
-                .font(DSFont.title3.weight(.medium).monospacedDigit())
-                .foregroundStyle(DSColor.textPrimary)
+                .font(DSFont.readerMenu(.title3).weight(.medium).monospacedDigit())
+                .foregroundStyle(DSColor.readerMenuText)
                 .frame(minWidth: DSSpacing.xxl)
 
-            fontSizeStepButton(1, textFont: DSFont.title2.weight(.semibold))
+            fontSizeStepButton(1, textFont: DSFont.readerMenu(.title2).weight(.semibold))
         }
         .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
         .background(DSColor.neutralControlFill, in: Capsule())
@@ -244,17 +259,17 @@ struct ReaderQuickThemePanelView: View {
         } label: {
             HStack(spacing: DSSpacing.xs) {
                 Text(selectedFontName)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(DSFont.footnote)
+                    .font(DSFont.readerMenu(.footnote))
+                    .accessibilityHidden(true)
             }
-            .font(DSFont.subheadline)
-            .foregroundStyle(DSColor.textPrimary)
+            .font(DSFont.readerMenu(.subheadline))
+            .foregroundStyle(DSColor.readerMenuText)
             .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
             .padding(.horizontal, DSSpacing.md)
             .background(DSColor.neutralControlFill, in: Capsule())
-            .overlay(Capsule().strokeBorder(DSColor.separator, lineWidth: 1))
+            .overlay(Capsule().strokeBorder(DSColor.readerMenuSeparator, lineWidth: 1))
         }
         .accessibilityLabel(localized("字體"))
         .accessibilityValue(selectedFontName)
@@ -273,8 +288,8 @@ struct ReaderQuickThemePanelView: View {
     private var pageTurnStyleRow: some View {
         VStack(alignment: .leading, spacing: DSSpacing.sm) {
             Text(localized("翻頁"))
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
+                .font(DSFont.readerMenu(.footnote))
+                .foregroundStyle(DSColor.readerMenuSecondaryText)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: DSSpacing.sm) {
                     ForEach(ReaderQuickPageTurnOption.allCases) { option in
@@ -300,7 +315,7 @@ struct ReaderQuickThemePanelView: View {
         } label: {
             Text("A")
                 .font(textFont)
-                .foregroundStyle(DSColor.textPrimary)
+                .foregroundStyle(DSColor.readerMenuText)
                 .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
                 .contentShape(Rectangle())
         }
@@ -313,7 +328,8 @@ struct ReaderQuickThemePanelView: View {
     private var brightnessSlider: some View {
         HStack(spacing: DSSpacing.md) {
             Image(systemName: "sun.min.fill")
-                .font(DSFont.body)
+                .font(DSFont.readerMenu(.body))
+                .accessibilityHidden(true)
             Slider(
                 value: Binding(
                     get: { CGFloat(settings.readerBrightness) },
@@ -325,12 +341,15 @@ struct ReaderQuickThemePanelView: View {
                 ),
                 in: 0.05...1.0
             )
-            .tint(DSColor.textPrimary)
+            .tint(DSColor.readerMenuText)
+            .accessibilityLabel(localized("亮度"))
+            .accessibilityValue("\(Int((settings.readerBrightness * 100).rounded()))%")
             Image(systemName: "sun.max.fill")
-                .font(DSFont.body)
+                .font(DSFont.readerMenu(.body))
+                .accessibilityHidden(true)
         }
         .frame(minHeight: DSLayout.minimumTapTarget)
-        .foregroundStyle(DSColor.textPrimary)
+        .foregroundStyle(DSColor.readerMenuText)
     }
 
     // MARK: - Reading backgrounds
@@ -341,21 +360,21 @@ struct ReaderQuickThemePanelView: View {
         let resolution = settings.readerBackgroundResolution(mode: settings.readerMode, wornTheme: readerTheme)
         return VStack(alignment: .leading, spacing: DSSpacing.sm) {
             Text(localized("閱讀背景"))
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
+                .font(DSFont.readerMenu(.footnote))
+                .foregroundStyle(DSColor.readerMenuSecondaryText)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: DSSpacing.md) {
                     ForEach(ReaderTheme.allCases, id: \.self) { background in
                         readingBackgroundButton(background, resolution: resolution)
-                            .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
+                            .frame(width: backgroundTileWidth)
                     }
                     ForEach(settings.readerCustomBackgrounds) { background in
                         savedBackgroundButton(background, resolution: resolution)
-                            .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
+                            .frame(width: backgroundTileWidth)
                     }
                     newBackgroundButton
-                        .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
+                        .frame(width: backgroundTileWidth)
                 }
                 .padding(.vertical, DSSpacing.xs)
                 .padding(.horizontal, 2)
@@ -374,8 +393,8 @@ struct ReaderQuickThemePanelView: View {
                 set: { applyFollowSystemAppearance($0) }
             )
         )
-        .font(DSFont.body)
-        .foregroundStyle(DSColor.textPrimary)
+        .font(DSFont.readerMenu(.body))
+        .foregroundStyle(DSColor.readerMenuText)
     }
 
     private func readingBackgroundButton(
@@ -463,17 +482,17 @@ struct ReaderQuickThemePanelView: View {
                     .fill(DSColor.neutralControlFill)
                 VStack(spacing: DSSpacing.xs) {
                     Image(systemName: "plus")
-                        .font(DSFont.title2.weight(.semibold))
+                        .font(DSFont.readerMenu(.title2).weight(.semibold))
                         .accessibilityHidden(true)
                     Text(localized("自定義"))
-                        .font(DSFont.subheadline)
+                        .font(DSFont.readerMenu(.subheadline))
                 }
-                .foregroundStyle(DSColor.textPrimary)
+                .foregroundStyle(DSColor.readerMenuText)
             }
-            .frame(height: DSLayout.readerQuickPanelReadingBackgroundTileHeight)
+            .frame(minHeight: backgroundTileHeight)
             .overlay(
                 RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous)
-                    .stroke(DSColor.separator, lineWidth: 1)
+                    .stroke(DSColor.readerMenuSeparator, lineWidth: 1)
             )
             .shadow(color: DSColor.shadow, radius: 6, y: 1)
         }
@@ -499,7 +518,7 @@ struct ReaderQuickThemePanelView: View {
             ReaderQuickThemeAction(id: .headerFooter, titleKey: "頁首頁尾", systemImage: "rectangle.bottomthird.inset.filled"),
             ReaderQuickThemeAction(id: .settings, titleKey: "更多設定", systemImage: "ellipsis")
         ]
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: DSSpacing.sm) {
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: dynamicTypeSize.isAccessibilitySize ? 1 : (dynamicTypeSize >= .xxxLarge ? 2 : 4)), spacing: DSSpacing.sm) {
             ForEach(actions) { action in
                 ReaderQuickThemeActionTile(action: action) { selectTool(action.id) }
             }
@@ -579,8 +598,8 @@ struct ReaderQuickPanelBackgroundTile: View {
     let titleColor: Color
     let selected: Bool
 
-    private static let width = DSLayout.readerQuickPanelBackgroundTileWidth
-    private static let height = DSLayout.readerQuickPanelReadingBackgroundTileHeight
+    @ScaledMetric(relativeTo: .caption) private var width = DSLayout.readerQuickPanelBackgroundTileWidth
+    @ScaledMetric(relativeTo: .caption) private var height = DSLayout.readerQuickPanelReadingBackgroundTileHeight
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -591,17 +610,20 @@ struct ReaderQuickPanelBackgroundTile: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: Self.width, height: Self.height)
+                    .frame(width: width, height: height)
                     .clipped()
                     .accessibilityHidden(true)
                     .allowsHitTesting(false)
             }
 
             Text(title)
-                .font(DSFont.caption)
+                .font(DSFont.readerMenu(.caption))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
-                .foregroundStyle(titleColor)
+                .foregroundStyle(DSColor.readerMenuText)
+                .padding(.horizontal, DSSpacing.xs)
+                .padding(.vertical, DSSpacing.xxs)
+                .background(DSColor.readerMenuBackground, in: RoundedRectangle(cornerRadius: DSRadius.sm))
                 .padding(.horizontal, DSSpacing.sm)
                 .padding(.bottom, DSSpacing.sm)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
@@ -609,20 +631,20 @@ struct ReaderQuickPanelBackgroundTile: View {
 
             if selected {
                 Image(systemName: "asterisk")
-                    .font(DSFont.subheadline.weight(.semibold))
+                    .font(DSFont.readerMenu(.subheadline).weight(.semibold))
                     .foregroundStyle(titleColor.opacity(0.6))
                     .padding(.top, DSSpacing.sm)
                     .padding(.trailing, DSSpacing.md)
                     .accessibilityHidden(true)
             }
         }
-        .frame(width: Self.width, height: Self.height)
+        .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous)
                 .stroke(
-                    selected ? DSColor.textPrimary : DSColor.separator,
+                    selected ? DSColor.readerMenuText : DSColor.readerMenuSeparator,
                     lineWidth: selected ? 3 : 1
                 )
         )
@@ -640,8 +662,8 @@ private struct QuickPanelActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(DSFont.headline)
-            .foregroundStyle(isProminent ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textPrimary))
+            .font(DSFont.readerMenu(.headline))
+            .foregroundStyle(isProminent ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.readerMenuText))
             .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelControlHeight)
             .background(
                 isProminent
@@ -701,15 +723,15 @@ private struct QuickPanelSegmentButtonStyle: ButtonStyle {
     return HStack(spacing: DSSpacing.md) {
         ReaderQuickPanelBackgroundTile(
             fill: DSColor.neutralControlFill, image: nil, title: "Plain",
-            titleColor: DSColor.textPrimary, selected: false
+            titleColor: DSColor.readerMenuText, selected: false
         )
         ReaderQuickPanelBackgroundTile(
             fill: DSColor.neutralControlFill, image: landscape, title: "Landscape",
-            titleColor: DSColor.textPrimary, selected: true
+            titleColor: DSColor.readerMenuText, selected: true
         )
         ReaderQuickPanelBackgroundTile(
             fill: DSColor.neutralControlFill, image: nil, title: "Plain",
-            titleColor: DSColor.textPrimary, selected: false
+            titleColor: DSColor.readerMenuText, selected: false
         )
     }
     .padding(DSSpacing.xl)

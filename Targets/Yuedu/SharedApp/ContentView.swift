@@ -21,9 +21,6 @@ struct ContentView: View {
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @State private var selectedRootTab: RootTabItem = .explore
     @State private var rootKeyboardVisible = false
-    /// Per-tab measurements stay in the same global coordinate space as each
-    /// tab's Form, including LNPopupUI's reserved player area.
-    @State private var floatingTabBarTop: [RootTabItem: CGFloat] = [:]
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
     /// A keyword a book source handed back via `java.searchBook`, or a detail page's author,
@@ -351,19 +348,21 @@ struct ContentView: View {
         }
     }
 
+    private var floatingRootTabIconSize: CGFloat {
+        gs.usesCustomRootTabIconSize ? CGFloat(gs.rootTabIconSize) : FloatingRootTabBarLayout.defaultIconSize
+    }
+
     private var floatingRootTabBar: some View {
         FloatingRootTabBar(
             tabs: gs.visibleRootTabs,
             selection: rootTabSelection,
             hidesLabels: shouldHideRootTabLabels,
-            iconSize: CGFloat(gs.usesCustomRootTabIconSize
-                ? gs.rootTabIconSize : GlobalSettings.initialCustomRootTabIconSize),
+            iconSize: floatingRootTabIconSize,
             tint: appearanceTheme?.accentColor ?? .accentColor,
             customIcon: { tab in
                 RootTabIconRenderer.customIcon(
                     for: tab, colorScheme: effectiveColorScheme,
-                    pointSize: CGFloat(gs.usesCustomRootTabIconSize
-                        ? gs.rootTabIconSize : GlobalSettings.initialCustomRootTabIconSize),
+                    pointSize: floatingRootTabIconSize,
                     displayScale: displayScale, settings: gs
                 )
             }
@@ -383,24 +382,14 @@ struct ContentView: View {
                     .background {
                         RootTabBarHider(visibility: rootTabBar, isFloating: usesFloatingRootTabBar)
                     }
-                    // Keep the existing reservation for tabs whose navigation host
-                    // forwards it. Forms can repair only a missing portion inside the
-                    // stack, using the measured bar edge instead of adding its height twice.
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if rootTabBar.showsFloatingTabBar(
-                            isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
-                        ) {
-                            floatingRootTabBar
-                                .onGeometryChange(for: CGFloat.self) { proxy in
-                                    proxy.frame(in: .global).minY
-                                } action: { top in
-                                    floatingTabBarTop[tab] = top
-                                }
-                        }
-                    }
-                    .environment(\.rootTabBarTop, rootTabBar.showsFloatingTabBar(
+                    // A real slot constrains the entire NavigationStack, including
+                    // pushed pages and native bottom toolbars. No per-page padding or
+                    // additionalSafeAreaInsets mutation; LNPopupUI keeps its own space.
+                    .modifier(FloatingRootTabBarContainer(isPresented: rootTabBar.showsFloatingTabBar(
                         isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
-                    ) ? floatingTabBarTop[tab] : nil)
+                    )) {
+                        floatingRootTabBar
+                    })
                     .tag(tab)
                     .tabItem {
                         rootTabItemLabel(for: tab)

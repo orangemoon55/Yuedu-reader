@@ -263,7 +263,6 @@ struct HomeView: View {
     @State private var selectedGroup: String = ""
     /// The group whose folder was opened from 全部, its page pushed over the shelf.
     @State private var openedFolder: String?
-    @State private var showsCompleteShelf = false
     @State private var selectedBookIds: Set<UUID> = []
     @State private var showBulkDeleteAlert = false
     @State private var showAddToGroupSheet = false
@@ -277,8 +276,6 @@ struct HomeView: View {
     @State private var showAIPaywall = false
     @ObservedObject private var subscription = SubscriptionStore.shared
     @AppStorage("bookLayoutIsGrid") private var isGridMode = false
-    @AppStorage("bookshelfRingMode") private var isRingMode = true
-    @AppStorage("qingyunRingDefaultBuild10") private var didApplyRingDefault = false
     @AppStorage("bookshelfFattenedBookIDs") private var fattenedBookIDsData = Data()
     @AppStorage(BookSortOrder.storageKey) private var sortOrder = BookSortOrder.manual.rawValue
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -646,35 +643,6 @@ struct HomeView: View {
                         EmptyLibraryView(showAdd: $showAddSheet)
                             .rootTabTitleScrollAnchor()
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
-                    } else if isRingMode, editMode != .active {
-                        BookshelfRingView(
-                            books: sortedBooks(inGroup: nil),
-                            allBooksForDraw: store.books,
-                            colorScheme: colorScheme,
-                            isFattened: { isFattenedBookIDs.contains($0) },
-                            chapterContext: { book in
-                                let positionStore = appDependencies.readingPositionStore
-                                let chapterStore = store
-                                let id = book.id
-                                let usesTextPosition: Bool
-                                switch book.resolvedPipelineKind {
-                                case .manga, .fixedPage, .audio, .video: usesTextPosition = false
-                                default: usesTextPosition = true
-                                }
-                                let (chapters, position) = await Task.detached(priority: .userInitiated) {
-                                    (chapterStore.chapters(for: id) ?? [],
-                                     usesTextPosition ? positionStore.loadSync(for: id.uuidString) : nil)
-                                }.value
-                                return BookshelfRingChapterContext(book: book, chapters: chapters, textPosition: position)
-                            },
-                            onOpen: { book, tapped in openBook(book, from: .all, tapped: tapped) },
-                            onCoverFrameChange: { book, frame in
-                                readerGeometryStore.update(frame, for: book.id, onPage: .all)
-                            },
-                            onContextAction: { book, action in performBookContextAction(book, action) },
-                            onShowMore: { showsCompleteShelf = true }
-                        )
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                     } else {
                         groupedShelf(pages: shelfPages)
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
@@ -682,12 +650,6 @@ struct HomeView: View {
                 }
             }
             .themedAppSurface(for: .bookshelf)
-            .onAppear {
-                if !didApplyRingDefault {
-                    isRingMode = true
-                    didApplyRingDefault = true
-                }
-            }
             .animation(DSAnimation.standard, value: store.books.isEmpty)
             .rootTabTitle(localized("書架"), onScroll: .fadesTitle)
             .toolbar { shelfToolbar(addsBooks: true) }
@@ -703,14 +665,6 @@ struct HomeView: View {
                 if let openedFolder, !groups.contains(openedFolder) {
                     self.openedFolder = nil
                 }
-            }
-            .navigationDestination(isPresented: $showsCompleteShelf) {
-                AdaptiveContentContainer(maxWidth: DSLayout.readableShelfWidth) {
-                    bookList(entries: entries(onPage: .completeList), page: .completeList, isInView: true)
-                }
-                .themedAppSurface(for: .bookshelf)
-                .navigationTitle(localized("更多書籍"))
-                .toolbarTitleDisplayMode(.inline)
             }
             .navigationDestination(item: $openedFolder) { group in
                 folderPage(group)
@@ -992,21 +946,12 @@ struct HomeView: View {
 
             Divider()
 
-            Picker("", selection: $isRingMode) {
-                Label(localized("圓環書架"), systemImage: "circle.hexagongrid").tag(true)
-                Label(localized("傳統書架"), systemImage: "books.vertical").tag(false)
+            Picker("", selection: $isGridMode) {
+                Label(localized("列表"), systemImage: "list.bullet").tag(false)
+                Label(localized("格狀"), systemImage: "square.grid.2x2").tag(true)
             }
             .pickerStyle(.inline)
             .labelsHidden()
-
-            if !isRingMode {
-                Picker("", selection: $isGridMode) {
-                    Label(localized("列表"), systemImage: "list.bullet").tag(false)
-                    Label(localized("格狀"), systemImage: "square.grid.2x2").tag(true)
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            }
 
             Divider()
 

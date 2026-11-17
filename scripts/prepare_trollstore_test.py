@@ -292,8 +292,9 @@ def payload_entries(payload):
 
 
 def strip_debug_symbols(app):
-    """仅处理已识别的已链接 Mach-O；保留运行时符号、ObjC 及 Swift 反射信息。"""
+    """签名前移除 debug/local nlist；保留全局符号及运行时 section。"""
     from ipa_compatibility import binaries, inspect_binary
+    from macho_strip import snapshot
     images = list(binaries(app))
     # MH_EXECUTE / MH_DYLIB / MH_BUNDLE；先检查全体，遇到未知类型不猜测处理。
     for path, slices in images:
@@ -302,14 +303,23 @@ def strip_debug_symbols(app):
     before = sum(path.stat().st_size for path, _ in images)
     for path, slices in images:
         original = path.stat().st_size
-        run("xcrun", "strip", "-S", path)
-        # load commands / 依赖 / 平台 / 代码段信息应保持一致，仅符号表数量可减少。
+        protected = snapshot(path)
+        # Apple/Darwin 支持独立的 -S / -x。不要使用 GNU --strip-debug、
+        # 无参数 strip、-T 或 -N；它们可能移除运行时所需的全局 Swift 符号。
+        run("xcrun", "strip", "-S", "-x", path)
         stripped = inspect_binary(path)
         need([{key: value for key, value in item.items() if key != "symbols"} for item in slices]
              == [{key: value for key, value in item.items() if key != "symbols"} for item in stripped],
              "strip 意外改变 Mach-O 运行信息：" + path.name)
-        print("Mach-O strip -S：" + str(path.relative_to(app)) + "；"
-              + str(original) + " -> " + str(path.stat().st_size) + " 字节")
+        checked = snapshot(path)
+        need([item["runtime"] for item in protected] == [item["runtime"] for item in checked],
+             "strip 改变代码、Swift/ObjC 元数据、UUID、全局符号或 dyld 数据：" + path.name)
+        need(all(item["local"] == item["debug"] == 0 for item in checked),
+             "strip 后仍有本地或调试符号，停止交付：" + path.name)
+        print("Mach-O strip -S -x：" + str(path.relative_to(app)) + "；"
+              + str(original) + " -> " + str(path.stat().st_size) + " 字节；local "
+              + str(sum(item["local"] for item in protected)) + " -> 0；global "
+              + str(sum(item["global"] for item in checked)) + " 保留")
     after = sum(path.stat().st_size for path, _ in images)
     print(f"Mach-O 合计（{len(images)} 个）：{before} -> {after} 字节；减少 {before - after} 字节。")
     return before, after
@@ -414,7 +424,7 @@ def package(source, path_file, output):
                 header = stream.read(4)
             if header in magic:
                 check_binary(path)
-    # 此后才允许签名；所有真实 Mach-O（包括扩展和嵌套框架）仅移除调试符号。
+    # 此后才允许签名；所有真实 Mach-O（包括扩展和嵌套框架）移除 debug/local，保留全局符号。
     strip_debug_symbols(staged)
     print("strip 后严格验证真机二进制数量：" + str(validate(staged)))
     nested = list(staged.rglob("*.framework")) + list(staged.rglob("*.dylib"))

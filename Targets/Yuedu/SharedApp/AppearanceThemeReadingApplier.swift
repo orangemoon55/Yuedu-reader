@@ -433,7 +433,7 @@ extension GlobalSettings {
             liveBoundReaderTheme($0, for: .dark)
         })
         var arrivedTheme: ReaderTheme?
-        if let raw = reading.readerTheme, let theme = ReaderTheme(rawValue: raw),
+        if let raw = reading.readerTheme, let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)),
            theme != ReaderTheme.loadPersisted() {
             // Stored rather than set on `ReaderConfig`, which owns the live value and
             // reloads it from here on the notification below.

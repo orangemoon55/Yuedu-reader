@@ -14,23 +14,24 @@ struct ReaderQuickThemeActionTile: View {
         Button(action: perform) {
             VStack(spacing: DSSpacing.xs) {
                 Image(systemName: action.systemImage)
-                    .font(DSFont.title2.weight(.medium))
+                    .font(DSFont.readerMenu(.title2).weight(.medium))
                     .accessibilityHidden(true)
                 Text(localized(action.titleKey))
-                    .font(DSFont.caption.weight(.medium))
-                    .lineLimit(2)
+                    .font(DSFont.readerMenu(.caption).weight(.medium))
+                    .lineLimit(nil)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .foregroundStyle(DSColor.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 76)
+            .foregroundStyle(DSColor.readerMenuText)
+            .padding(.vertical, DSSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: DSLayout.readerModernBookCardActionHeight)
             .background {
                 RoundedRectangle(cornerRadius: DSRadius.md, style: .continuous)
                     .fill(DSColor.neutralControlFill)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: DSRadius.md, style: .continuous)
-                    .strokeBorder(DSColor.separator, lineWidth: 0.5)
+                    .strokeBorder(DSColor.readerMenuSeparator, lineWidth: 0.5)
             }
             .contentShape(RoundedRectangle(cornerRadius: DSRadius.md, style: .continuous))
         }

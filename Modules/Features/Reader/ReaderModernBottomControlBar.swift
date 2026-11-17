@@ -48,6 +48,8 @@ struct ReaderModernBottomControlBar: View {
     var sourceActions: [ReaderSecondaryAction] = []
 
     @Bindable private var settings = GlobalSettings.shared
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var chapterSliderDraft: Double? = nil
     /// One height for both capsules, growing with the captions they carry.
@@ -66,6 +68,7 @@ struct ReaderModernBottomControlBar: View {
 
     private var palette: ReaderChromePalette {
         ReaderChromePalette(theme: readerTheme, settings: settings)
+            .readable(scheme: readerTheme.isDark ? .dark : .light, contrast: colorSchemeContrast)
     }
 
     /// The reader's own dark mode, which 深色／白天 switches — not whether the background
@@ -89,10 +92,10 @@ struct ReaderModernBottomControlBar: View {
             VStack(spacing: DSSpacing.sm) {
                 scrubberRow
                     .frame(maxWidth: .infinity, minHeight: rowHeight)
-                    .floatingSurface(in: Capsule(), fill: palette.bottomFill)
+                    .readerMenuSurface(in: Capsule(), fill: palette.bottomFill)
                 toolRow
                     .frame(maxWidth: .infinity, minHeight: rowHeight)
-                    .floatingSurface(in: Capsule(), fill: palette.bottomFill)
+                    .readerMenuSurface(in: Capsule(), fill: palette.bottomFill)
             }
         }
         .overlay(alignment: .top) {
@@ -103,6 +106,9 @@ struct ReaderModernBottomControlBar: View {
         .frame(maxWidth: overlayContentMaxWidth)
         .padding(.horizontal, DSSpacing.lg)
         .padding(.bottom, DSSpacing.xs)
+        .font(DSFont.readerMenu(.body))
+        .foregroundStyle(palette.bottomIcon)
+        .environment(\.colorScheme, readerTheme.isDark ? .dark : .light)
         .animation(DSAnimation.fast, value: chapterSliderDraft == nil)
     }
 
@@ -143,8 +149,8 @@ struct ReaderModernBottomControlBar: View {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     Text(progressText)
-                        .font(DSFont.caption2.monospacedDigit())
-                        .foregroundStyle(palette.bottomIcon.opacity(0.62))
+                        .font(DSFont.readerMenu(.caption2).monospacedDigit())
+                        .foregroundStyle(palette.bottomIcon)
                         .lineLimit(1)
                         .accessibilityHidden(progressText.isEmpty)
                 }
@@ -247,8 +253,10 @@ struct ReaderModernBottomControlBar: View {
                 .frame(height: DSLayout.readerModernToolGlyphHeight)
                 .accessibilityHidden(true)
             Text(label)
-                .font(DSFont.caption2)
-                .lineLimit(1)
+                .font(DSFont.readerMenu(.caption2))
+                .lineLimit(nil)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(active ? palette.bottomAccent : palette.bottomIcon)
         }
         .frame(maxWidth: .infinity, minHeight: DSLayout.minimumTapTarget)
@@ -268,7 +276,7 @@ struct ReaderModernBottomControlBar: View {
         } else if item == .settings {
             // 主題 is the serif "Aa" Apple Books uses for its themes button.
             Text(verbatim: "Aa")
-                .font(GlobalAppTypography.font(.headline, weight: .bold, systemDesign: .serif))
+                .font(DSFont.readerMenu(.headline).weight(.bold))
                 .foregroundStyle(palette.bottomIcon)
         } else {
             Image(systemName: item.systemImage(isNight: isDarkMode))
@@ -404,15 +412,15 @@ struct ReaderModernBottomControlBar: View {
     private var scrubPreview: some View {
         VStack(spacing: DSSpacing.xs) {
             Text(progressPercentText)
-                .font(DSFont.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(DSFont.readerMenu(.subheadline).monospacedDigit())
+                .foregroundStyle(palette.bottomIcon)
             Text(chapterTitleForProgress(sliderProgress))
-                .font(DSFont.subheadline)
+                .font(DSFont.readerMenu(.subheadline))
                 .lineLimit(1)
         }
         .padding(.horizontal, DSSpacing.xl)
         .padding(.vertical, DSSpacing.md)
-        .floatingSurface(in: Capsule(), fill: palette.bottomFill)
+        .readerMenuSurface(in: Capsule(), fill: palette.bottomFill)
         .allowsHitTesting(false)
         .transition(.opacity.animation(DSAnimation.fast))
         .offset(y: -72)

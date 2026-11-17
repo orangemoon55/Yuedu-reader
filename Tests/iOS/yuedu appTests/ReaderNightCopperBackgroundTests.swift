@@ -33,12 +33,12 @@ final class ReaderNightCopperBackgroundTests: XCTestCase {
     }
 
     func testFirstChoiceAndDarkClassification() {
-        XCTAssertEqual(ReaderTheme.allCases, [.nightCopper, .night, .white, .green, .sepia])
-        XCTAssertTrue(ReaderTheme.nightCopper.isDark)
+        XCTAssertEqual(ReaderTheme.allCases, [.night, .white, .green, .sepia])
+        XCTAssertTrue(ReaderTheme.night.isDark)
         XCTAssertFalse(ReaderTheme.green.isDark)
-        XCTAssertEqual(ReaderTheme.nightCopper.epubJSName, "nightCopper")
-        XCTAssertEqual(ReaderBoundTheme(storageValue: ReaderBoundTheme.reading(.nightCopper).storageValue),
-                       .reading(.nightCopper))
+        XCTAssertEqual(ReaderTheme.night.epubJSName, "night")
+        XCTAssertEqual(ReaderBoundTheme(storageValue: ReaderBoundTheme.reading(.night).storageValue),
+                       .reading(.night))
     }
 
     func testReadingChoicePersistsWithoutWritingApplicationAppearanceOrTypography() {
@@ -49,12 +49,12 @@ final class ReaderNightCopperBackgroundTests: XCTestCase {
             let typography = (settings.readerFontSize, settings.selectedReaderFontPostScript,
                               settings.selectedGlobalFontPostScript)
             ReaderTheme.green.persist()
-            ReaderTheme.nightCopper.persist()
-            XCTAssertEqual(ReaderTheme.loadPersisted(), .nightCopper)
-            XCTAssertEqual(ReaderTheme.lastDarkTheme, .nightCopper)
+            ReaderTheme.night.persist()
+            XCTAssertEqual(ReaderTheme.loadPersisted(), .night)
+            XCTAssertEqual(ReaderTheme.lastDarkTheme, .night)
             XCTAssertEqual(ReaderTheme.lastLightTheme, .green)
             ReaderTheme.sepia.persist()
-            XCTAssertEqual(ReaderTheme.lastDarkTheme, .nightCopper)
+            XCTAssertEqual(ReaderTheme.lastDarkTheme, .night)
             ReaderTheme.night.persist()
             XCTAssertEqual(ReaderTheme.lastDarkTheme, .night)
             XCTAssertEqual(settings.appearanceThemeID, appearance.0)
@@ -73,34 +73,32 @@ final class ReaderNightCopperBackgroundTests: XCTestCase {
             settings.appearanceBindReaderTheme = false
             settings.readerCustomBackgroundID = nil
             ReaderTheme.green.persist()
-            ReaderTheme.nightCopper.persist()
+            ReaderTheme.night.persist()
             settings.setReaderDarkMode(true, deviceIsDark: false)
-            let result = settings.readerBackgroundResolution(mode: settings.readerMode, wornTheme: .nightCopper)
-            XCTAssertEqual(result.theme, .nightCopper)
+            let result = settings.readerBackgroundResolution(mode: settings.readerMode, wornTheme: .night)
+            XCTAssertEqual(result.theme, .night)
             XCTAssertFalse(result.paintsWithAppearanceTheme)
             XCTAssertNil(result.customBackground)
-            XCTAssertEqual(settings.readerBackgroundResolution(mode: .light, wornTheme: .nightCopper).theme, .green)
-            XCTAssertEqual(settings.readerBackgroundResolution(mode: .dark, wornTheme: .green).theme, .nightCopper)
-            XCTAssertTrue(GlobalSettings.startingReaderDarkMode(stored: nil, theme: .nightCopper,
+            XCTAssertEqual(settings.readerBackgroundResolution(mode: .light, wornTheme: .night).theme, .green)
+            XCTAssertEqual(settings.readerBackgroundResolution(mode: .dark, wornTheme: .green).theme, .night)
+            XCTAssertTrue(GlobalSettings.startingReaderDarkMode(stored: nil, theme: .night,
                                                                wornBackgroundIsDark: false, binds: false))
-            settings.adoptReaderDarkMode(from: .nightCopper)
+            settings.adoptReaderDarkMode(from: .night)
             XCTAssertTrue(settings.readerDarkMode)
         }
     }
 
-    func testCopperHasReadableIntrinsicColorsAndDoesNotBecomeTheAppTheme() {
+    func testRetiredStoredChoiceReopensAsBlackAndKeepsLastDayBackground() {
         isolated {
-            func components(_ color: UIColor) -> [CGFloat] {
-                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-                XCTAssertTrue(color.getRed(&r, green: &g, blue: &b, alpha: &a))
-                return [r, g, b, a]
-            }
-            let background = components(ReaderTheme.nightCopper.uiBackgroundColor)
-            let text = components(ReaderTheme.nightCopper.uiTextColor)
-            XCTAssertEqual(background[0], 21.0 / 255, accuracy: 0.001)
-            XCTAssertEqual(background[1], 35.0 / 255, accuracy: 0.001)
-            XCTAssertEqual(text[0], 237.0 / 255, accuracy: 0.001)
-            XCTAssertGreaterThan(text[0] - background[0], 0.8)
+            let defaults = UserDefaults.standard
+            defaults.set("夜銅", forKey: "yd_reader_theme")
+            defaults.set("夜銅", forKey: "lastDarkTheme")
+            defaults.set(ReaderTheme.green.rawValue, forKey: "lastLightTheme")
+            XCTAssertEqual(ReaderTheme.loadPersisted(), .night)
+            XCTAssertEqual(ReaderTheme.lastDarkTheme, .night)
+            XCTAssertEqual(ReaderTheme.lastLightTheme, .green)
+            XCTAssertEqual(defaults.string(forKey: "yd_reader_theme"), ReaderTheme.night.rawValue)
+            XCTAssertEqual(ReaderBoundTheme(storageValue: "夜銅"), .reading(.night))
             XCTAssertNil(AppearanceThemePreset.preset(id: QingyunNightCopperRetirementMigration.retiredThemeID))
         }
     }

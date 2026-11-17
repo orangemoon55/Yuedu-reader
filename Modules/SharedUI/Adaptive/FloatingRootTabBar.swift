@@ -4,10 +4,15 @@ import UIKit
 /// Geometry shared by the real controls and the layout tests. Never shrink a touch
 /// target below 44pt; an unusually narrow container scrolls instead of clipping it.
 struct FloatingRootTabBarLayout: Equatable {
-    static let minimumHitSize: CGFloat = 44
-    static let surfacePadding: CGFloat = 4
-    static let bottomSpacing: CGFloat = 6
-    static let topSpacing: CGFloat = 6
+    static let minimumHitSize = DSLayout.minimumTapTarget
+    static let surfacePadding = DSSpacing.xs
+    static let bottomSpacing = DSSpacing.xs
+    static let topSpacing = DSSpacing.xs
+    static let defaultIconSize: CGFloat = 26
+    static let compactHeight = minimumHitSize + surfacePadding * 2
+    static let maximumItemWidth: CGFloat = 80
+    static let maximumWidth: CGFloat = 560
+    static let shadowPadding = DSSpacing.xs
 
     let itemWidth: CGFloat
     let capsuleWidth: CGFloat
@@ -19,14 +24,14 @@ struct FloatingRootTabBarLayout: Equatable {
 
     init(availableWidth: CGFloat, mainTabCount: Int, hasSearch: Bool, height: CGFloat) {
         let count = max(0, mainTabCount)
-        self.height = max(Self.minimumHitSize + Self.surfacePadding * 2, height)
-        searchDiameter = hasSearch ? min(self.height, 56) : 0
-        gap = count > 0 && hasSearch ? 8 : 0
+        self.height = max(Self.compactHeight, height)
+        searchDiameter = hasSearch ? min(self.height, Self.compactHeight) : 0
+        gap = count > 0 && hasSearch ? DSSpacing.sm : 0
         let padding = count > 0 ? Self.surfacePadding * 2 : 0
         let available = max(0, availableWidth.isFinite ? availableWidth : 0)
-        let usable = max(0, min(available - 24, 620))
+        let usable = max(0, min(available - DSSpacing.lg * 2, Self.maximumWidth))
         let candidate = count > 0 ? (usable - searchDiameter - gap - padding) / CGFloat(count) : 0
-        itemWidth = count > 0 ? max(Self.minimumHitSize, min(88, candidate)) : 0
+        itemWidth = count > 0 ? max(Self.minimumHitSize, min(Self.maximumItemWidth, candidate)) : 0
         capsuleWidth = CGFloat(count) * itemWidth + padding
         contentWidth = capsuleWidth + gap + searchDiameter
         viewportWidth = min(available, contentWidth)
@@ -39,7 +44,7 @@ struct FloatingRootTabBar: View {
     let tabs: [RootTabItem]
     @Binding var selection: RootTabItem
     var hidesLabels = false
-    var iconSize: CGFloat = 28
+    var iconSize: CGFloat = FloatingRootTabBarLayout.defaultIconSize
     var tint: Color = .accentColor
     var customIcon: (RootTabItem) -> RootTabRenderedIcon? = { _ in nil }
     /// Deterministic preview/testing input; nil follows the read-only system environment.
@@ -57,8 +62,12 @@ struct FloatingRootTabBar: View {
     private var drawnIconSize: CGFloat { RootTabIconRenderer.sanitizedIconSize(iconSize) }
     private var barHeight: CGFloat {
         let textHeight = hidesLabels || mainTabs.isEmpty ? 0
-            : labelLineHeight * (dynamicTypeSize.isAccessibilitySize ? 2 : 1) + 3
-        return max(56, drawnIconSize + textHeight + 10)
+            : labelLineHeight * (dynamicTypeSize.isAccessibilitySize ? 2 : 1) + DSSpacing.xxs
+        // Compact only at the default text size. Accessibility labels get two full
+        // scaled lines and a taller capsule instead of shrinking their type or hit area.
+        let contentHeight = max(FloatingRootTabBarLayout.minimumHitSize,
+                                drawnIconSize + textHeight + DSSpacing.xs)
+        return contentHeight + FloatingRootTabBarLayout.surfacePadding * 2
     }
 
     var body: some View {
@@ -84,23 +93,23 @@ struct FloatingRootTabBar: View {
                     }
                 }
                 .frame(width: layout.contentWidth, height: layout.height)
-                // Shadow room does not consume a button's hit area.
-                .padding(.vertical, 6)
+                // Shadow room stays outside the measured control surface.
+                .padding(.vertical, FloatingRootTabBarLayout.shadowPadding)
             }
             .scrollIndicators(.hidden)
             .scrollClipDisabled(layout.contentWidth <= layout.viewportWidth)
             .scrollBounceBehavior(.basedOnSize)
-            .frame(width: layout.viewportWidth, height: layout.height + 12)
+            .frame(width: layout.viewportWidth,
+                   height: layout.height + FloatingRootTabBarLayout.shadowPadding * 2)
             .frame(maxWidth: .infinity)
-            .offset(y: -6)
         }
-        .frame(height: barHeight)
+        .frame(height: barHeight + FloatingRootTabBarLayout.shadowPadding * 2)
         .accessibilityIdentifier("rootTab.floatingBar")
     }
 
     private func tabButton(_ tab: RootTabItem, width: CGFloat, height: CGFloat) -> some View {
         Button { selection = tab } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: DSSpacing.xxs) {
                 icon(for: tab)
                 if !hidesLabels {
                     Text(localized(tab.titleKey))

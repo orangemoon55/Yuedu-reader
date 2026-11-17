@@ -14,6 +14,7 @@ import Foundation
 enum HomeLayoutStyle: String, CaseIterable, Identifiable, Sendable {
     case readingCard
     case compactReadingCard
+    case coverIntroCard
     case row
     case multiRow
     case coverGrid
@@ -37,6 +38,7 @@ enum HomeLayoutStyle: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .readingCard: "大型閱讀卡片"
         case .compactReadingCard: "精簡閱讀卡片"
+        case .coverIntroCard: "封面簡介大卡"
         case .row: "橫向單排書架"
         case .multiRow: "多行橫向輪播"
         case .coverGrid: "固定封面網格"
@@ -57,6 +59,7 @@ enum HomeLayoutStyle: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .readingCard: "rectangle.portrait.on.rectangle.portrait"
         case .compactReadingCard: "rectangle.leadingthird.inset.filled"
+        case .coverIntroCard: "rectangle.split.2x1"
         case .row: "rectangle.split.3x1"
         case .multiRow: "rectangle.grid.3x2"
         case .coverGrid: "square.grid.3x3"
@@ -98,6 +101,7 @@ extension HomeSectionLayout {
         switch self {
         case .readingCard: return .readingCard
         case .compactReadingCard: return .compactReadingCard
+        case .coverIntroCard: return .coverIntroCard
         case .multiRow: return .multiRow
         case .coverGrid: return .coverGrid
         case .list: return .list
@@ -129,6 +133,7 @@ extension HomeSectionLayout {
         switch style {
         case .readingCard: self = .readingCard
         case .compactReadingCard: self = .compactReadingCard
+        case .coverIntroCard: self = .coverIntroCard
         case .row: self = .row
         case .multiRow: self = .multiRow
         case .coverGrid: self = .coverGrid

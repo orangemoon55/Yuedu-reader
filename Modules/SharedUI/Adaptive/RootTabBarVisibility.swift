@@ -39,48 +39,6 @@ final class RootTabBarVisibility: ObservableObject {
     }
 }
 
-/// The measured top of the floating bar's padded container, in global coordinates.
-/// Nil while hidden, typing, or using the system bar. It is a boundary rather than
-/// a height: a child navigation host may already have received some/all of the inset.
-private struct RootTabBarTopKey: EnvironmentKey {
-    static let defaultValue: CGFloat? = nil
-}
-
-extension EnvironmentValues {
-    var rootTabBarTop: CGFloat? {
-        get { self[RootTabBarTopKey.self] }
-        set { self[RootTabBarTopKey.self] = newValue }
-    }
-}
-
-private struct FloatingRootTabBarAvoidance: ViewModifier {
-    @Environment(\.rootTabBarTop) private var barTop
-
-    func body(content: Content) -> some View {
-        GeometryReader { geometry in
-            // Measured outside our inset, so a relayout cannot accumulate padding.
-            // Subtract what this Form already respects (home indicator, player,
-            // and any reservation the NavigationStack successfully forwarded).
-            let safeBottom = geometry.frame(in: .global).maxY - geometry.safeAreaInsets.bottom
-            let missingInset = barTop.map { max(0, safeBottom - $0 + 8) } ?? 0
-            content.safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear
-                    .frame(height: missingInset)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
-    }
-}
-
-extension View {
-    /// Apply to a full-height scrolling root *inside* its NavigationStack. Repairs
-    /// lost outer safe-area propagation without shrinking other tabs or readers.
-    func avoidsFloatingRootTabBar() -> some View {
-        modifier(FloatingRootTabBarAvoidance())
-    }
-}
-
 private struct RootTabBarVisibilityKey: EnvironmentKey {
     static let defaultValue: RootTabBarVisibility? = nil
 }
