@@ -124,7 +124,7 @@ final class DiscoverFirstPages {
         let start = SourcePerfTrace.now
         let data = try encoder.encode(input)
         let key = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        SourcePerfTrace.record("home.cache.identity", "bytes=\(data.count) main=\(Thread.isMainThread)", since: start)
+        SourcePerfTrace.record("home.cache.identity", "bytes=\(data.count)", since: start)
         return key
     }
 
