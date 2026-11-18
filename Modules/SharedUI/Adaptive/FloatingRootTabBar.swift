@@ -7,6 +7,8 @@ import UIKit
 struct FloatingRootTabBarLayout: Equatable {
     static let minimumHitSize: CGFloat = 48
     static let surfacePadding = DSSpacing.xs
+    static let topSpacing = DSSpacing.xs
+    static let bottomSpacing = DSSpacing.xs
     static let defaultIconSize: CGFloat = 26
     static let compactHeight = DSLayout.minimumTapTarget + surfacePadding * 2
     static let maximumItemWidth: CGFloat = 80
