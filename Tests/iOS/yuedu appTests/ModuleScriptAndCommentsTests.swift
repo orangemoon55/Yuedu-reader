@@ -155,10 +155,8 @@ struct ModuleScriptAndCommentsTests {
 
         // This is the byte-for-byte fixture of the uploaded Moyue 2.0.2 JSON.
         // Load from the test bundle, never from an optional chat-attachment path.
-        let fixtureURL = try #require(
-            Bundle.main.url(forResource: "moyue-comments-cache-duration", withExtension: "module", subdirectory: "RuleModules")
-            ?? Bundle.main.url(forResource: "moyue-comments-cache-duration.module", withExtension: "json")
-        )
+        let fixtureURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/RuleModules/moyue-comments-cache-duration.module.json")
         let original = try Data(contentsOf: fixtureURL)
         #expect(SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
                 == "707cce5fb2987b843f706344d53ff001e4f1acefcbdf1320e473a23d19dd5e46")
@@ -185,7 +183,7 @@ struct ModuleScriptAndCommentsTests {
 
     @Test("all six nested comment cache TTL keys are schema-supported at the exact paths")
     func nestedCacheDurationSchemaPaths() throws {
-        var value = try #require(JSONSerialization.jsonObject(with: module(["search": search, "comments": comments()])) as? [String: Any])
+        var value = try #require(JSONSerialization.jsonObject(with: module(["search": search, "comments": notesBlock()])) as? [String: Any])
         var blocks = try #require(value["comments"] as? [String: Any])
         let expected: [(String, Int)] = [("chapters", 86_400), ("chapter", 300), ("paragraph", 300),
                                           ("counts", 300), ("hot", 300), ("authorSay", 600)]
@@ -424,64 +422,65 @@ struct ModuleScriptAndCommentsTests {
         #expect(ModuleStub.urls.contains("https://example.com/c/a3/p/p9?p=1"), "the paragraph's id is the one the counts gave")
     }
 
-    @Test("Moyue nested TTLs expire chapter comments, counts, hot, author say and chapter list independently")
+    @Test("nested cache durations expire comments and notes independently")
     func moyueNestedTTLsExpireIndependently() async throws {
-        let source = try #require(Bundle(for: ModuleScriptAndCommentsTests.self)
-            .url(forResource: "moyue-comments-cache-duration", withExtension: "module", subdirectory: "RuleModules"))
-        let data = try Data(contentsOf: source)
-        var instant = Date(timeIntervalSince1970: 1_000_000)
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MoyueTTL-\\(UUID())")
-        let store = RuleModuleStore(directory: folder)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ModuleStub.self]
-        let client = RuleModuleClient(fetcher: WebFetcher(session: URLSession(configuration: configuration)),
-                                      store: store, now: { instant })
-        let installed = try await RuleModuleLibrary(store: store, appVersion: "3.0.2", officialFiles: { [] })
-            .install(data, from: nil)
-        let module = installed.module
+        // Synthetic transport, original schema; no request leaves this URLProtocol.
+        var blocks = notesBlock()
+        blocks["cacheDuration"] = 37
+        for (key, ttl) in [("chapters", 86400), ("chapter", 300), ("paragraph", 300),
+                            ("counts", 300), ("hot", 300), ("authorSay", 600)] {
+            var block = try #require(blocks[key] as? [String: Any])
+            block["cacheDuration"] = ttl
+            blocks[key] = block
+        }
+        let f = try await fixture(["search": search, "comments": blocks], id: "c.independentTTL")
+        defer { f.cleanUp() }
+        let clock = ModuleProviderTests.Clock()
+        let client = RuleModuleClient(fetcher: f.client.fetcher, store: f.client.store, now: { clock.date })
+        let module = f.module
         let comments = try #require(module.comments)
-        let item = RuleListItem(name: "夏空", author: "作者", bookUrl: "https://www.wuxie.qd.je/book/1",
+        var item = RuleListItem(name: "長夜", author: "某作者", bookUrl: "https://example.com/b/7",
                                 coverUrl: "", intro: "", wordCount: "", lastChapter: "", kind: "", isbn: nil)
+        item.id = "7"
         ModuleStub.install([
-            "www.wuxie.qd.je/reviews/book/1/chapters": .json(#"{"data":[{"id":"c1","title":"第一章 日光"}]}"#),
-            "www.wuxie.qd.je/reviews/list": .json(#"{"data":{"total":1,"comments":[{"text":"章评","author":"甲"}]}}"#),
-            "www.wuxie.qd.je/reviews/paragraphs/c1": .json(#"{"data":{"paragraphs":[{"index":1,"count":1,"quote":"测试段落"}]}}"#),
-            "www.wuxie.qd.je/reviews/hot/c1": .json(#"{"data":{"comments":[{"text":"热评","author":"乙","paragraphId":1}]}}"#),
-            "www.wuxie.qd.je/reviews/author-say/c1": .json(#"{"data":{"text":"作者说","author":"作者"}}"#)
+            "example.com/b/7/chapters": .json(Self.remoteChapters),
+            "example.com/c/a3/counts": .json(#"{"paragraphs":[{"pid":"p9","no":2,"n":3,"text":"風起"}]}"#),
+            "example.com/c/a3/hot": .json(#"{"hot":[{"content":"好評","user":"甲","para":"風起","likes":9}]}"#),
+            "example.com/c/a3/say": .json(#"{"say":"兩更","author":"某作者"}"#),
+            "example.com/c/a3": .json(#"{"total":1,"list":[{"content":"章评","user":"乙"}]}"#),
+            "example.com/c/a3/p/p9": .json(#"{"list":[{"content":"段评","user":"丙"}]}"#)
         ])
-
-        let chapters1 = try await client.commentChapters(of: item, by: comments, in: module)
-        let chapters2 = try await client.commentChapters(of: item, by: comments, in: module)
-        #expect(chapters1 == chapters2)
-        #expect(ModuleStub.urls.filter { $0.contains("/chapters") }.count == 1)
-        let thread = ModuleCommentChapter(id: "c1", title: "第一章 日光")
-        let notes1 = await client.chapterNotes(chapterID: thread.id, of: item, by: comments, in: module)
-        let notes2 = await client.chapterNotes(chapterID: thread.id, of: item, by: comments, in: module)
-        #expect(notes1.counts.count == 1 && notes1.hot.count == 1 && notes1.authorSay != nil)
-        #expect(notes2 == notes1)
-        #expect(ModuleStub.urls.filter { $0.contains("/paragraphs/") }.count == 1)
-        #expect(ModuleStub.urls.filter { $0.contains("/hot/") }.count == 1)
-        #expect(ModuleStub.urls.filter { $0.contains("/author-say/") }.count == 1)
-        let chapter1 = try await client.chapterComments(chapterID: thread.id, item: item, comments: comments,
-                                                        sort: nil, page: 1, module: module)
-        let chapter2 = try await client.chapterComments(chapterID: thread.id, item: item, comments: comments,
-                                                        sort: nil, page: 1, module: module)
-        #expect(chapter1.comments.count == 1 && chapter2 == chapter1)
-        #expect(ModuleStub.urls.filter { $0.contains("/reviews/list") }.count == 1)
-
-        instant.addTimeInterval(500)
-        _ = await client.chapterNotes(chapterID: thread.id, of: item, by: comments, in: module)
-        _ = try await client.chapterComments(chapterID: thread.id, item: item, comments: comments,
-                                             sort: nil, page: 1, module: module)
+        func requests(_ suffix: String) -> Int {
+            ModuleStub.urls.filter { URL(string: $0)?.path == suffix }.count
+        }
+        @MainActor func loadAll() async throws {
+            _ = try await client.commentChapters(of: item, by: comments, in: module)
+            let notes = await client.chapterNotes(chapterID: "a3", of: item, by: comments, in: module)
+            #expect(notes.counts.count == 1)
+            #expect(notes.hot.count == 1)
+            #expect(notes.authorSay != nil)
+            let chapter = try await client.chapterComments(chapterID: "a3", of: item, sort: nil, page: 1,
+                                                           by: comments, in: module)
+            let paragraph = try await client.chapterComments(chapterID: "a3", paragraphID: "p9", of: item,
+                                                             sort: nil, page: 1, by: comments, in: module)
+            #expect(chapter.comments.count == 1 && paragraph.comments.count == 1)
+        }
+        try await loadAll()
+        try await loadAll()
+        for path in ["/b/7/chapters", "/c/a3", "/c/a3/p/p9", "/c/a3/counts", "/c/a3/hot", "/c/a3/say"] {
+            #expect(requests(path) == 1)
+        }
+        clock.date.addTimeInterval(500)
+        try await loadAll()
+        for path in ["/c/a3", "/c/a3/p/p9", "/c/a3/counts", "/c/a3/hot"] { #expect(requests(path) == 2) }
+        #expect(requests("/c/a3/say") == 1)
+        #expect(requests("/b/7/chapters") == 1)
+        clock.date.addTimeInterval(101)
+        _ = await client.chapterNotes(chapterID: "a3", of: item, by: comments, in: module)
+        #expect(requests("/c/a3/say") == 2)
+        clock.date.addTimeInterval(86400)
         _ = try await client.commentChapters(of: item, by: comments, in: module)
-        #expect(ModuleStub.urls.filter { $0.contains("/paragraphs/") }.count == 2)
-        #expect(ModuleStub.urls.filter { $0.contains("/hot/") }.count == 2)
-        #expect(ModuleStub.urls.filter { $0.contains("/reviews/list") }.count == 2)
-        #expect(ModuleStub.urls.filter { $0.contains("/author-say/") }.count == 1,
-                "600-second authorSay is still fresh")
-        #expect(ModuleStub.urls.filter { $0.contains("/chapters") }.count == 1,
-                "24-hour chapter list is still fresh")
+        #expect(requests("/b/7/chapters") == 2)
     }
 
     @Test("a comment's paragraph is told by its text, or by its number when both editions count the same; else it has none")

@@ -22,6 +22,14 @@ final class FloatingRootTabBarTests: XCTestCase {
                 }
             }
         }
+        let three = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 3, hasSearch: true, height: 64)
+        XCTAssertEqual(three.itemWidth, 66)
+        XCTAssertEqual(three.capsuleWidth, 206)
+        XCTAssertEqual(three.searchDiameter, 52)
+        XCTAssertGreaterThanOrEqual(three.itemWidth, 48)
+        let five = FloatingRootTabBarLayout(availableWidth: 744, mainTabCount: 5, hasSearch: true, height: 64)
+        XCTAssertEqual(five.itemWidth, FloatingRootTabBarLayout.maximumItemWidth)
+
         let narrow = FloatingRootTabBarLayout(availableWidth: 200, mainTabCount: 5, hasSearch: true, height: 64)
         XCTAssertEqual(narrow.contentWidth, narrow.viewportWidth)
         XCTAssertGreaterThan(narrow.rows, 1, "Narrow layouts wrap instead of scrolling")
