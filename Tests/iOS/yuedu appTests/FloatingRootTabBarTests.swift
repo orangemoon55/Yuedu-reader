@@ -44,12 +44,12 @@ final class FloatingRootTabBarTests: XCTestCase {
                                       selection: Binding(get: { selection }, set: { selection = $0 }))
         try await withAccessibilityHost(in: view) { host in
             let ready = await eventually(host) {
-                yuedu_appTests.accessibilityElements(in: host).filter { $0.accessibilityTraits.contains(.button) }.count >= 4
+                HomeRankAX.elements(in: host).filter { $0.accessibilityTraits.contains(.button) }.count >= 4
             }
             XCTAssertTrue(ready)
             let all = descendants(of: host)
             XCTAssertFalse(all.contains(where: { $0 is UIScrollView }))
-            let buttons = yuedu_appTests.accessibilityElements(in: host).filter { $0.accessibilityTraits.contains(.button) }
+            let buttons = HomeRankAX.elements(in: host).filter { $0.accessibilityTraits.contains(.button) }
             XCTAssertGreaterThanOrEqual(buttons.count, 4)
             for button in buttons {
                 XCTAssertGreaterThanOrEqual(button.accessibilityFrame.width, 48)
