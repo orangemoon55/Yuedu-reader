@@ -60,9 +60,10 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ui-polish ]]; then
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == module-compat ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/commentsValidated()'
-    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/moyue302NestedCacheDurationsImport()'
+    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/notesValidated()'
+    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/notes()'
+    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/moyueNestedTTLsExpireIndependently()'
     -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/nestedCacheDurationSchemaPaths()'
-    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/signs()'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ranked-home ]]; then
   TEST_SELECTION=(
