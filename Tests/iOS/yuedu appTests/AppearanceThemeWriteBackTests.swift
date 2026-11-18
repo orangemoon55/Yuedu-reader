@@ -316,7 +316,7 @@ struct AppearanceThemeWriteBackTests {
         settings.customAppearanceThemes.append(contentsOf: [a, b])
 
         settings.appearanceThemeID = a.id
-        #expect(settings.visibleRootTabs == [.explore, .bookshelf, .settings, .search])
+        #expect(settings.visibleRootTabs == [.explore, .bookshelf, .settings])
         settings.rootTabVisibleIDs = [RootTabItem.bookshelf.rawValue]
         // 設定 is re-added by the sanitizer, and that sanitized value is what the theme
         // records. Legacy 資源庫 ids and hidden markers cannot restore the removed tab.

@@ -85,19 +85,19 @@ final class HomeRankNativeTests: XCTestCase {
         }
     }
 
-    func testProductionCarouselActuallySwitchesAfterThirtySeconds() async throws {
+    func testProductionCarouselActuallySwitchesAfterFiveSeconds() async throws {
         let first = HomeCardContent(sample: "FirstRotationBook", author: "Author", kind: .text, cover: nil, blurb: "Intro")
         let second = HomeCardContent(sample: "SecondRotationBook", author: "Author", kind: .text, cover: nil, blurb: "Intro")
         let root = HomeRankCarousel(cards: [first, second], open: { _, _ in })
             .environment(\.scenePhase, .active)
             .environment(\.homeRowWidth, 390)
         try await withAccessibilityHost(in: root) { host in
-            func visibleBook() -> String? {
+            @MainActor func visibleBook() -> String? {
                 HomeRankAX.find("home.rank.current", in: host)?.accessibilityLabel
             }
             let initial = await eventually(host) { visibleBook()?.contains("FirstRotationBook") == true }
             XCTAssertTrue(initial)
-            try await Task.sleep(for: .seconds(29))
+            try await Task.sleep(for: .seconds(4))
             XCTAssertTrue(visibleBook()?.contains("FirstRotationBook") == true)
             let switched = await eventually(host, within: .seconds(3)) {
                 visibleBook()?.contains("SecondRotationBook") == true

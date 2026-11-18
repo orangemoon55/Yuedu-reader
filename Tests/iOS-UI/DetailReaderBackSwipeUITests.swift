@@ -96,11 +96,12 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
     /// search narrowed its source tiles, which left with them in unified library 5d-1.
     @MainActor
     private func openSearchedBook(_ app: XCUIApplication, query: String, named name: String) {
-        let searchTab = app.tabBars.buttons["Search"]
+        let searchTab = app.buttons["explore.search"]
         XCTAssertTrue(searchTab.waitForExistence(timeout: 15), app.debugDescription)
         searchTab.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["explore.search.close"].exists, "The original full search page must be presented from Explore")
         search.tap()
         search.typeText(query + "\n")
         // iOS 17 lists results in a UIKit table, later systems in a SwiftUI list.
@@ -506,13 +507,14 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         try configureStoreKit()
         let app = XCUIApplication()
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-reset-explore-home", "-reset-reading-settings", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
-                               "-yd_root_tab_visible_ids", "(bookshelf, explore, settings, search)"]
+                               "-yd_root_tab_visible_ids", "(bookshelf, explore, settings)"]
         app.launch()
-        let searchTab = app.tabBars.buttons["搜索"]
-        XCTAssertTrue(searchTab.waitForExistence(timeout: 15), app.debugDescription)
-        searchTab.tap()
+        let searchButton = app.buttons["explore.search"]
+        XCTAssertTrue(searchButton.waitForExistence(timeout: 15), app.debugDescription)
+        searchButton.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["explore.search.close"].exists, app.debugDescription)
         search.tap()
         search.typeText("manga fixture\n")
         // iOS 17 lists results in a UIKit table, later systems in a SwiftUI list.
@@ -594,13 +596,14 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         try configureStoreKit()
         let app = XCUIApplication()
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-reset-explore-home", "-reset-reading-settings", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
-                               "-yd_root_tab_visible_ids", "(bookshelf, explore, settings, search)"]
+                               "-yd_root_tab_visible_ids", "(bookshelf, explore, settings)"]
         app.launch()
-        let searchTab = app.tabBars.buttons["搜索"]
-        XCTAssertTrue(searchTab.waitForExistence(timeout: 15), app.debugDescription)
-        searchTab.tap()
+        let searchButton = app.buttons["explore.search"]
+        XCTAssertTrue(searchButton.waitForExistence(timeout: 15), app.debugDescription)
+        searchButton.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["explore.search.close"].exists, app.debugDescription)
         search.tap()
         // "fixture" wakes the fixture's pager source: 搜索 keeps fetching its later pages, and
         // publishing them, the whole time the reader below is open — as the reporter's 搜索 did.
@@ -659,7 +662,7 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         app.buttons["关闭"].firstMatch.tap()
     }
 
-    /// Unified search acceptance (design §16 item 6): the 搜索 tab's one list of works — a UIKit
+    /// Unified search acceptance (design §16 item 6): the Explore magnifier's full search list of works — a UIKit
     /// table on iOS 17 — pushes 作品詳情 from a frozen route; ten pushes and pops in a row
     /// neither freeze the app nor lose the row.
     @MainActor
@@ -668,13 +671,14 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         try configureStoreKit()
         let app = XCUIApplication()
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-reset-explore-home", "-reset-reading-settings", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
-                               "-yd_root_tab_visible_ids", "(bookshelf, explore, settings, search)"]
+                               "-yd_root_tab_visible_ids", "(bookshelf, explore, settings)"]
         app.launch()
-        let searchTab = app.tabBars.buttons["搜索"]
-        XCTAssertTrue(searchTab.waitForExistence(timeout: 15), app.debugDescription)
-        searchTab.tap()
+        let searchButton = app.buttons["explore.search"]
+        XCTAssertTrue(searchButton.waitForExistence(timeout: 15), app.debugDescription)
+        searchButton.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["explore.search.close"].exists, app.debugDescription)
         search.tap()
         search.typeText("manga fixture\n")
         let result = app.descendants(matching: .any)
@@ -1247,7 +1251,7 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [left], timeout: 10), .completed)
         app.terminate()
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-yd_root_tab_visible_ids", "(bookshelf, settings, search)", "-bookLayoutIsGrid", "NO"]
+                               "-yd_root_tab_visible_ids", "(bookshelf, settings)", "-bookLayoutIsGrid", "NO"]
         app.launch()
 
         // 編輯書籍資訊 renames the copy.
