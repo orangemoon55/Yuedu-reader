@@ -95,6 +95,7 @@ struct RuleModule: Codable, Hashable, Sendable {
     /// 段評: `{{chapterId}}` is the chapter's; each item is a paragraph and how many comments it has.
     struct ParagraphCounts: Codable, Hashable, Sendable {
         var request: Request
+        var cacheDuration: Int?
         var list: ParagraphCountRules
         /// How many paragraphs the site's chapter has, read on the page itself.
         var paragraphCount: String?
@@ -113,6 +114,7 @@ struct RuleModule: Codable, Hashable, Sendable {
     /// 熱評: each item is a comment and the paragraph it is under.
     struct HotComments: Codable, Hashable, Sendable {
         var request: Request
+        var cacheDuration: Int?
         var list: HotCommentRules
         var paragraphCount: String?
     }
@@ -122,6 +124,7 @@ struct RuleModule: Codable, Hashable, Sendable {
         var text: String
         var author: String?
         var likes: String?
+        var date: String?
         var quote: String?
         var index: String?
         var id: String?
@@ -132,6 +135,7 @@ struct RuleModule: Codable, Hashable, Sendable {
     /// 作者說: the note, read on the page itself (no `items`).
     struct AuthorSay: Codable, Hashable, Sendable {
         var request: Request
+        var cacheDuration: Int?
         var text: String
         var author: String?
     }
@@ -139,6 +143,8 @@ struct RuleModule: Codable, Hashable, Sendable {
     /// The record's chapters as the site lists them: `{{id}}` and `{{url}}` are the record's.
     struct CommentChapters: Codable, Hashable, Sendable {
         var request: Request
+        /// Optional endpoint TTL; falls back to `comments.cacheDuration` for 3.0.2 modules.
+        var cacheDuration: Int?
         var list: CommentChapterRules
     }
 
@@ -153,11 +159,11 @@ struct RuleModule: Codable, Hashable, Sendable {
     /// record's, `{{page}}` the page from 1, `{{sort}}` the chosen order's `value`.
     struct ChapterComments: Codable, Hashable, Sendable {
         var request: Request
+        /// Optional endpoint TTL; falls back to `comments.cacheDuration`.
+        var cacheDuration: Int?
         /// The orders the site has (最熱, 最新), the first the default; the reader picks one.
         var sorts: [Option]?
-        /// Each comment, read as a review is; `rating` is not drawn.
         var list: ReviewRules
-        /// How many comments there are in all, read on the page itself: the card's 「N 則」.
         var total: String?
     }
 
