@@ -29,7 +29,7 @@ private struct HomeRankCategories: View {
     var body: some View {
         List {
             ForEach(listing.groups) { group in
-                let items = group.items.filter { DiscoverViewModel.sectionStyle(for: $0.title) == .ranked }
+                let items = group.items.filter { DiscoverViewModel.sectionStyle(for: group.title) == .ranked || DiscoverViewModel.sectionStyle(for: $0.title) == .ranked }
                 if !items.isEmpty { Section(group.title) { ForEach(items, id: \.stableKey) { item in if let ref=listing.reference(for:item) { Button(item.title) { choose(HomeContentChoice(binding:.sourceCategories([ref]), parameters:HomeSection.filterParameters(listing.filterValues, sourceURL:ref.sourceURL), itemTitle:item.title), source) }.foregroundStyle(DSColor.textPrimary) } } } }
             }
         }
