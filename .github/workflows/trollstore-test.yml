@@ -36,6 +36,7 @@ on:
           - chapter-title
           - toc-pins
           - ui-polish
+          - module-compat
           - ranked-home
 
 permissions:
