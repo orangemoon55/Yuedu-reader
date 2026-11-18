@@ -10,6 +10,8 @@ import Foundation
 final class BookSourceProvider: HomeSectionProviding {
     let source: BookSource
     private let firstPages: DiscoverFirstPages
+    private var legacyRank: ExploreCategoryReference?
+    private var checkedLegacyRank = false
 
     init(source: BookSource, firstPages: DiscoverFirstPages) {
         self.source = source
@@ -34,9 +36,12 @@ final class BookSourceProvider: HomeSectionProviding {
     var rateLimit: String? { BookSourceManifest.rateLimit(of: source) }
 
     func loadPolicy(for section: HomeSection) -> SectionLoadPolicy? {
-        if section.rotatingRank != nil { return .serialPerSource }
+        if let rank = section.rotatingRank {
+            return rank.sourceURL == source.bookSourceUrl && DiscoverViewModel.isExploreSource(source) ? .serialPerSource : nil
+        }
         if case .sourceBook(let book) = section.binding {
-            return book.sourceURL == source.bookSourceUrl ? .local : nil
+            guard book.sourceURL == source.bookSourceUrl else { return nil }
+            return section.layout.style == .coverIntroCard && DiscoverViewModel.isExploreSource(source) ? .serialPerSource : .local
         }
         guard DiscoverViewModel.isExploreSource(source) else { return nil }
         return category(for: section) == nil ? nil : .serialPerSource
@@ -47,15 +52,41 @@ final class BookSourceProvider: HomeSectionProviding {
     func load(_ section: HomeSection) async throws -> [CollectionEntry] {
         if let rank = section.rotatingRank, rank.sourceURL == source.bookSourceUrl, rank.cardItem != nil {
             let books = try await firstPages.firstPage(of: rank, in: source).value
-            return books.prefix(30).map { entry($0) }
+            return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source)
         }
         if case .sourceBook(let selection) = section.binding {
-            return selection.onlineBook(in: source).map { [entry($0)] } ?? []
+            guard let book = selection.onlineBook(in: source) else { return [] }
+            // Previously selected cards upgrade without erasing the saved edition: show
+            // its snapshot while finding the first real ranking offered by the same source.
+            if section.layout.style == .coverIntroCard, DiscoverViewModel.isExploreSource(source) {
+                do {
+                    if !checkedLegacyRank {
+                        await BookSourceFetcher.shared.primeDiscoverCookies(in: source)
+                        let items = try await BookSourceFetcher.shared.discoverItems(page: 1, in: source)
+                        try Task.checkCancellation()
+                        let groups = DiscoverViewModel.categoryGroups(from: items, defaultTitle: localized("分類"))
+                        legacyRank = groups.flatMap(HomeRankCategoryPolicy.rankedItems)
+                            .compactMap { ExploreCategoryReference(source: source, item: $0) }.first
+                        checkedLegacyRank = true
+                    }
+                    if let legacyRank {
+                        let ranked = try await firstPages.firstPage(of: legacyRank, in: source).value
+                        if !ranked.isEmpty {
+                            return try await CollectionEntry.preparedRankBooks(Array(ranked.prefix(HomeRow.limit)), source: source)
+                        }
+                    }
+                } catch {
+                    if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                    AppLogger.network("home existing card ranking unavailable", error: SourceFailure.loggable(error),
+                                      context: ["source": source.bookSourceName])
+                }
+            }
+            return try await CollectionEntry.preparedRankBooks([book], source: source)
         }
         guard let category = category(for: section), category.cardItem != nil else { return [] }
         do {
             let books = try await firstPages.firstPage(of: category, in: source).value
-            return books.prefix(HomeRow.limit).map { entry($0) }
+            return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source)
         } catch {
             throw try SourceFailure.classify(error)
         }
@@ -64,9 +95,14 @@ final class BookSourceProvider: HomeSectionProviding {
     /// The category's first page as this device last saved it. An empty one is none: the row's
     /// skeleton shows until the request answers, rather than nothing and then books.
     func savedPage(_ section: HomeSection) async -> [CollectionEntry]? {
-        guard let category = category(for: section), category.cardItem != nil,
-              let books = await firstPages.savedPage(of: category, in: source), !books.isEmpty else { return nil }
-        return books.prefix(HomeRow.limit).map { entry($0) }
+        do {
+            if case .sourceBook(let snapshot) = section.binding, let book = snapshot.onlineBook(in: source) {
+                return try await CollectionEntry.preparedRankBooks([book], source: source)
+            }
+            guard let category = category(for: section), category.cardItem != nil,
+                  let books = await firstPages.savedPage(of: category, in: source), !books.isEmpty else { return nil }
+            return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source)
+        } catch { return nil }
     }
 
     /// The category a section shows from this source: its own, or the one picked for 「最新」.
@@ -96,7 +132,8 @@ extension CollectionEntry {
     ///     A search route never parses its HTML again where the destination is built
     ///     (Technotes/iOS17SearchWatchdogPostmortem.md, guardrail 5).
     static func onlineBook(_ book: OnlineBook, source: BookSource,
-                           contentKind: OnlineBookContentKind? = nil, blurb: String? = nil) -> CollectionEntry {
+                           contentKind: OnlineBookContentKind? = nil, blurb: String? = nil,
+                           headers: [String: String]? = nil) -> CollectionEntry {
         let record = SourceRecord.derived(from: book, source: source, contentKind: contentKind)
         let base = URL(string: source.bookSourceUrl)
         let cover = URL(string: book.coverUrl.trimmingCharacters(in: .whitespacesAndNewlines), relativeTo: base)
@@ -107,7 +144,7 @@ extension CollectionEntry {
         )
         return .item(record,
                      WorkSummary(title: book.name, authors: record.authors,
-                                 cover: cover.map { .remote($0, headers: source.parsedHeaders) } ?? .generated(seed: book.name),
+                                 cover: cover.map { .remote($0, headers: headers ?? source.parsedHeaders) } ?? .generated(seed: book.name),
                                  blurb: blurb, language: nil, contentKind: record.contentKind,
                                  category: WorkSummary.category(fromSourceKind: book.kind)),
                      .onlineBook(FrozenOnlineBook(book: book)))

@@ -78,16 +78,9 @@ final class HomeSourceBookPickerModel: ObservableObject {
     }
 
     func select(_ book: OnlineBook, in source: BookSource) async -> HomeSourceBook? {
-        guard selectingID == nil else { return nil }
-        selectingID = book.id
-        defer { selectingID = nil }
-        // Search results already identify the exact edition. A failed detail enrichment keeps
-        // that explicit choice, never substitutes a similarly titled book from another source.
-        let enriched = try? await BookSourceFetcher.shared.fetchBookInfo(
-            url: book.bookUrl, source: source, runtimeVariables: book.runtimeVariables, knownBook: book)
         guard !Task.isCancelled else { return nil }
-        var chosen = enriched ?? book
-        chosen.bookUrl = book.bookUrl
-        return HomeSourceBook(book: chosen, source: source)
+        // Keep the explicit edition immediately. Opening its detail later can enrich it;
+        // selecting/saving never waits for that network request.
+        return HomeSourceBook(book: book, source: source)
     }
 }

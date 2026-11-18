@@ -25,6 +25,9 @@ struct FloatingRootTabBarLayout: Equatable {
     let height: CGFloat
     let columns: Int
     let rows: Int
+    let touchHeight: CGFloat
+    let mainHeight: CGFloat
+    let totalHeight: CGFloat
 
     init(availableWidth: CGFloat, mainTabCount: Int, hasSearch: Bool, height: CGFloat) {
         let count = max(0, mainTabCount)
@@ -41,7 +44,10 @@ struct FloatingRootTabBarLayout: Equatable {
         itemWidth = columns > 0 ? max(Self.minimumHitSize, min(Self.maximumItemWidth, mainSpace / CGFloat(columns))) : 0
         capsuleWidth = columns > 0 ? CGFloat(columns) * itemWidth + padding : 0
         contentWidth = capsuleWidth + gap + searchHitWidth
-        viewportWidth = min(available, contentWidth)
+        viewportWidth = contentWidth
+        touchHeight = self.height + Self.hitExpansion * 2
+        mainHeight = CGFloat(rows) * touchHeight + CGFloat(max(0, rows - 1)) * DSSpacing.xs
+        totalHeight = max(mainHeight, searchHitWidth)
     }
 }
 
@@ -78,39 +84,23 @@ struct FloatingRootTabBar: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let layout = FloatingRootTabBarLayout(
-                availableWidth: geometry.size.width, mainTabCount: mainTabs.count,
-                hasSearch: hasSearch, height: barHeight
-            )
-            HStack(spacing: layout.gap) {
-                if !mainTabs.isEmpty {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.itemWidth), spacing: 0),
-                                             count: layout.columns), spacing: DSSpacing.xs) {
-                        ForEach(mainTabs) { tab in
-                            tabButton(tab, width: layout.itemWidth,
-                                      height: layout.height - FloatingRootTabBarLayout.surfacePadding * 2)
-                        }
+        FloatingRootTabContentsLayout(mainCount: mainTabs.count, hasSearch: hasSearch, rowHeight: barHeight) {
+            if !mainTabs.isEmpty {
+                FloatingRootMainItemsLayout(rowHeight: barHeight + FloatingRootTabBarLayout.hitExpansion * 2) {
+                    ForEach(mainTabs) { tab in
+                        tabButton(tab, height: barHeight - FloatingRootTabBarLayout.surfacePadding * 2)
                     }
-                    .padding(.horizontal, FloatingRootTabBarLayout.surfacePadding)
-                    .frame(width: layout.capsuleWidth)
-                    .background { surface }
                 }
-                if hasSearch { searchButton(diameter: layout.searchDiameter) }
+                .padding(.horizontal, FloatingRootTabBarLayout.surfacePadding)
+                .background { surface.padding(.vertical, FloatingRootTabBarLayout.hitExpansion).allowsHitTesting(false) }
             }
-            .frame(width: layout.contentWidth, height: layout.rows > 1 ? layout.height * CGFloat(layout.rows) : layout.height)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            if hasSearch { searchButton(diameter: FloatingRootTabBarLayout.compactHeight) }
         }
-        .frame(height: barHeight * CGFloat(max(1, measuredRows)) + FloatingRootTabBarLayout.surfacePadding * 2)
+        .frame(maxWidth: .infinity)
         .accessibilityIdentifier("rootTab.floatingBar")
     }
 
-    private var measuredRows: Int {
-        FloatingRootTabBarLayout(availableWidth: UIScreen.main.bounds.width, mainTabCount: mainTabs.count,
-                                 hasSearch: hasSearch, height: barHeight).rows
-    }
-
-    private func tabButton(_ tab: RootTabItem, width: CGFloat, height: CGFloat) -> some View {
+    private func tabButton(_ tab: RootTabItem, height: CGFloat) -> some View {
         Button { selection = tab } label: {
             VStack(spacing: DSSpacing.xxs) {
                 icon(for: tab)
@@ -124,7 +114,8 @@ struct FloatingRootTabBar: View {
             }
             .foregroundStyle(Color.primary)
             .padding(.horizontal, 3)
-            .frame(width: width, height: height)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
             .background {
                 if selection == tab {
                     RoundedRectangle(cornerRadius: min(24, height / 2), style: .continuous)
@@ -135,6 +126,7 @@ struct FloatingRootTabBar: View {
                         }
                 }
             }
+            .padding(.vertical, FloatingRootTabBarLayout.surfacePadding + FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -200,5 +192,64 @@ struct FloatingRootTabBar: View {
                 )
             }
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 12, y: 5)
+    }
+}
+
+/// Pure layout: the width offered by the parent determines wrapping and total height.
+/// No UIScreen geometry, state feedback, drag gesture, or scrolling viewport is involved.
+private struct FloatingRootTabContentsLayout: Layout {
+    let mainCount: Int
+    let hasSearch: Bool
+    let rowHeight: CGFloat
+
+    private func layout(_ width: CGFloat) -> FloatingRootTabBarLayout {
+        FloatingRootTabBarLayout(availableWidth: width, mainTabCount: mainCount, hasSearch: hasSearch, height: rowHeight)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = max(0, proposal.width ?? FloatingRootTabBarLayout.maximumWidth)
+        return CGSize(width: width, height: layout(width).totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let geometry = layout(bounds.width)
+        let x = bounds.minX + (bounds.width - geometry.contentWidth) / 2
+        var index = 0
+        if mainCount > 0, subviews.indices.contains(index) {
+            subviews[index].place(at: CGPoint(x: x, y: bounds.midY - geometry.mainHeight / 2), anchor: .topLeading,
+                                 proposal: ProposedViewSize(width: geometry.capsuleWidth, height: geometry.mainHeight))
+            index += 1
+        }
+        if hasSearch, subviews.indices.contains(index) {
+            subviews[index].place(at: CGPoint(x: x + geometry.capsuleWidth + geometry.gap,
+                                             y: bounds.midY - geometry.searchHitWidth / 2), anchor: .topLeading,
+                                 proposal: ProposedViewSize(width: geometry.searchHitWidth, height: geometry.searchHitWidth))
+        }
+    }
+}
+
+private struct FloatingRootMainItemsLayout: Layout {
+    let rowHeight: CGFloat
+
+    private func metrics(_ width: CGFloat, count: Int) -> (columns: Int, itemWidth: CGFloat, height: CGFloat) {
+        guard count > 0 else { return (1, 0, 0) }
+        let columns = min(count, max(1, Int(max(0, width) / FloatingRootTabBarLayout.minimumHitSize)))
+        let rows = (count + columns - 1) / columns
+        return (columns, width / CGFloat(columns), CGFloat(rows) * rowHeight + CGFloat(max(0, rows - 1)) * DSSpacing.xs)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = max(0, proposal.width ?? CGFloat(subviews.count) * FloatingRootTabBarLayout.maximumItemWidth)
+        return CGSize(width: width, height: metrics(width, count: subviews.count).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let geometry = metrics(bounds.width, count: subviews.count)
+        for index in subviews.indices {
+            subviews[index].place(at: CGPoint(x: bounds.minX + CGFloat(index % geometry.columns) * geometry.itemWidth,
+                                             y: bounds.minY + CGFloat(index / geometry.columns) * (rowHeight + DSSpacing.xs)),
+                                 anchor: .topLeading,
+                                 proposal: ProposedViewSize(width: geometry.itemWidth, height: rowHeight))
+        }
     }
 }

@@ -716,6 +716,8 @@ enum DSLayout {
     /// card, its 40×60 cover inset 10 on every side and 10 from the text. Scaled with Dynamic Type.
     static let homeCompactReadingCardCoverWidth: CGFloat = 40
     static let homeContinueCardWidth: CGFloat = 278
+    static let homeCoverIntroMinimumHeight: CGFloat = 264
+    static let homeCoverIntroMaximumHeight: CGFloat = 620
     static let homeContinueCardInset: CGFloat = 10
     /// Its kind line's colour: the cover's hue at most this saturated, at this brightness.
     static let homeContinueTintSaturation: CGFloat = 0.55

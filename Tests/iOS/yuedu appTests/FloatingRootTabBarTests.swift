@@ -27,11 +27,14 @@ final class FloatingRootTabBarTests: XCTestCase {
         XCTAssertGreaterThan(narrow.rows, 1, "Narrow layouts wrap instead of scrolling")
         let searchOnly = FloatingRootTabBarLayout(availableWidth: 320, mainTabCount: 0, hasSearch: true, height: 64)
         XCTAssertEqual(searchOnly.capsuleWidth, 0)
-        XCTAssertEqual(searchOnly.searchDiameter, 56)
+        XCTAssertEqual(searchOnly.searchDiameter, 52)
+        XCTAssertEqual(searchOnly.searchHitWidth, 64)
         let compact = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 2, hasSearch: true, height: 56)
         XCTAssertEqual(compact.height, 56)
         XCTAssertEqual(compact.itemWidth, 80)
-        XCTAssertGreaterThanOrEqual(compact.contentWidth, 228)
+        XCTAssertEqual(compact.contentWidth, 240)
+        XCTAssertEqual(compact.touchHeight, 68)
+        XCTAssertEqual(compact.rows, 1)
         XCTAssertGreaterThanOrEqual(compact.height - FloatingRootTabBarLayout.surfacePadding * 2, 44)
     }
 
@@ -40,14 +43,23 @@ final class FloatingRootTabBarTests: XCTestCase {
         let view = FloatingRootTabBar(tabs: [.explore, .bookshelf, .settings, .search],
                                       selection: Binding(get: { selection }, set: { selection = $0 }))
         try await withAccessibilityHost(in: view) { host in
-            host.layoutIfNeeded()
+            let ready = await eventually(host) {
+                accessibilityElements(in: host).filter { $0.accessibilityTraits.contains(.button) }.count >= 4
+            }
+            XCTAssertTrue(ready)
             let all = descendants(of: host)
             XCTAssertFalse(all.contains(where: { $0 is UIScrollView }))
             let buttons = accessibilityElements(in: host).filter { $0.accessibilityTraits.contains(.button) }
             XCTAssertGreaterThanOrEqual(buttons.count, 4)
             for button in buttons {
                 XCTAssertGreaterThanOrEqual(button.accessibilityFrame.width, 48)
-                XCTAssertGreaterThanOrEqual(button.accessibilityFrame.height, 48)
+                XCTAssertGreaterThanOrEqual(button.accessibilityFrame.height, 64)
+            }
+            for first in buttons.indices {
+                for second in buttons.indices where second > first {
+                    let overlap = buttons[first].accessibilityFrame.intersection(buttons[second].accessibilityFrame)
+                    XCTAssertTrue(overlap.isNull || overlap.width * overlap.height < 1)
+                }
             }
         }
     }
