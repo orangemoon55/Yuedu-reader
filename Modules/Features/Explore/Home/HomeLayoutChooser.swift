@@ -298,7 +298,11 @@ struct HomeLayoutPreview: View {
 
     @ViewBuilder
     private var content: some View {
-        if layout.style.drawsLists {
+        if layout.style == .coverIntroCard, !sample.cards(for: .coverIntroCard).isEmpty {
+            HomeRankCarousel(cards: sample.cards(for: .coverIntroCard), open: { _, _ in },
+                             previewRelated: Array(sample.cards(for: .compactReadingCard).prefix(3)))
+                .environment(\.homeRankPreview, true)
+        } else if layout.style.drawsLists {
             HomeSectionLists(layout: layout, collections: sample.collections(for: layout.style),
                              contents: sample.listContents, open: { _ in })
         } else if sample.cards(for: layout.style).isEmpty {

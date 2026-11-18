@@ -163,7 +163,6 @@ struct HomeSectionForm: View {
     /// 新增 put the section on the home.
     var added: () -> Void = {}
 
-    @ObservedObject private var preview: HomeModel
     @ObservedObject private var aggregation = AggregationSettingsStore.shared
     @ObservedObject private var sources = BookSourceStore.shared
     @ObservedObject private var connections = RemoteLibraryConnectionStore.shared
@@ -181,7 +180,6 @@ struct HomeSectionForm: View {
         self.isInSheet = isInSheet
         self.modules = modules ?? .shared
         self.added = added
-        preview = editor.preview
     }
 
     private var draft: HomeSectionEditor.Draft { editor.draft }
@@ -214,18 +212,16 @@ struct HomeSectionForm: View {
         Form {
             if let page = editor.previewPage {
                 Section {
-                    previewContent
+                    HomeSectionPreviewPane(model: editor.preview, page: page,
+                                           hiddenFromLatest: editor.hiddenFromLatest,
+                                           languages: aggregation.readingLanguages,
+                                           active: push == nil && presentedPicker == nil)
                         .listRowInsets(EdgeInsets(top: DSSpacing.md, leading: 0, bottom: DSSpacing.md, trailing: 0))
                 } header: {
                     Text(localized("預覽"))
                 }
                 .interfaceSectionSurface()
-                // Again when 顯示在最新 changes: the preview loads 最新 without those libraries.
-                .task(id: [AnyHashable(page), AnyHashable(editor.hiddenFromLatest)]) {
-                    await preview.sync(with: page, hiddenFromLatest: editor.hiddenFromLatest)
-                    // The reader's own tap: the page loads whatever its source's policy.
-                    for row in preview.rows { preview.load(row.id) }
-                }
+
             }
             Section {
                 LabeledContent(localized("標題")) {
@@ -269,14 +265,15 @@ struct HomeSectionForm: View {
         }
         .navigationTitle(editor.isNew ? localized("新增欄目") : title)
         .toolbarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
         .themedAppSurface(for: .explore)
         .toolbar {
             if editor.isNew {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         if editor.add() { added() }
                     } label: {
-                        Label(localized("動作：新增"), systemImage: "checkmark")
+                        Text(localized("儲存"))
                     }
                     .disabled(draft.binding == nil)
                     .accessibilityIdentifier("homeSection.add")
@@ -313,10 +310,20 @@ struct HomeSectionForm: View {
                     }
                 case .filters(let url):
                     if let source = sources.sources.first(where: { $0.bookSourceUrl == url }) {
-                        HomeCategoryChoices(source: source, filterValues: editor.filterValues(forSourceURL: url),
-                                            current: draft.binding) { choice in
-                            editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
-                            push = nil
+                        if draft.layout.style == .coverIntroCard {
+                            HomeRankCategories(source: source, current: draft.binding,
+                                               filterValues: editor.filterValues(forSourceURL: url)) { choice, source in
+                                var section = draft.section ?? HomeSection(layout: .coverIntroCard, binding: choice.binding)
+                                section.configureRotatingRank(choice, source: source)
+                                editor.choose(section.binding, parameters: section.parameters, itemTitle: choice.itemTitle)
+                                push = nil
+                            }
+                        } else {
+                            HomeCategoryChoices(source: source, filterValues: editor.filterValues(forSourceURL: url),
+                                                current: draft.binding) { choice in
+                                editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
+                                push = nil
+                            }
                         }
                     }
                 case .listCard(let index):
@@ -610,7 +617,7 @@ struct HomeSectionForm: View {
         switch mode {
         case .choose:
             if draft.layout.style == .coverIntroCard {
-                HomeRankingPicker(current: draft.binding, pushed: isPushed) { choice, source in
+                HomeRankPicker(current: draft.binding, pushed: isPushed) { choice, source in
                     var section = draft.section ?? HomeSection(layout: .coverIntroCard, binding: choice.binding)
                     section.configureRotatingRank(choice, source: source)
                     editor.choose(section.binding, parameters: section.parameters, itemTitle: choice.itemTitle)
@@ -642,34 +649,6 @@ struct HomeSectionForm: View {
         draft.binding.flatMap { modules.entry(of: $0) }
     }
 
-    // MARK: Preview
-
-    @ViewBuilder
-    private var previewContent: some View {
-        if draft.binding == .aiRecommendations {
-            // The stored list, as the home draws it; the preview never asks the AI service.
-            AIRecommendationRow(section: HomeSection(layout: draft.layout, binding: .aiRecommendations),
-                                title: localized("AI 推薦"), canGenerate: false, open: { _, _ in })
-        } else if !preview.isReady {
-            ProgressView().frame(maxWidth: .infinity)
-        } else if let group = preview.groups(in: nil, languages: aggregation.readingLanguages).first,
-                  !group.isSettledEmpty {
-            HomeRowView(group: group, content: content(of: group),
-                        load: { for row in group.rows { preview.load(row.id) } },
-                        request: { for row in group.rows { if case .failed = row.state { preview.request(row.id) } } },
-                        open: { _, _ in }, openLocation: { _ in })
-        } else {
-            Text(localized("此目錄沒有內容"))
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private func content(of group: HomeSectionGroup) -> HomeRowContent? {
-        guard case .loaded(let entries) = group.state else { return nil }
-        return HomeRowContent(entries: entries, store: store, withLists: group.section.layout.style == .chart)
-    }
 }
 
 // MARK: - A card of a layout of lists

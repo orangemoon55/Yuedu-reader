@@ -4,19 +4,17 @@ import SwiftUI
 struct HomeCoverIntroCard: View {
     let content: HomeCardContent
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .subheadline) private var scaledHeight: CGFloat = 264
-    @State private var width: CGFloat = 0
+    @ScaledMetric(relativeTo: .subheadline) private var scaledHeight = DSLayout.homeCoverIntroMinimumHeight
 
     var body: some View {
-        let half = max(1, width / 2)
-        let height = max(min(scaledHeight, 620), half / DSLayout.discoverCoverAspectRatio)
-        HStack(alignment: .top, spacing: 0) {
-            HomeCoverArtwork(cover: content.cover, title: content.title, author: content.author,
-                             size: CGSize(width: half, height: height))
-                .frame(width: half, height: height)
-                .clipped()
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 10) {
+        HomeCoverIntroLayout(minimumHeight: min(scaledHeight, DSLayout.homeCoverIntroMaximumHeight)) {
+            GeometryReader { geometry in
+                HomeCoverArtwork(cover: content.cover, title: content.title, author: content.author, size: geometry.size)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: DSSpacing.sm) {
                 Text(content.title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(DSColor.textPrimary)
@@ -40,8 +38,8 @@ struct HomeCoverIntroCard: View {
                     .frame(maxHeight: .infinity, alignment: .top)
                     .clipped()
             }
-            .padding(14)
-            .frame(width: half, height: height, alignment: .topLeading)
+            .padding(DSSpacing.md)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(DSColor.surface)
@@ -50,7 +48,6 @@ struct HomeCoverIntroCard: View {
             RoundedRectangle(cornerRadius: DSRadius.lg, style: .continuous)
                 .strokeBorder(DSColor.textPrimary.opacity(0.06))
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
     private var introduction: String {
@@ -58,6 +55,21 @@ struct HomeCoverIntroCard: View {
             return localized("暫無簡介")
         }
         return blurb
+    }
+}
+
+/// Half-width cover and text laid out in one pass, including in a native Form.
+struct HomeCoverIntroLayout: Layout {
+    let minimumHeight: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = max(0, proposal.width ?? DSLayout.homeContinueCardWidth)
+        return CGSize(width: width, height: max(minimumHeight, width / 2 / DSLayout.discoverCoverAspectRatio))
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        let size = ProposedViewSize(width: bounds.width / 2, height: bounds.height)
+        subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: size)
+        subviews[1].place(at: CGPoint(x: bounds.midX, y: bounds.minY), anchor: .topLeading, proposal: size)
     }
 }
 

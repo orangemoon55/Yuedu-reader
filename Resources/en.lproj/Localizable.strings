@@ -4540,3 +4540,17 @@
 "這個模組需要模組引擎 %1$@ 以上的版本，目前引擎是 %2$@。" = "This module requires engine %1$@ or later; the current engine is %2$@.";
 "模組引擎不識別欄位 %@，無法安全匯入。" = "Unknown module field %@; import was stopped.";
 "目前的模組引擎尚未支援 %@，請勿刪除欄位繞過檢查。" = "The module engine does not support %@ yet. Do not remove the field to bypass validation.";
+
+"選擇榜單來源" = "Choose Ranking Source";
+"選擇排行榜" = "Choose Ranking";
+"搜尋來源配置" = "Search sources";
+"沒有可用的排行榜書源" = "No ranking sources available";
+"這個書源沒有可用的排行榜" = "This source offers no available rankings";
+"搜尋排行榜名稱" = "Search ranking names";
+"同作者其他作品" = "More by this author";
+"同題材推薦" = "Similar genres";
+"關聯作品" = "Related works";
+"載入關聯作品…" = "Loading related works…";
+"暫無同作者或同題材作品" = "No related works available";
+"上一本" = "Previous book";
+"下一本" = "Next book";

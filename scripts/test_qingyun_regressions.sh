@@ -57,6 +57,18 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ui-polish ]]; then
     -only-testing:'yuedu appTests/ReaderQuickPanelBackgroundTileTests'
     -only-testing:'yuedu appTests/AccessibilityStepperTests/quickPanelFontSize()'
   )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ranked-home ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/HomeRankBehaviorTests'
+    -only-testing:'yuedu appTests/HomeRankRecommendationTests'
+    -only-testing:'yuedu appTests/HomeRankLoadingTests'
+    -only-testing:'yuedu appTests/HomeRankNativeTests'
+    -only-testing:'yuedu appTests/FloatingRootTabBarTests'
+    -only-testing:'yuedu appTests/HomeSourceBookTests'
+    -only-testing:'yuedu appTests/HomeModelTests'
+    -only-testing:'yuedu appTests/HomeSectionEditorTests'
+    -only-testing:'yuedu appTests/LayoutPreviewTests'
+  )
 else
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/HomeSourceBookTests'
