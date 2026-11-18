@@ -10,9 +10,9 @@ struct FloatingRootTabBarLayout: Equatable {
     static let topSpacing = DSSpacing.xs
     static let bottomSpacing: CGFloat = 0
     static let defaultIconSize: CGFloat = 26
-    static let compactHeight = DSLayout.minimumTapTarget + surfacePadding * 2
+    static let compactHeight = DSLayout.minimumTapTarget
     static let maximumItemWidth: CGFloat = 80
-    static let threeTabItemWidth: CGFloat = 66
+    static let threeTabItemWidth: CGFloat = 82
     static let maximumWidth: CGFloat = 560
     static let hitExpansion: CGFloat = 6
 
