@@ -10,7 +10,13 @@ struct HomeRankingRecommendationResult: Sendable {
 /// it uses the source's own `kind` labels and same-source ranking/search results.
 @MainActor
 struct HomeRankingRecommendationService {
-    static let limit = 8
+    nonisolated static let limit = 8
+
+    nonisolated static func genreTags(_ raw: String) -> Set<String> {
+        let ignored: Set<String> = ["", "连载", "連載", "连载中", "連載中", "完结", "完結", "小说", "小說", "漫画", "漫畫", "text", "manga", "comic", "audio"]
+        return Set(raw.components(separatedBy: CharacterSet(charactersIn: ",，、|/;；"))
+            .map { normalized($0) }.filter { !ignored.contains($0) })
+    }
 
     func recommendations(for current: OnlineBook, source: BookSource,
                          pool: [OnlineBook]) async throws -> HomeRankingRecommendationResult {
@@ -67,12 +73,6 @@ struct HomeRankingRecommendationService {
         let key = normalized(value)
         let unknown: Set<String> = ["", "作者", "未知", "未知作者", "佚名", "匿名", "unknown", "anonymous", "n/a", "null", "-"]
         return unknown.contains(key) ? nil : value
-    }
-
-    nonisolated static func tags(_ raw: String) -> Set<String> {
-        let ignored: Set<String> = ["", "连载", "連載", "连载中", "連載中", "完结", "完結", "小说", "小說", "漫画", "漫畫", "text", "manga", "comic", "audio"]
-        return Set(raw.components(separatedBy: CharacterSet(charactersIn: ",，、|/;；"))
-            .map { normalized($0) }.filter { !ignored.contains($0) })
     }
 
     nonisolated private static func filterCategory(_ candidates: [OnlineBook], current: OnlineBook,
