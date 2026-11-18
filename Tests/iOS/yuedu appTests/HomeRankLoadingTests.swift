@@ -21,9 +21,9 @@ struct HomeRankLoadingTests {
     func oneSourcePreview() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("sources.json")
+        let file = directory.appendingPathComponent("book_sources.json")
         try Data("[]".utf8).write(to: file)
-        let sources = BookSourceStore(fileURL: file, pinsFileURL: directory.appendingPathComponent("pins.json"))
+        let sources = BookSourceStore(directory: directory)
         await sources.waitUntilLoaded()
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = (0..<1000).map { index -> BookSource in

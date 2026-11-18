@@ -68,11 +68,11 @@ final class HomeRankNativeTests: XCTestCase {
         }.environmentObject(BookStore())
         try await withAccessibilityHost(in: root) { host in
             let present = await eventually(host, within: .seconds(3)) {
-                HomeRankAX.elements(in: host).contains { $0.accessibilityIdentifier == "homeSection.add" }
+                HomeRankAX.find("homeSection.add", in: host) != nil
             }
             XCTAssertTrue(present, "Save must not wait for the preview task")
             XCTAssertFalse(model.isReady)
-            let save = try XCTUnwrap(HomeRankAX.elements(in: host).first { $0.accessibilityIdentifier == "homeSection.add" })
+            let save = try XCTUnwrap(HomeRankAX.find("homeSection.add", in: host))
             XCTAssertTrue(save.accessibilityTraits.contains(.button))
             XCTAssertFalse(save.accessibilityTraits.contains(.notEnabled))
             XCTAssertGreaterThan(save.accessibilityFrame.width, 10)
@@ -90,11 +90,10 @@ final class HomeRankNativeTests: XCTestCase {
         let second = HomeCardContent(sample: "SecondRotationBook", author: "Author", kind: .text, cover: nil, blurb: "Intro")
         let root = HomeRankCarousel(cards: [first, second], open: { _, _ in })
             .environment(\.scenePhase, .active)
-            .environment(\.accessibilityVoiceOverEnabled, false)
             .environment(\.homeRowWidth, 390)
         try await withAccessibilityHost(in: root) { host in
             func visibleBook() -> String? {
-                HomeRankAX.elements(in: host).first { $0.accessibilityIdentifier == "home.rank.current" }?.accessibilityLabel
+                HomeRankAX.find("home.rank.current", in: host)?.accessibilityLabel
             }
             let initial = await eventually(host) { visibleBook()?.contains("FirstRotationBook") == true }
             XCTAssertTrue(initial)

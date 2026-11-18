@@ -9,4 +9,11 @@ enum HomeRankAX {
         let children = (object.accessibilityElements as? [NSObject]) ?? (object as? UIView)?.subviews ?? []
         return children.flatMap { elements(in: $0) }
     }
+    static func identifier(of object: NSObject) -> String? {
+        (object as? UIAccessibilityIdentification)?.accessibilityIdentifier
+    }
+
+    static func find(_ id: String, in root: NSObject) -> NSObject? {
+        elements(in: root).first { identifier(of: $0) == id }
+    }
 }
