@@ -34,7 +34,9 @@ struct HomePageSettingsView: View {
                 }
                 .accessibilityIdentifier("homeSettings.readingLanguages")
                 NavigationLink {
-                    AggregationDataSourcesView()
+                    List { AggregationDataSourcesSection() }
+                        .navigationTitle(localized("數據來源"))
+                        .themedAppSurface(for: .settings)
                 } label: {
                     Label(localized("參與聚合的來源"), systemImage: "square.stack.3d.up")
                 }
