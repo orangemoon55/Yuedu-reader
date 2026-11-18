@@ -36,24 +36,24 @@ struct RootTabCustomizationTests {
             RootTabItem.settings.rawValue
         ])
 
-        #expect(ids == [
-            RootTabItem.bookshelf.rawValue,
-            RootTabItem.settings.rawValue,
-            RootTabItem.search.rawValue
-        ])
+        #expect(ids == [RootTabItem.bookshelf.rawValue, RootTabItem.settings.rawValue])
     }
 
     @Test("the tabs are 探索・書架・設定・搜尋; 資源庫 and RSS are no longer tabs")
     func tabOrder() {
-        #expect(RootTabItem.tabs == [.explore, .bookshelf, .settings, .search])
+        #expect(RootTabItem.tabs == [.explore, .bookshelf, .settings])
+        #expect(!RootTabItem.tabs.contains(.search))
+        #expect(RootTabItem.search.defaultSystemImage == "magnifyingglass")
         #expect(RootTabItem.addedLater.isEmpty)
         #expect(GlobalSettings.defaultRootTabVisibleIDs == RootTabItem.tabs.map(\.rawValue))
     }
 
-    @Test("A list saved with 書架 before 探索 and 搜尋 before 設定 is drawn in the current order")
-    func oldOrderFollowsCurrentOrder() {
-        let saved = GlobalSettings.sanitizedRootTabVisibleIDs(["bookshelf", "explore", "library", "search", "settings"])
-        #expect(saved == ["explore", "bookshelf", "settings", "search"])
+    @Test("legacy search ids are removed from saved visible tabs")
+    func oldSearchEntryIsFiltered() {
+        let legacy = ["bookshelf", "explore", "library", "search", "settings"]
+        let saved = GlobalSettings.sanitizedRootTabVisibleIDs(legacy)
+        #expect(saved == ["explore", "bookshelf", "settings"])
+        #expect(!GlobalSettings.visibleRootTabs(visibleIDs: legacy, orderIDs: legacy).contains(.search))
     }
 
     @Test("legacy visible lists never restore 資源庫, whether shown, hidden or absent")
@@ -66,7 +66,7 @@ struct RootTabCustomizationTests {
         ]
         for list in lists {
             let migrated = GlobalSettings.sanitizedRootTabVisibleIDs(list)
-            #expect(migrated == ["explore", "bookshelf", "settings", "search"])
+            #expect(migrated == ["explore", "bookshelf", "settings"])
             #expect(GlobalSettings.sanitizedRootTabVisibleIDs(migrated) == migrated)
         }
     }
