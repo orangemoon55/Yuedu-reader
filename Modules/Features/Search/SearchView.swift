@@ -38,14 +38,16 @@ struct SearchTabRoot: View {
     @State private var browserPresentation: BrowserPresentation?
     @EnvironmentObject private var store: BookStore
     let browser: BrowserState
+    var close: (() -> Void)? = nil
 
     private struct BrowserPresentation: Identifiable {
         let id = UUID()
         let entry: BrowserEntry
     }
 
-    init(browser: BrowserState) {
+    init(browser: BrowserState, close: (() -> Void)? = nil) {
         self.browser = browser
+        self.close = close
     }
 
     var body: some View {
@@ -53,6 +55,15 @@ struct SearchTabRoot: View {
         NavigationStack(path: $navigation.path) {
             SourceDiscoveryRoot { entry in
                 browserPresentation = BrowserPresentation(entry: entry)
+            }
+            .toolbar {
+                if let close, navigation.path.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: close) { Image(systemName: "xmark").accessibilityHidden(true) }
+                            .accessibilityLabel(localized("關閉"))
+                            .accessibilityIdentifier("explore.search.close")
+                    }
+                }
             }
             .exploreRouteDestinations { entry in
                 browserPresentation = BrowserPresentation(entry: entry)

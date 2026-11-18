@@ -141,6 +141,16 @@ struct SettingsView: View {
                             title: localized("網路設定"),
                             action: { showNetworkSettings = true }
                         )
+                        .accessibilityIdentifier("settings_network")
+
+                        NavigationLink {
+                            HomePageSettingsView()
+                        } label: {
+                            Label(localized("首頁設定"), systemImage: "house")
+                                .foregroundStyle(DSColor.textPrimary)
+                                .labelStyle(IconConsistentLabelStyle())
+                        }
+                        .accessibilityIdentifier("settings_home")
                     } header: {
                         Text(localized("設定分組：資源"))
                             .foregroundStyle(DSColor.textSecondary)
