@@ -22,7 +22,7 @@ extension HomeSection {
 }
 
 struct HomeRankRotation: Equatable {
-    static let interval: TimeInterval = 30
+    static let interval: TimeInterval = 5
     private(set) var ids: [SourceItemKey] = []
     private(set) var current: SourceItemKey?
     private(set) var started = Date.distantPast

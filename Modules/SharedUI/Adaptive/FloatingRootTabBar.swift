@@ -8,10 +8,11 @@ struct FloatingRootTabBarLayout: Equatable {
     static let minimumHitSize: CGFloat = 48
     static let surfacePadding = DSSpacing.xs
     static let topSpacing = DSSpacing.xs
-    static let bottomSpacing = DSSpacing.xs
+    static let bottomSpacing: CGFloat = 0
     static let defaultIconSize: CGFloat = 26
     static let compactHeight = DSLayout.minimumTapTarget + surfacePadding * 2
     static let maximumItemWidth: CGFloat = 80
+    static let threeTabItemWidth: CGFloat = 66
     static let maximumWidth: CGFloat = 560
     static let hitExpansion: CGFloat = 6
 
@@ -41,7 +42,8 @@ struct FloatingRootTabBarLayout: Equatable {
         let mainSpace = max(0, usable - searchHitWidth - gap - padding)
         columns = count > 0 ? min(count, max(1, Int(mainSpace / Self.minimumHitSize))) : 0
         rows = columns > 0 ? (count + columns - 1) / columns : 0
-        itemWidth = columns > 0 ? max(Self.minimumHitSize, min(Self.maximumItemWidth, mainSpace / CGFloat(columns))) : 0
+        let itemLimit = count == 3 && columns == 3 ? Self.threeTabItemWidth : Self.maximumItemWidth
+        itemWidth = columns > 0 ? max(Self.minimumHitSize, min(itemLimit, mainSpace / CGFloat(columns))) : 0
         capsuleWidth = columns > 0 ? CGFloat(columns) * itemWidth + padding : 0
         contentWidth = capsuleWidth + gap + searchHitWidth
         viewportWidth = contentWidth

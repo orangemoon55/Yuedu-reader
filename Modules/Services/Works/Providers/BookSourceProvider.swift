@@ -51,7 +51,7 @@ final class BookSourceProvider: HomeSectionProviding {
     /// (`HomeSection.listCards`, a card per category), each the request a row of the category makes too.
     func load(_ section: HomeSection) async throws -> [CollectionEntry] {
         if let rank = section.rotatingRank, rank.sourceURL == source.bookSourceUrl, rank.cardItem != nil {
-            let books = try await firstPages.firstPage(of: rank, in: source).value
+            let books = try await firstPages.firstPage(of: rank, in: source, filterValues: section.filterValues(forSourceURL: source.bookSourceUrl)).value
             return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source)
         }
         if case .sourceBook(let selection) = section.binding {
@@ -70,7 +70,7 @@ final class BookSourceProvider: HomeSectionProviding {
                         checkedLegacyRank = true
                     }
                     if let legacyRank {
-                        let ranked = try await firstPages.firstPage(of: legacyRank, in: source).value
+                        let ranked = try await firstPages.firstPage(of: legacyRank, in: source, filterValues: section.filterValues(forSourceURL: source.bookSourceUrl)).value
                         if !ranked.isEmpty {
                             return try await CollectionEntry.preparedRankBooks(Array(ranked.prefix(HomeRow.limit)), source: source)
                         }
@@ -85,7 +85,7 @@ final class BookSourceProvider: HomeSectionProviding {
         }
         guard let category = category(for: section), category.cardItem != nil else { return [] }
         do {
-            let books = try await firstPages.firstPage(of: category, in: source).value
+            let books = try await firstPages.firstPage(of: category, in: source, filterValues: section.filterValues(forSourceURL: source.bookSourceUrl)).value
             return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source)
         } catch {
             throw try SourceFailure.classify(error)
@@ -97,11 +97,11 @@ final class BookSourceProvider: HomeSectionProviding {
     func savedPage(_ section: HomeSection) async -> [CollectionEntry]? {
         do {
             if case .sourceBook(let snapshot) = section.binding, let book = snapshot.onlineBook(in: source) {
-                return try await CollectionEntry.preparedRankBooks([book], source: source)
+                return try await CollectionEntry.preparedRankBooks([book], source: source, resolvingHeaders: false)
             }
             guard let category = category(for: section), category.cardItem != nil,
-                  let books = await firstPages.savedPage(of: category, in: source), !books.isEmpty else { return nil }
-            return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source)
+                  let books = await firstPages.savedPage(of: category, in: source, filterValues: section.filterValues(forSourceURL: source.bookSourceUrl)), !books.isEmpty else { return nil }
+            return try await CollectionEntry.preparedRankBooks(Array(books.prefix(HomeRow.limit)), source: source, resolvingHeaders: false)
         } catch { return nil }
     }
 

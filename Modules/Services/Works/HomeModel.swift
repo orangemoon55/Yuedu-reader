@@ -314,7 +314,7 @@ final class HomeModel: ObservableObject {
             ])
             guard isCurrent(row) else { return }
             // Offline, or the site down: the saved page stays, as it would have without this load.
-            guard !showsSaved.contains(rowID) else { return }
+            guard !keepsShown, !showsSaved.contains(rowID) else { return }
             setState(.failed(error.localizedDescription), of: rowID)
         }
     }

@@ -16,15 +16,15 @@ struct HomeRankCarousel: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var rotation = HomeRankRotation()
     @State private var visible = false
+    @State private var manualRevision = 0
     @StateObject private var related = HomeRankRelatedModel()
-    @ScaledMetric(relativeTo: .subheadline) private var coverWidth = DSLayout.homeCompactReadingCardCoverWidth
-    @ScaledMetric(relativeTo: .subheadline) private var compactWidth = DSLayout.homeContinueCardWidth
+    @ScaledMetric(relativeTo: .subheadline) private var shelfCoverWidth = DSLayout.homeCompactCoverWidth
 
-    private struct TimerKey: Hashable { let id: SourceItemKey?; let started: Date; let active: Bool }
+    private struct TimerKey: Hashable { let ids: [SourceItemKey]; let revision: Int; let active: Bool }
     private struct RelatedKey: Hashable { let id: SourceItemKey?; let pool: [SourceItemKey]; let active: Bool }
     private var current: HomeCardContent? { cards.first { $0.id == rotation.current } ?? cards.first }
     private var live: Bool { visible && phase == .active && !preview && !editing }
-    private var timerActive: Bool { live && !voiceOver && cards.count > 1 }
+    private var timerActive: Bool { visible && phase == .active && !editing && !voiceOver && rotation.ids.count > 1 }
     private var position: Int {
         guard let current else { return 0 }
         return (cards.firstIndex { $0.id == current.id } ?? 0) + 1
@@ -43,7 +43,7 @@ struct HomeRankCarousel: View {
                     Text(localized("關聯作品"))
                         .font(DSFont.subheadline.weight(.semibold)).foregroundStyle(DSColor.textSecondary)
                         .padding(.horizontal, DSSpacing.lg)
-                    compactCards(previewRelated)
+                    shelfCards(previewRelated)
                 } else if !preview && !editing { relatedContent(current) }
             }
         }
@@ -52,17 +52,21 @@ struct HomeRankCarousel: View {
             rotation.set(cards.map(\.id), now: now)
             rotation.restart(at: now)
             visible = true
+            manualRevision += 1
         }
         .onDisappear { visible = false }
         .onChange(of: cards.map(\.id)) { _, ids in rotation.set(ids, now: Date()) }
         .onChange(of: phase) { _, value in if value == .active { rotation.restart(at: Date()) } }
         .onChange(of: voiceOver) { _, value in if !value { rotation.restart(at: Date()) } }
-        .task(id: TimerKey(id: rotation.current, started: rotation.started, active: timerActive)) {
+        .task(id: TimerKey(ids: cards.map(\.id), revision: manualRevision, active: timerActive)) {
             guard timerActive else { return }
-            // Product interval, not agent polling: this task is cancelled on disappear/background.
-            do { try await Task.sleep(for: .seconds(HomeRankRotation.interval)) } catch { return }
-            guard !Task.isCancelled, timerActive else { return }
-            withAnimation(reduceMotion ? nil : DSAnimation.standard) { _ = rotation.next(now: Date()) }
+            // One cancellable loop per visible carousel. Changing the selected card does
+            // not cancel/restart its own timer task; manual interaction starts a new interval.
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(HomeRankRotation.interval)) } catch { return }
+                guard !Task.isCancelled, timerActive else { return }
+                step(by: 1, automatic: true)
+            }
         }
         .task(id: RelatedKey(id: current?.id, pool: cards.map(\.id), active: live)) {
             guard live, let current else { return }
@@ -75,13 +79,16 @@ struct HomeRankCarousel: View {
             Button { move(-1) } label: {
                 Image(systemName: "chevron.left").accessibilityHidden(true)
                     .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(localized("上一本"))
             .accessibilityIdentifier("home.rank.previous")
             Text(countLabel).font(DSFont.caption.monospacedDigit()).foregroundStyle(DSColor.textSecondary)
+                .accessibilityIdentifier("home.rank.position")
             Button { move(1) } label: {
                 Image(systemName: "chevron.right").accessibilityHidden(true)
                     .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(localized("下一本"))
             .accessibilityIdentifier("home.rank.next")
@@ -92,20 +99,31 @@ struct HomeRankCarousel: View {
     }
 
     private func move(_ offset: Int) {
-        withAnimation(reduceMotion ? nil : DSAnimation.standard) { rotation.move(by: offset, at: Date()) }
+        step(by: offset, automatic: false)
     }
 
-    private func compactCards(_ values: [HomeCardContent]) -> some View {
+    private func step(by offset: Int, automatic: Bool) {
+        let now = Date()
+        // A control can be tapped before onAppear or while a refreshed pool is applied.
+        // Synchronize from the actual cards at the action, not an older task's captured list.
+        rotation.set(cards.map(\.id), now: now)
+        let before = rotation.current
+        withAnimation(reduceMotion ? nil : DSAnimation.standard) { rotation.move(by: offset, at: now) }
+        if !automatic { manualRevision += 1 }
+        AppLogger.cache("home.rank.move", context: ["automatic": String(automatic),
+                        "candidates": String(rotation.ids.count), "changed": String(before != rotation.current)])
+    }
+
+    private func shelfCards(_ values: [HomeCardContent]) -> some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: DSSpacing.md) {
+            LazyHStack(alignment: .top, spacing: DSSpacing.md) {
                 ForEach(values) { card in
                     Button { open(card, values) } label: {
-                        HomeCompactReadingCard(content: card, coverWidth: coverWidth,
-                                               stacksVertically: typeSize.isAccessibilitySize)
+                        HomeBookCard(content: card, coverWidth: min(shelfCoverWidth, DSLayout.homeCardCoverMaxWidth),
+                                     reservesTextSpace: true)
                     }
                     .buttonStyle(ExploreTileButtonStyle())
                     .homeRowControl()
-                    .homeSidewaysCardWidth { min(compactWidth, $0) }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(card.accessibilityLabel)
                     .accessibilityValue(card.accessibilityValue)
@@ -123,7 +141,7 @@ struct HomeRankCarousel: View {
             Text(localized(related.kind == .author ? "同作者其他作品" : "同題材推薦"))
                 .font(DSFont.subheadline.weight(.semibold)).foregroundStyle(DSColor.textSecondary)
                 .padding(.horizontal, DSSpacing.lg)
-            compactCards(related.cards)
+            shelfCards(related.cards)
         } else if case .onlineBook = current.opening {
             HStack(spacing: DSSpacing.sm) {
                 if !matched || related.loading { ProgressView() }
@@ -135,7 +153,7 @@ struct HomeRankCarousel: View {
                 }
             }
             .padding(.horizontal, DSSpacing.lg)
-            .frame(minHeight: coverWidth / DSLayout.discoverCoverAspectRatio + DSLayout.homeContinueCardInset * 2)
+            .frame(minHeight: shelfCoverWidth / DSLayout.discoverCoverAspectRatio + DSLayout.minimumTapTarget)
         }
     }
 }

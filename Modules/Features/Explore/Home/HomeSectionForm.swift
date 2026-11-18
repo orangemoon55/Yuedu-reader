@@ -16,12 +16,13 @@ import SwiftUI
 
 struct HomeSectionPage: View {
     let sectionID: UUID
+    var goBack: (() -> Void)? = nil
     @ObservedObject private var pageStore = HomePageStore.shared
     @EnvironmentObject private var store: BookStore
 
     var body: some View {
         if let section = pageStore.page?.sections.first(where: { $0.id == sectionID }) {
-            HomeSectionFormHost(section: section, store: store)
+            HomeSectionFormHost(section: section, store: store, goBack: goBack)
         } else {
             // Deleted, here or from its long press: the page empties as it pops.
             Color.clear.themedAppSurface(for: .explore)
@@ -36,13 +37,15 @@ struct HomeSectionPage: View {
 /// (5d-5), as the search page did (`Technotes/iOS17SearchWatchdogPostmortem.md`, guardrail 12).
 private struct HomeSectionFormHost: View {
     @StateObject private var editor: HomeSectionEditor
+    let goBack: (() -> Void)?
 
-    init(section: HomeSection, store: BookStore) {
+    init(section: HomeSection, store: BookStore, goBack: (() -> Void)?) {
+        self.goBack = goBack
         _editor = StateObject(wrappedValue: HomeSectionEditor(section: section, preview: .preview(shelf: store)))
     }
 
     var body: some View {
-        HomeSectionForm(editor: editor, isInSheet: false)
+        HomeSectionForm(editor: editor, isInSheet: false, goBack: goBack)
     }
 }
 
@@ -75,11 +78,11 @@ private struct HomeNewSectionFlow: View {
     let added: (UUID) -> Void
     let close: () -> Void
     @State private var editor: HomeSectionEditor?
-    @State private var showsForm = false
+    @State private var path: [UUID] = []
     @ObservedObject private var availability = PublicLibraryAvailability.shared
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             // Every layout, whatever the sources: a layout of lists draws any source's lists.
             HomeLayoutGallery(choices: HomeLayoutStyle.allCases, sample: .standard,
                               identifierPrefix: "homeNewSection.layout") { style in
@@ -88,7 +91,7 @@ private struct HomeNewSectionFlow: View {
                 // change them, to any source's.
                 if style.drawsLists, availability.isAvailable { editor.choose(.gutenbergLists) }
                 self.editor = editor
-                showsForm = true
+                path = [editor.draft.id]
             }
             .navigationTitle(localized("新增欄目"))
             .toolbarTitleDisplayMode(.inline)
@@ -99,12 +102,33 @@ private struct HomeNewSectionFlow: View {
                     }
                 }
             }
-            .navigationDestination(isPresented: $showsForm) {
-                if let editor {
-                    HomeSectionForm(editor: editor, isInSheet: true, added: { added(editor.draft.id) })
+            .navigationDestination(for: UUID.self) { id in
+                if let editor, editor.draft.id == id {
+                    HomeSectionForm(editor: editor, isInSheet: true, goBack: { path = [] }, added: {
+                        // The new-section navigator owns its exit. Pop before closing the
+                        // cover so an old form cannot remain under the Explore toolbar.
+                        path = []
+                        added(editor.draft.id)
+                        close()
+                    })
                 }
             }
         }
+    }
+}
+
+/// Isolated leaf: no dismiss environment is read by a form that owns nested navigation.
+struct HomeSectionBackButton: View {
+    var goBack: (() -> Void)?
+    @Environment(\.presentationMode) private var presentation
+
+    var body: some View {
+        Button {
+            if let goBack { goBack() } else { presentation.wrappedValue.dismiss() }
+        } label: {
+            Label(localized("返回"), systemImage: "chevron.left")
+        }
+        .accessibilityIdentifier("homeSection.back")
     }
 }
 
@@ -162,6 +186,7 @@ struct HomeSectionForm: View {
     let isInSheet: Bool
     /// 新增 put the section on the home.
     var added: () -> Void = {}
+    var goBack: (() -> Void)?
 
     @ObservedObject private var aggregation = AggregationSettingsStore.shared
     @ObservedObject private var sources = BookSourceStore.shared
@@ -175,7 +200,9 @@ struct HomeSectionForm: View {
     /// (`Technotes/iOS17SearchWatchdogPostmortem.md`, guardrail 12).
     @State private var push: HomeSectionFormPush?
 
-    init(editor: HomeSectionEditor, isInSheet: Bool, modules: RuleModuleLibrary? = nil, added: @escaping () -> Void = {}) {
+    init(editor: HomeSectionEditor, isInSheet: Bool, modules: RuleModuleLibrary? = nil,
+         goBack: (() -> Void)? = nil, added: @escaping () -> Void = {}) {
+        self.goBack = goBack
         self.editor = editor
         self.isInSheet = isInSheet
         self.modules = modules ?? .shared
@@ -266,8 +293,16 @@ struct HomeSectionForm: View {
         .navigationTitle(editor.isNew ? localized("新增欄目") : title)
         .toolbarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
         .themedAppSurface(for: .explore)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                HomeSectionBackButton(goBack: goBack)
+            }
+            ToolbarItem(placement: .principal) {
+                Text(editor.isNew ? localized("新增欄目") : title)
+                    .font(DSFont.headline).lineLimit(1)
+            }
             if editor.isNew {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
