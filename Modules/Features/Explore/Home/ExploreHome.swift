@@ -195,7 +195,7 @@ private struct ExploreHomeRoot: View {
                 // its ＋ takes the bar's place (maintainer, 2026-10-17).
                 .hidesRootTabBar(showsEditorBars)
                 .exploreRouteDestinations(openBrowser: openBrowser)
-                .homeEditDestinations(goBack: { if !path.isEmpty { path.removeLast() } })
+                .homeEditDestinations()
                 .remoteLibraryDestinations()
                 .publicLibraryDestinations()
             } else {
