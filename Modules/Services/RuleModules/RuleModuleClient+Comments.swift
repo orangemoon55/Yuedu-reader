@@ -66,6 +66,11 @@ struct RuleModuleChapterNotes: Codable, Equatable, Sendable {
 // 本章說 (format 3.0.2, `comments`): the site's chapters of a record, then one chapter's comments.
 // Each is a request of the module's (`perform`): its templates, its script, its hosts.
 extension RuleModuleClient {
+    nonisolated static func duration(_ seconds: Int?) -> TimeInterval {
+        guard let seconds, seconds > 0 else { return 0 }
+        return TimeInterval(seconds)
+    }
+
     static let commentChaptersCacheName = "~commentChapters"
     static let commentsCacheName = "~comments"
     /// Chapters kept per record: past the longest serial's.
@@ -90,7 +95,7 @@ extension RuleModuleClient {
                          in module: RuleModule) async throws -> [ModuleCommentChapter] {
         let values = module.withGlobalValues(["id": item.id ?? "", "url": item.bookUrl], language: nil)
         let file = cacheFile(module: module.id, entry: Self.commentChaptersCacheName, values: values)
-        let duration = TimeInterval(max(comments.cacheDuration ?? 0, 0))
+        let duration = Self.duration(comments.chapters.cacheDuration ?? comments.cacheDuration)
         if duration > 0, let cached = cached(RuleModuleCommentChapterPage.self, at: file), cached.version == module.version,
            now().timeIntervalSince(cached.fetchedAt) < duration {
             return cached.chapters
@@ -135,7 +140,7 @@ extension RuleModuleClient {
             "page": String(page), "sort": sort ?? block.sorts?.first?.value ?? "",
         ], language: nil)
         let file = cacheFile(module: module.id, entry: Self.commentsCacheName, values: values)
-        let duration = TimeInterval(max(comments.cacheDuration ?? 0, 0))
+        let duration = Self.duration(block.cacheDuration ?? comments.cacheDuration)
         if duration > 0, let cached = cached(RuleModuleCommentPage.self, at: file), cached.version == module.version,
            now().timeIntervalSince(cached.fetchedAt) < duration {
             return (cached.comments, cached.total)
@@ -178,49 +183,74 @@ extension RuleModuleClient {
     /// Paragraphs kept per chapter.
     nonisolated static let paragraphLimit = 2_000
 
-    /// The chapter's 段評 counts, 熱評 and 作者說, each asked when the module has its block. One
-    /// that fails is left out and said in the log: the others are still the chapter's. Nothing
-    /// is retried, and an answer with a part missing is not kept.
+    /// Each endpoint owns its TTL. A zero TTL disables that endpoint only, failures
+    /// never cache empty data, and a short counts TTL cannot expire a long author note.
     func chapterNotes(chapterID: String, of item: RuleListItem, by comments: RuleModule.Comments,
                       in module: RuleModule) async -> RuleModuleChapterNotes {
         let values = module.withGlobalValues(["id": item.id ?? "", "url": item.bookUrl, "chapterId": chapterID], language: nil)
-        let file = cacheFile(module: module.id, entry: Self.chapterNotesCacheName, values: values)
-        let duration = TimeInterval(max(comments.cacheDuration ?? 0, 0))
-        if duration > 0, let cached = cached(RuleModuleChapterNotes.self, at: file), cached.version == module.version,
-           now().timeIntervalSince(cached.fetchedAt) < duration {
-            return cached
-        }
-        let started = SourcePerfTrace.now
         var notes = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
-        var isWhole = true
         let scripts = module.scripts
+        let started = SourcePerfTrace.now
+
+        func file(_ part: String) -> URL {
+            cacheFile(module: module.id, entry: Self.chapterNotesCacheName + ".endpoint-v1." + part, values: values)
+        }
+        func read(_ part: String, ttl: Int?) -> RuleModuleChapterNotes? {
+            let duration = Self.duration(ttl ?? comments.cacheDuration)
+            guard duration > 0, let value = cached(RuleModuleChapterNotes.self, at: file(part)),
+                  value.version == module.version else { return nil }
+            let age = now().timeIntervalSince(value.fetchedAt)
+            return age >= 0 && age < duration ? value : nil
+        }
+        func keep(_ value: RuleModuleChapterNotes, part: String, ttl: Int?) {
+            if Self.duration(ttl ?? comments.cacheDuration) > 0 { save(value, to: file(part)) }
+        }
         func page(_ request: RuleModule.Request, _ part: String) async -> (text: String, baseURL: String)? {
-            do {
-                return try await perform(request, values: values, in: module)
-            } catch {
-                isWhole = false
+            guard !Task.isCancelled else { return nil }
+            do { return try await perform(request, values: values, in: module) }
+            catch {
                 AppLogger.network("⟐ module comments: a part of the chapter failed", error: SourceFailure.loggable(error),
                                   context: ["module": module.id, "part": part])
                 return nil
             }
         }
-        if let block = comments.counts, let answer = await page(block.request, "counts") {
-            let read = await Self.readCounts(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
-            notes.counts = read.counts
-            notes.paragraphCount = read.paragraphCount
+        if let block = comments.counts {
+            if let value = read("counts", ttl: block.cacheDuration) {
+                notes.counts = value.counts; notes.paragraphCount = value.paragraphCount
+            } else if let answer = await page(block.request, "counts") {
+                let result = await Self.readCounts(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
+                notes.counts = result.counts; notes.paragraphCount = result.paragraphCount
+                var value = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
+                value.counts = result.counts; value.paragraphCount = result.paragraphCount
+                if !Task.isCancelled { keep(value, part: "counts", ttl: block.cacheDuration) }
+            }
         }
-        if let block = comments.hot, let answer = await page(block.request, "hot") {
-            let read = await Self.readHot(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
-            notes.hot = read.hot
-            if notes.paragraphCount == nil { notes.paragraphCount = read.paragraphCount }
+        if let block = comments.hot {
+            if let value = read("hot", ttl: block.cacheDuration) {
+                notes.hot = value.hot
+                if notes.paragraphCount == nil { notes.paragraphCount = value.paragraphCount }
+            } else if let answer = await page(block.request, "hot") {
+                let result = await Self.readHot(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
+                notes.hot = result.hot
+                if notes.paragraphCount == nil { notes.paragraphCount = result.paragraphCount }
+                var value = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
+                value.hot = result.hot; value.paragraphCount = result.paragraphCount
+                if !Task.isCancelled { keep(value, part: "hot", ttl: block.cacheDuration) }
+            }
         }
-        if let block = comments.authorSay, let answer = await page(block.request, "authorSay") {
-            notes.authorSay = await Self.readAuthorSay(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
+        if let block = comments.authorSay {
+            if let value = read("authorSay", ttl: block.cacheDuration) {
+                notes.authorSay = value.authorSay
+            } else if let answer = await page(block.request, "authorSay") {
+                notes.authorSay = await Self.readAuthorSay(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
+                var value = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
+                value.authorSay = notes.authorSay
+                if !Task.isCancelled { keep(value, part: "authorSay", ttl: block.cacheDuration) }
+            }
         }
         SourcePerfTrace.record("module.comments.notes",
                                "module=\(module.id) counts=\(notes.counts.count) hot=\(notes.hot.count) say=\(notes.authorSay != nil)",
                                since: started, thresholdMs: 0)
-        if duration > 0, isWhole { save(notes, to: file) }
         return notes
     }
 
@@ -272,7 +302,8 @@ extension RuleModuleClient {
                 return value.isEmpty ? nil : value
             }
             hot.append(ModuleHotComment(paragraph: paragraph, comment: WorkReview(
-                title: nil, text: body, author: line(block.list.author, limit: WorkReview.authorLimit), date: nil, rating: nil,
+                title: nil, text: body, author: line(block.list.author, limit: WorkReview.authorLimit),
+                date: line(block.list.date, limit: 40).flatMap(date(from:)), rating: nil,
                 likes: line(block.list.likes, limit: 20).flatMap(number).flatMap { $0 > 0 ? $0 : nil })))
         }
         return (hot, total)

@@ -288,7 +288,7 @@ enum RuleModuleValidator {
             try requireText(hot.list.text, "comments.hot.list.text")
             try validate(hot.list.paragraph, count: hot.paragraphCount, path: "comments.hot")
             for case let (name, rule?) in [("list.items", hot.list.items), ("list.text", hot.list.text), ("list.author", hot.list.author),
-                                           ("list.likes", hot.list.likes), ("paragraphCount", hot.paragraphCount)] as [(String, String?)] {
+                                           ("list.likes", hot.list.likes), ("list.date", hot.list.date), ("paragraphCount", hot.paragraphCount)] as [(String, String?)] {
                 try checkRule(rule, field: "comments.hot.\(name)", declared: [], innerRules: true)
             }
         }
