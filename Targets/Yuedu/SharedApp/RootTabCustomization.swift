@@ -15,9 +15,9 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var id: String { rawValue }
 
-    /// The four bottom entries for the personal reader. The library enum value stays
-    /// decodable for older preferences and themes, but is no longer offered as a tab.
-    static let tabs: [RootTabItem] = [.explore, .bookshelf, .settings, .search]
+    /// Search is opened from Explore's existing magnifier; keep its enum/icon settings
+    /// decodable but do not offer a duplicate entry in bottom or sidebar navigation.
+    static let tabs: [RootTabItem] = [.explore, .bookshelf, .settings]
 
     /// No later-added tab should be automatically restored from older saved preferences.
     static let addedLater: [RootTabItem] = []
@@ -28,7 +28,7 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
     var titleKey: String {
         switch self {
         case .bookshelf: return "書架"
-        case .explore: return "探索"
+        case .explore: return "底部發現"
         case .library: return "資源庫"
         case .rss: return "RSS 訂閱"
         case .settings: return "設定"
@@ -279,7 +279,7 @@ extension GlobalSettings {
     /// The tabs shown, in `RootTabItem.tabs` order, then the markers of the later tabs hidden.
     /// A tab added later that the list does not name is shown: the list predates it.
     nonisolated static func sanitizedRootTabVisibleIDs(_ ids: [String]) -> [String] {
-        let requested = Set(ids)
+        let requested = Set(ids.filter { $0 != RootTabItem.search.rawValue && $0 != RootTabItem.search.hiddenMarker })
         let hidden = RootTabItem.addedLater.filter { requested.contains($0.hiddenMarker) && !requested.contains($0.rawValue) }
         var visible = RootTabItem.tabs.filter { tab in
             requested.contains(tab.rawValue) || (RootTabItem.addedLater.contains(tab) && !hidden.contains(tab))

@@ -46,6 +46,8 @@ private struct ExploreHomeRoot: View {
     @ObservedObject private var modules = RuleModuleLibrary.shared
     @AppStorage(ExploreSettings.modeKey) private var storedMode = ExploreMode.publicLibraries.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(HomePageSettingsNavigation.self) private var homeSettingsNavigation
+    @State private var showsSearch = false
 
     @State private var path = NavigationPath()
     @State private var exploreSources: [BookSource] = []
@@ -59,10 +61,6 @@ private struct ExploreHomeRoot: View {
     @State private var addsSection = false
     /// The section 新增欄目 just added, brought into view: it is at the end of the home.
     @State private var addedSection: UUID?
-    /// iOS 17: ••• is a chooser sheet, and what was picked runs once it is gone
-    /// (Technotes/iOS17MenuModalPresentation.md).
-    @State private var showsMoreChooser = false
-    @State private var moreSequence = DismissalSequencedPresentation<ExploreMoreAction>()
     /// Set as the home is edited or done, until the reader drags the page: the page keeps to
     /// its end, where 編輯首頁 and 完成 are, while the other mode lays out.
     @State private var followsEnd = false
@@ -192,12 +190,12 @@ private struct ExploreHomeRoot: View {
         NavigationStack(path: $path) {
             if tabModel.isLoaded {
                 home
-                .toolbar { toolbar }
+                .toolbar { if path.isEmpty { toolbar } }
                 // 編輯首頁 hides the tab bar while the home is being edited, as 書架's 選取 does, and
                 // its ＋ takes the bar's place (maintainer, 2026-10-17).
                 .hidesRootTabBar(showsEditorBars)
                 .exploreRouteDestinations(openBrowser: openBrowser)
-                .homeEditDestinations()
+                .homeEditDestinations(goBack: { if !path.isEmpty { path.removeLast() } })
                 .remoteLibraryDestinations()
                 .publicLibraryDestinations()
             } else {
@@ -217,6 +215,10 @@ private struct ExploreHomeRoot: View {
             HomeNewSectionSheet(added: { addedSection = $0; addsSection = false }, close: { addsSection = false })
                 .environmentObject(store)
         }
+        .fullScreenCover(isPresented: $showsSearch) {
+            SearchTabRoot(browser: browser, close: { showsSearch = false })
+                .environmentObject(store)
+        }
         .fullScreenCover(item: $browserPresentation) { presentation in
             NavigationStack {
                 BrowserPage(browser: browser, entry: presentation.entry)
@@ -230,6 +232,12 @@ private struct ExploreHomeRoot: View {
         }
         .environment(\.explorePush) { $0.open(in: &path, store: store) }
         .environment(\.homeDefaults, defaultsContext)
+        .task(id: [AnyHashable(homeSettingsNavigation.request?.id), AnyHashable(tabModel.isLoaded)]) {
+            guard tabModel.isLoaded, let request = homeSettingsNavigation.request else { return }
+            path = NavigationPath()
+            perform(request.action)
+            homeSettingsNavigation.consume(request.id)
+        }
         .task(id: syncKey) {
             // Saved here, not while drawing: the first read saves the defaults. Not before the
             // library is read: the defaults depend on whether it holds any source.
@@ -370,7 +378,7 @@ private struct ExploreHomeRoot: View {
         .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
         .pageBackgroundToolbar(for: .explore)
         // While the home is edited the bar stays, for its 完成 (maintainer, 2026-10-17).
-        .rootTabTitle(localized("探索"), onScroll: isEditing ? .fadesTitle : .minimizesBar, overColor: barIsOverColor)
+        .rootTabTitle(localized("底部發現"), onScroll: isEditing ? .fadesTitle : .minimizesBar, overColor: barIsOverColor)
         .navigationDestination(isPresented: $choosesCarousel) { carouselPicker }
         .animation(reduceMotion ? nil : DSAnimation.standard, value: groups.map(\.id))
     }
@@ -491,7 +499,9 @@ private struct ExploreHomeRoot: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             #endif
-            ToolbarItem(placement: .topBarTrailing) { moreControl.rootTabBarButton(overColor: barIsOverColor) }
+            ToolbarItem(placement: .topBarTrailing) {
+                ExploreSearchButton { showsSearch = true }.rootTabBarButton(overColor: barIsOverColor)
+            }
         }
     }
 
@@ -505,45 +515,6 @@ private struct ExploreHomeRoot: View {
         .accessibilityLabel(localized("首頁配置"))
         .accessibilityValue(selectedConfiguration?.name ?? "")
         .accessibilityIdentifier("explore.configurations")
-    }
-
-    /// 探索's one ••• (Phase 5 plan, decisions 30 and 36). A native menu from iOS 18; on iOS 17
-    /// a chooser sheet, since the browser's cover would be dropped while the menu dismisses.
-    @ViewBuilder
-    private var moreControl: some View {
-        if MenuModalPresentationPolicy.requiresDismissalSequencedChooser {
-            Button {
-                moreSequence.cancel()
-                showsMoreChooser = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .accessibilityHidden(true)
-            }
-            .accessibilityLabel(localized("更多"))
-            .accessibilityIdentifier("explore.more")
-            .sheet(isPresented: $showsMoreChooser, onDismiss: {
-                moreSequence.consumeAfterDismissal().map(perform)
-            }) {
-                AdaptiveSheetContainer(maxWidth: DSLayout.readableCompactWidth) {
-                    DismissalSequencedActionChooser(title: localized("更多"), actions: moreChoices,
-                                                    onSelect: { moreSequence.select($0) })
-                }
-            }
-        } else {
-            ExploreMoreMenu(perform: perform)
-        }
-    }
-
-    /// The chooser's rows: the menu's items.
-    private var moreChoices: [DismissalSequencedAction<ExploreMoreAction>] {
-        [
-            DismissalSequencedAction(route: .editHome, title: localized("編輯首頁"), systemImage: "pencil"),
-            DismissalSequencedAction(route: .readingLanguages, title: localized("中繼資料語言偏好推薦"), systemImage: "globe"),
-            DismissalSequencedAction(route: .aggregatedSources, title: localized("參與聚合的來源"),
-                                     systemImage: "square.stack.3d.up"),
-            DismissalSequencedAction(route: .refresh, title: localized("重新整理"), systemImage: "arrow.clockwise"),
-            DismissalSequencedAction(route: .browser, title: localized("瀏覽器"), systemImage: "safari"),
-        ]
     }
 
     private func perform(_ action: ExploreMoreAction) {
@@ -761,42 +732,6 @@ private struct HomeEditButtonTitle: View {
     }
 }
 
-/// 探索's ••• from iOS 18: 編輯首頁, the two entries into 聚合設定, 重新整理, and the browser, which
-/// is presented rather than shown in place (5d-1) and always offered (maintainer, 2026-10-17).
-/// 首頁配置 has its own button beside it since 2026-10-22.
-private struct ExploreMoreMenu: View {
-    let perform: (ExploreMoreAction) -> Void
-
-    var body: some View {
-        Menu {
-            Button { perform(.editHome) } label: {
-                Label(localized("編輯首頁"), systemImage: "pencil")
-            }
-            Section {
-                Button { perform(.readingLanguages) } label: {
-                    Label(localized("中繼資料語言偏好推薦"), systemImage: "globe")
-                }
-                Button { perform(.aggregatedSources) } label: {
-                    Label(localized("參與聚合的來源"), systemImage: "square.stack.3d.up")
-                }
-            }
-            Section {
-                Button { perform(.refresh) } label: {
-                    Label(localized("重新整理"), systemImage: "arrow.clockwise")
-                }
-                Button { perform(.browser) } label: {
-                    Label(localized("瀏覽器"), systemImage: "safari")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .accessibilityHidden(true)
-        }
-        .accessibilityLabel(localized("更多"))
-        .accessibilityIdentifier("explore.more")
-    }
-}
-
 #Preview("Explore home") {
     ExploreHome(browser: BrowserState())
         .environmentObject(BookStore())
@@ -811,13 +746,3 @@ private struct ExploreMoreMenu: View {
     .geometryGroup()
 }
 
-#Preview("•••，iOS 18 起的選單") {
-    NavigationStack {
-        Text(localized("探索"))
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ExploreMoreMenu(perform: { _ in })
-                }
-            }
-    }
-}

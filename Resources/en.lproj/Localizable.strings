@@ -791,6 +791,7 @@
 
 /* Explore tab */
 "探索" = "Explore";
+"底部發現" = "Discover";
 "搜尋來源配置名稱或網址" = "Source Name or URL";
 "來源配置發現" = "Discover";
 "網頁瀏覽" = "Web";
