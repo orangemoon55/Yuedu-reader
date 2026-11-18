@@ -34,9 +34,10 @@ struct RootTabCustomizationView: View {
             visibleTabsSection
             tabPresentationSection
 
-            ForEach(settings.orderedRootTabs) { tab in
+            ForEach(settings.orderedRootTabs.filter { $0 != .search }) { tab in
                 iconSection(for: tab)
             }
+            searchIconSection
         }
         .softScrollEdges()
         .navigationTitle(localized("底部 Tab"))
@@ -67,7 +68,7 @@ struct RootTabCustomizationView: View {
 
     private var visibleTabsSection: some View {
         Section {
-            ForEach(settings.orderedRootTabs) { tab in
+            ForEach(settings.orderedRootTabs.filter { $0 != .search }) { tab in
                 visibleTabRow(tab)
                     // Reordering without dragging (VoiceOver, Switch Control), as
                     // `MetadataFillSourcesView` does.
@@ -168,6 +169,15 @@ struct RootTabCustomizationView: View {
         } footer: {
             Text(localized("不調整時保持系統 Tab 默認大小；開啟自訂大小後才套用滑桿。"))
                 .dsSectionFooter()
+        }
+        .interfaceSectionSurface()
+    }
+
+    private var searchIconSection: some View {
+        Section(header: Text(localized("探索页搜索图标")).foregroundStyle(DSColor.textSecondary)) {
+            ForEach(RootTabIconSlot.allCases) { slot in
+                iconRow(tab: .search, slot: slot)
+            }
         }
         .interfaceSectionSurface()
     }

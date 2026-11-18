@@ -18,13 +18,13 @@ enum HomeEditRoute: Hashable {
 
 extension View {
     /// A section's page and 首頁配置's, in the home's stack.
-    func homeEditDestinations() -> some View {
+    func homeEditDestinations(goBack: (() -> Void)? = nil) -> some View {
         navigationDestination(for: HomeEditRoute.self) { route in
             switch route {
             // Configuration: no tab bar, as in the editor it opens from (maintainer, 2026-10-17).
             // Each page it pushes asks again (`HomeSectionForm`): a page under another one
             // withdraws its request.
-            case .section(let id): HomeSectionPage(sectionID: id).hidesRootTabBar()
+            case .section(let id): HomeSectionPage(sectionID: id, goBack: goBack).hidesRootTabBar()
             case .configurations: HomeConfigurationsPage().hidesRootTabBar()
             }
         }

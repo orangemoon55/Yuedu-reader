@@ -3,10 +3,12 @@ import Foundation
 extension CollectionEntry {
     /// Like DiscoverViewModel.makeDisplays, this nonisolated async entry runs on the
     /// generic executor. HTML, mode inference and JS headers never run in a Form body.
-    nonisolated static func preparedRankBooks(_ books: [OnlineBook], source: BookSource) async throws -> [CollectionEntry] {
+    nonisolated static func preparedRankBooks(_ books: [OnlineBook], source: BookSource, resolvingHeaders: Bool = true) async throws -> [CollectionEntry] {
         try Task.checkCancellation()
         let displays = await DiscoverViewModel.makeDisplays(books, source: source)
-        let headers = await source.resolvedHeaders()
+        let headers: [String: String]
+        if resolvingHeaders { headers = await source.resolvedHeaders() }
+        else { headers = source.parsedHeaders }
         try Task.checkCancellation()
         return displays.map { display in
             .onlineBook(display.book, source: source, contentKind: display.contentKind,
