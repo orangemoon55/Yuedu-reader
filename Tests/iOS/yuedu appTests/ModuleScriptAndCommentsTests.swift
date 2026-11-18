@@ -152,6 +152,22 @@ struct ModuleScriptAndCommentsTests {
     func commentsValidated() throws {
         let accepted = try RuleModuleValidator.validate(module(["search": search, "comments": comments()]), appVersion: "3.0.2")
         #expect(accepted.comments?.chapter.sorts?.map(\.value) == ["hot", "new"])
+
+        // This is the byte-for-byte fixture of the uploaded Moyue 2.0.2 JSON.
+        // Load from the test bundle, never from an optional chat-attachment path.
+        let fixtureURL = try #require(Bundle.main.url(forResource: "moyue-comments-cache-duration",
+                                                      withExtension: "module", subdirectory: "RuleModules"))
+        let original = try Data(contentsOf: fixtureURL)
+        #expect(SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+                == "707cce5fb2987b843f706344d53ff001e4f1acefcbdf1320e473a23d19dd5e46")
+        let imported = try RuleModuleValidator.validate(original, appVersion: "3.0.2")
+        #expect(imported.id == "moyue-comments")
+        #expect(imported.comments?.chapters.cacheDuration == 86_400)
+        #expect(imported.comments?.chapter.cacheDuration == 300)
+        #expect(imported.comments?.paragraph?.cacheDuration == 300)
+        #expect(imported.comments?.counts?.cacheDuration == 300)
+        #expect(imported.comments?.hot?.cacheDuration == 300)
+        #expect(imported.comments?.authorSay?.cacheDuration == 600)
         #expect(rejection(module(["modules": [["id": "a", "title": "a", "request": ["url": "https://example.com/a"],
                                                "list": ["items": "li", "title": "h3@text"]]],
                                   "comments": comments()])) == .missingField("search"))
@@ -163,6 +179,28 @@ struct ModuleScriptAndCommentsTests {
                 == .missingField("comments.chapter.sorts"), "{{sort}} with no order to send")
         #expect(rejection(module(["search": search, "comments": comments(["list": ["items": "$.list[*]", "text": " "]])]))
                 == .emptyRule(field: "comments.chapter.list.text"))
+    }
+
+    @Test("all six nested comment cache TTL keys are schema-supported at the exact paths")
+    func nestedCacheDurationSchemaPaths() throws {
+        var value = try #require(JSONSerialization.jsonObject(with: module(["search": search, "comments": comments()])) as? [String: Any])
+        var blocks = try #require(value["comments"] as? [String: Any])
+        let expected: [(String, Int)] = [("chapters", 86_400), ("chapter", 300), ("paragraph", 300),
+                                          ("counts", 300), ("hot", 300), ("authorSay", 600)]
+        for (key, ttl) in expected {
+            var block = try #require(blocks[key] as? [String: Any])
+            block["cacheDuration"] = ttl
+            blocks[key] = block
+        }
+        value["comments"] = blocks
+        let data = try JSONSerialization.data(withJSONObject: value)
+        let parsed = try RuleModuleValidator.validate(data, appVersion: "3.0.2")
+        #expect(parsed.comments?.chapters.cacheDuration == 86_400)
+        #expect(parsed.comments?.chapter.cacheDuration == 300)
+        #expect(parsed.comments?.paragraph?.cacheDuration == 300)
+        #expect(parsed.comments?.counts?.cacheDuration == 300)
+        #expect(parsed.comments?.hot?.cacheDuration == 300)
+        #expect(parsed.comments?.authorSay?.cacheDuration == 600)
     }
 
     // MARK: - Scripts in requests and rules
