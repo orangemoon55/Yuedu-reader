@@ -16,7 +16,7 @@ struct ReaderHotCommentPageLimitTests {
     private static let insets = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
 
     private struct Fixture {
-        let source: NSAttributedString
+        let source: String
         let display: NSAttributedString
         let mapping: ReaderTranslationLayout
         let decorations: ReaderTranslationLayout.Decorations
@@ -72,7 +72,7 @@ struct ReaderHotCommentPageLimitTests {
         let spliced = try #require(ReaderTranslationLayout.splice(
             source, mode: bilingual ? .bilingual : .off, decorations: decorations,
             translation: { _ in bilingual ? "The wind rises." : nil }))
-        return Fixture(source: source, display: spliced.display, mapping: spliced.layout,
+        return Fixture(source: text, display: spliced.display, mapping: spliced.layout,
                        decorations: decorations, settings: settings, bubbleHrefs: bubbleHrefs)
     }
 
@@ -169,7 +169,7 @@ struct ReaderHotCommentPageLimitTests {
         #expect(removed.string == layout.attributedString.string, "nothing except hot-card pieces was removed")
         #expect(removed.length == fixture.display.length - layout.hotCommentElisions.reduce(0) { $0 + $1.length })
         let remapped = fixture.mapping.removingHotCommentDisplayRanges(layout.hotCommentElisions)
-        try assertMapping(remapped, source: fixture.source, display: layout.attributedString)
+        try assertMapping(remapped, source: NSAttributedString(string: fixture.source), display: layout.attributedString)
     }
 
     @Test("320×500 / 390×844, 18 / 28 pt, horizontal / vertical: one hot card per FINAL page; all bubbles remain",
@@ -286,6 +286,6 @@ struct ReaderHotCommentPageLimitTests {
         #expect(links(in: layout.attributedString) == links(in: chapter.display))
         #expect(linkLength(Self.sharedHotHref, in: layout.attributedString) > 0)
         #expect(chapter.mapping.removingHotCommentDisplayRanges([]) == chapter.mapping)
-        try assertMapping(chapter.mapping, source: chapter.source, display: layout.attributedString)
+        try assertMapping(chapter.mapping, source: NSAttributedString(string: chapter.source), display: layout.attributedString)
     }
 }

@@ -73,12 +73,21 @@ struct HomeNewSectionSheet: View {
     }
 }
 
+/// Each pushed screen carries its own editor, so the first destination evaluation
+/// cannot produce an empty form by looking up a separate, optional state value.
+private struct HomeNewSectionRoute: Hashable {
+    let id: UUID
+    let editor: HomeSectionEditor
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 private struct HomeNewSectionFlow: View {
     let store: BookStore
     let added: (UUID) -> Void
     let close: () -> Void
-    @State private var editor: HomeSectionEditor?
-    @State private var path: [UUID] = []
+    @State private var path: [HomeNewSectionRoute] = []
     @ObservedObject private var availability = PublicLibraryAvailability.shared
 
     var body: some View {
@@ -90,8 +99,7 @@ private struct HomeNewSectionFlow: View {
                 // Gutenberg's lists, chosen already where they are offered; 清單 can still
                 // change them, to any source's.
                 if style.drawsLists, availability.isAvailable { editor.choose(.gutenbergLists) }
-                self.editor = editor
-                path = [editor.draft.id]
+                path = [HomeNewSectionRoute(id: editor.draft.id, editor: editor)]
             }
             .navigationTitle(localized("新增欄目"))
             .toolbarTitleDisplayMode(.inline)
@@ -102,16 +110,14 @@ private struct HomeNewSectionFlow: View {
                     }
                 }
             }
-            .navigationDestination(for: UUID.self) { id in
-                if let editor, editor.draft.id == id {
-                    HomeSectionForm(editor: editor, isInSheet: true, goBack: { path = [] }, added: {
-                        // The new-section navigator owns its exit. Pop before closing the
-                        // cover so an old form cannot remain under the Explore toolbar.
-                        path = []
-                        added(editor.draft.id)
-                        close()
-                    })
-                }
+            .navigationDestination(for: HomeNewSectionRoute.self) { route in
+                HomeSectionForm(editor: route.editor, isInSheet: true, goBack: { path = [] }, added: {
+                    // The new-section navigator owns its exit. Pop before closing the
+                    // cover so an old form cannot remain under the Explore toolbar.
+                    path = []
+                    added(route.id)
+                    close()
+                })
             }
         }
     }

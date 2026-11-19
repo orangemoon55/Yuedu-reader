@@ -33,15 +33,59 @@ final class DiscoveryCategoryTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
         let model = DiscoveryCategoryModel(defaults: defaults)
-        await model.prepare(configuration: "A", page: nil, sources: [])
+        model.prepare(configuration: "A", page: nil, sources: [])
         model.choose(choice(1), at: 3)
-        await model.prepare(configuration: "B", page: nil, sources: [])
+        model.prepare(configuration: "B", page: nil, sources: [])
         XCTAssertTrue(model.slots.choices.allSatisfy { $0 == nil })
         model.choose(choice(2), at: 0)
         let reopened = DiscoveryCategoryModel(defaults: defaults)
-        await reopened.prepare(configuration: "A", page: nil, sources: [])
+        reopened.prepare(configuration: "A", page: nil, sources: [])
         XCTAssertEqual(reopened.slots.choices[3], choice(1))
         XCTAssertEqual(reopened.selection, 3)
+    }
+
+    func testSourceSessionsRestoreTheirRealSlotsAndRejectStaleReloads() throws {
+        let name = "discovery-sources-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = DiscoveryCategoryModel(defaults: defaults)
+        var a = BookSource(bookSourceUrl: "https://a.fixture", bookSourceName: "A")
+        var b = BookSource(bookSourceUrl: "https://b.fixture", bookSourceName: "B")
+        a.enabled = true; a.enabledExplore = true; a.exploreUrl = "/explore"
+        b.enabled = true; b.enabledExplore = true; b.exploreUrl = "/explore"
+        func entries(_ prefix: String, _ count: Int) throws -> [DiscoverCardItem] {
+            try (0..<count).map { i in
+                try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: "\(prefix)\(i)", url: "/category\(i)")))
+            }
+        }
+        model.prepare(configuration: "test", page: nil, sources: [a, b])
+        let initialA = try XCTUnwrap(model.activeSource)
+        let aItems = try entries("A", 6)
+        let bItems = try entries("B", 2)
+        model.reconcileSource(sourceURL: a.bookSourceUrl, values: [:], items: aItems, error: nil, activation: initialA)
+        XCTAssertEqual(model.slots.choices.compactMap { $0?.title }, ["A0", "A1", "A2", "A3", "A4"])
+        model.select(2)
+        let aChoice = try XCTUnwrap(model.current)
+        let firstList = model.list(for: aChoice, source: a)
+
+        model.switchSource(to: b, page: nil)
+        XCTAssertNil(model.current, "Do not keep old shortcuts while the new source loads")
+        let currentB = try XCTUnwrap(model.activeSource)
+        model.reconcileSource(sourceURL: a.bookSourceUrl, values: [:], items: aItems, error: nil, activation: initialA)
+        XCTAssertNil(model.current)
+        model.reconcileSource(sourceURL: b.bookSourceUrl, values: [:], items: bItems, error: nil, activation: currentB)
+        XCTAssertEqual(model.slots.choices.compactMap { $0?.title }, ["B0", "B1"])
+        XCTAssertEqual(model.activeSource?.sourceURL, b.bookSourceUrl)
+
+        model.switchSource(to: a, page: nil)
+        XCTAssertEqual(model.current, aChoice)
+        XCTAssertTrue(model.list(for: aChoice, source: a) === firstList)
+        model.reconcileSource(sourceURL: a.bookSourceUrl, values: [:], items: [], error: nil, activation: initialA)
+        XCTAssertEqual(model.current, aChoice, "A pre-switch result for A must not affect the second activation")
+        let reopened = DiscoveryCategoryModel(defaults: defaults)
+        reopened.prepare(configuration: "test", page: nil, sources: [b, a])
+        XCTAssertEqual(reopened.activeSource?.sourceURL, a.bookSourceUrl)
+        XCTAssertEqual(reopened.current, aChoice)
     }
 
     func testTypesComeFromModuleStoresWithoutImportedBookSources() throws {

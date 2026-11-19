@@ -13,16 +13,16 @@ struct DiscoveryCategoryBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(slots.choices.indices, id: \.self) { index in
+            ForEach(slots.choices.indices.filter { slots.choices[$0] != nil }, id: \.self) { index in
                 let choice = slots.choices[index]
-                let selected = choice != nil && selection == index
+                let selected = selection == index
                 Button { select(index) } label: {
                     Text(choice?.title ?? String(format: localized("分類 %d"), index + 1))
                         .font((typeSize.isAccessibilitySize ? DSFont.caption : DSFont.subheadline).weight(.semibold))
                         .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                         .minimumScaleFactor(0.80)
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(choice == nil ? DSColor.textSecondary : Color.primary)
+                        .foregroundStyle(Color.primary)
                         .padding(.horizontal, 3)
                         .padding(.vertical, DSSpacing.xs)
                         .frame(maxWidth: .infinity)
@@ -57,9 +57,10 @@ struct DiscoveryCategoryBar: View {
     }
 }
 
-/// Reuses the existing searchable source/category selector, including per-source filters.
+/// Customize a shortcut without leaving the selected source's real catalog.
 struct DiscoverySlotSettings: View {
     let slots: DiscoveryCategorySlots
+    let catalog: [DiscoveryCategoryChoice]
     let openSlot: Int?
     let choose: (DiscoveryCategoryChoice, Int) -> Void
     let close: () -> Void
@@ -101,17 +102,86 @@ struct DiscoverySlotSettings: View {
                 }
                 .navigationDestination(item: $opened) { index in
                     let current = slots.choices[index]
-                    HomeSourceChoices(
-                        current: current.map { .sourceCategories([$0.reference]) },
-                        parameters: current.map { HomeSection.filterParameters($0.filters, sourceURL: $0.reference.sourceURL) } ?? [:],
-                        choose: { value in
-                            guard case .sourceCategories(let references) = value.binding,
-                                  let ref = references.first else { return }
-                            choose(.init(reference: ref, filters: value.filterValues), index)
+                    List {
+                        Section {
+                            ForEach(catalog) { choice in
+                                Button { choose(choice, index) } label: {
+                                    HStack {
+                                        Text(choice.title)
+                                        Spacer()
+                                        if choice.id == current?.id {
+                                            Image(systemName: "checkmark").accessibilityHidden(true)
+                                        }
+                                    }
+                                }
+                                .accessibilityAddTraits(choice.id == current?.id ? [.isSelected] : [])
+                            }
                         }
-                    )
+                        .interfaceSectionSurface()
+                    }
+                    .navigationTitle(localized("分類"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .themedAppSurface(for: .explore)
+                    // Use the system chevron (including swipe-back), without the parent title.
+                    .toolbarRole(.editor)
                 }
                 .task { if let openSlot, opened == nil { opened = openSlot } }
+            }
+        }
+    }
+}
+
+
+/// Pick the owner of the entire Search feed, before selecting any of its categories.
+struct DiscoverySearchSourcePicker: View {
+    let sources: [BookSource]
+    let selectedURL: String?
+    let choose: (BookSource) -> Void
+    let close: () -> Void
+    @State private var query = ""
+
+    private var results: [BookSource] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sources.filter {
+            term.isEmpty || $0.bookSourceName.localizedStandardContains(term)
+                || $0.bookSourceUrl.localizedStandardContains(term)
+        }
+    }
+
+    var body: some View {
+        AdaptiveSheetContainer(maxWidth: DSLayout.readableCompactWidth) {
+            NavigationStack {
+                List {
+                    Section {
+                        ForEach(results) { source in
+                            let selected = source.bookSourceUrl == selectedURL
+                            Button { choose(source) } label: {
+                                HStack {
+                                    Text(BookSourceDisplayName.title(source.bookSourceName))
+                                    Spacer()
+                                    if selected {
+                                        Image(systemName: "checkmark").accessibilityHidden(true)
+                                    }
+                                }
+                                .foregroundStyle(DSColor.textPrimary)
+                            }
+                            .accessibilityAddTraits(selected ? [.isSelected] : [])
+                            .accessibilityIdentifier("discovery.source.choose.\(source.bookSourceUrl)")
+                        }
+                    }
+                    .interfaceSectionSurface()
+                }
+                .navigationTitle(localized("來源配置"))
+                .navigationBarTitleDisplayMode(.inline)
+                .themedAppSurface(for: .explore)
+                .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: localized("搜尋來源配置名稱或網址"))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(localized("關閉"), action: close)
+                            .accessibilityIdentifier("discovery.source.close")
+                    }
+                }
             }
         }
     }

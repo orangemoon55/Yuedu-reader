@@ -2,12 +2,11 @@ import Combine
 import SwiftUI
 
 /// The selected source owns its menus and scripts; no app-defined gender/mode controls.
-struct DiscoverySourceControls: View {
+struct DiscoverySourceControls<Catalog: View>: View {
     let source: BookSource
     let filterValues: [String: String]
-    let onSearch: () -> Void
+    let catalog: Catalog
     let onSwitchSource: () -> Void
-    let onAllTypes: (() -> Void)?
     let onReload: ([String: String], [DiscoverCardItem], String?, Bool) -> Void
     @StateObject private var discover: DiscoverViewModel
     @StateObject private var browser = BrowserState()
@@ -20,15 +19,14 @@ struct DiscoverySourceControls: View {
 
     private struct BrowserAddress: Identifiable { let id = UUID(); let address: String }
 
-    init(source: BookSource, filterValues: [String: String], onSearch: @escaping () -> Void,
-         onSwitchSource: @escaping () -> Void, onAllTypes: (() -> Void)? = nil,
-         onReload: @escaping ([String: String], [DiscoverCardItem], String?, Bool) -> Void) {
+    init(source: BookSource, filterValues: [String: String], onSwitchSource: @escaping () -> Void,
+         onReload: @escaping ([String: String], [DiscoverCardItem], String?, Bool) -> Void,
+         @ViewBuilder catalog: () -> Catalog) {
         self.source = source
         self.filterValues = filterValues
-        self.onSearch = onSearch
         self.onSwitchSource = onSwitchSource
-        self.onAllTypes = onAllTypes
         self.onReload = onReload
+        self.catalog = catalog()
         _discover = StateObject(wrappedValue: DiscoverViewModel(source: source))
     }
 
@@ -36,18 +34,9 @@ struct DiscoverySourceControls: View {
     private var sourceTitle: String { BookSourceDisplayName.title(currentSource.bookSourceName) }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: DSSpacing.xs) {
             HStack(spacing: DSSpacing.sm) {
                 Menu {
-                    if let onAllTypes {
-                        Button(action: onAllTypes) {
-                            Label(localized("所有類型"), systemImage: "square.grid.2x2")
-                        }
-                        .accessibilityIdentifier("search.allTypes")
-                    }
-                    Button(action: onSearch) {
-                        Label(localized("源內搜索"), systemImage: "magnifyingglass")
-                    }
                     Button { showsSettings = true } label: {
                         Label(localized("發現頁設定"), systemImage: "gearshape")
                     }
@@ -81,8 +70,10 @@ struct DiscoverySourceControls: View {
                     .accessibilityLabel(localized("切換來源配置"))
                     .accessibilityIdentifier("discovery.category.change")
             }
+            .frame(minHeight: DSLayout.minimumTapTarget)
             .padding(.horizontal, DSSpacing.lg)
             .buttonStyle(.plain)
+            catalog
             if !discover.filters.isEmpty || !discover.pageItems.isEmpty {
                 DiscoverControlsRow(discover: discover, pageItems: discover.pageItems) {
                     browserAddress = .init(address: $0)
@@ -92,6 +83,9 @@ struct DiscoverySourceControls: View {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, DSSpacing.xs)
             }
         }
+        // Keep the source buttons and the height-bounded filters in separate rows,
+        // even when the book list or a keyboard compresses the available height.
+        .fixedSize(horizontal: false, vertical: true)
         .sheet(isPresented: $showsSettings, onDismiss: openPendingPage) {
             DiscoverPageSettingsSheet(discover: discover) { pendingAddress = $0 }
         }

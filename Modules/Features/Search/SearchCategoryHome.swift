@@ -9,34 +9,27 @@ struct SearchCategoryHome: View {
     @State private var sources: [BookSource] = []
     @State private var publishedSources: [BookSource] = []
     @State private var sourceRevision = 0
-    @State private var editRequest = UUID()
-    @State private var keyword = ""
-    @FocusState private var keywordFocused: Bool
-
-    private enum Route: Hashable { case types, keywordSearch(String) }
+    private var currentSearchSource: BookSource? {
+        guard let source = categories.activeSource else { return nil }
+        return sources.first {
+            source.matches($0) && !$0.searchUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
 
     var body: some View {
         VStack(spacing: DSSpacing.sm) {
-            searchField
+            sourceSearchEntry
                 .padding(.horizontal, DSSpacing.lg)
                 .padding(.top, DSSpacing.xs)
             DiscoveryFiveCategoryPage(model: categories,
                 configuration: pageStore.selectedConfiguration.rawValue,
-                page: pageStore.page, sources: sources, editRequest: editRequest,
-                onAllTypes: { navigation?.path.append(Route.types) })
+                page: pageStore.page, sources: sources,
+                onAllTypes: { navigation?.path.append(ExploreNavigationRoute.genres) })
         }
             .rootTabTitle(localized("搜索"), onScroll: .fadesTitle)
             .pageBackgroundToolbar(for: .explore)
             .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
             .accessibilityIdentifier("search.fiveCategoryHome")
-            .navigationDestination(for: Route.self) { route in
-                switch route {
-                case .types:
-                    ModuleGenresPage()
-                case .keywordSearch(let term):
-                    SearchView(initialQuery: term)
-                }
-            }
             .navigationDestination(for: DiscoveryCategoryChoice.self) { choice in
                 if let source = sources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
                     DiscoveryBookList(model: categories.list(for: choice, source: source))
@@ -63,30 +56,28 @@ struct SearchCategoryHome: View {
             }
     }
 
-    private var searchField: some View {
-        HStack(spacing: DSSpacing.sm) {
-            Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold)).foregroundStyle(DSColor.textSecondary)
-            TextField(localized("搜尋書名或作者"), text: $keyword)
-                .font(DSFont.body).focused($keywordFocused).submitLabel(.search)
-                .onSubmit { submitKeywordSearch() }
-                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .accessibilityIdentifier("search.keywordField")
-            if !keyword.isEmpty {
-                Button { keyword = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(DSColor.textSecondary)
-                }.buttonStyle(.plain).accessibilityLabel(localized("清除"))
+    private var sourceSearchEntry: some View {
+        Button {
+            guard let source = currentSearchSource else { return }
+            navigation?.path.append(ExploreNavigationRoute.searchInSource(sourceURL: source.bookSourceUrl))
+        } label: {
+            HStack(spacing: DSSpacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(localized("搜尋書名或作者"))
+                    .font(DSFont.body)
             }
+            .foregroundStyle(DSColor.textSecondary)
+            .padding(.horizontal, DSSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: DSLayout.minimumTapTarget, alignment: .leading)
+            .background { NavigationGlassCapsule(tint: DSColor.accent) }
+            .contentShape(Capsule())
         }
-        .padding(.horizontal, DSSpacing.md)
-        .frame(minHeight: DSLayout.minimumTapTarget)
-        .background { NavigationGlassCapsule(tint: DSColor.accent) }
-    }
-
-    private func submitKeywordSearch() {
-        let term = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !term.isEmpty else { return }
-        keywordFocused = false
-        navigation?.path.append(Route.keywordSearch(term))
+        .buttonStyle(.plain)
+        .accessibilityHint(localized("源內搜索"))
+        .accessibilityIdentifier("search.keywordEntry")
+        .disabled(currentSearchSource == nil || navigation == nil)
     }
 
     /// Filtering the library once per source update, not during each book-row body.

@@ -42,6 +42,7 @@ on:
           - reader-comments
           - readcc22
           - readcc23
+          - readcc24
 
 permissions:
   contents: read

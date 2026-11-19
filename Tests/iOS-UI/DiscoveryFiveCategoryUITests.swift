@@ -16,7 +16,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     }
 
     @MainActor
-    private func launch(bookCount: Int = 12) throws -> XCUIApplication {
+    private func launch(bookCount: Int = 12, alternate: Bool = false) throws -> XCUIApplication {
         let names = ["巔峰", "榜單", "男頻", "女頻", "出版"]
         let categories: [[String: String]] = try names.enumerated().map { index, name in
             let answer: [String: Any] = ["books": (1...bookCount).map { number in
@@ -34,13 +34,28 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         let source: [String: Any] = [
             "id": "D413D0C1-0C00-4C00-8000-123456789012", "bookSourceName": "五分類離線測試",
             "bookSourceUrl": "https://discovery.fixture", "enabled": true, "enabledExplore": true,
-            "bookSourceType": 0, "exploreUrl": String(decoding: categoryData, as: UTF8.self),
+            "bookSourceType": 0, "loginUrl": "https://discovery.fixture/login",
+            "searchUrl": "https://discovery.fixture/search?q={{key}}",
+            "exploreUrl": String(decoding: categoryData, as: UTF8.self),
             "ruleExplore": ["bookList": "$.books[*]", "name": "$.name", "author": "$.author",
                             "bookUrl": "$.url", "coverUrl": "$.cover", "kind": "$.kind"]
         ]
         let sources = directory.appendingPathComponent("sources")
         try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
-        try JSONSerialization.data(withJSONObject: [source]).write(to: sources.appendingPathComponent("book_sources.json"))
+        let alternateCategories = try ["B-Short", "B-Wuxia"].map { title in
+            let feed = ["books": [["name": "\(title)-book", "author": "B author", "kind": "小說",
+                                   "cover": "", "url": "https://other.fixture/\(title)"]]]
+            let data = try JSONSerialization.data(withJSONObject: feed)
+            return ["title": title, "url": "data:application/json;base64," + data.base64EncodedString()]
+        }
+        let alternateData = try JSONSerialization.data(withJSONObject: alternateCategories)
+        let other: [String: Any] = [
+            "id": "D413D0C1-0C00-4C00-8000-123456789013", "bookSourceName": "另一來源",
+            "bookSourceUrl": "https://other.fixture", "enabled": true, "enabledExplore": alternate, "bookSourceType": 0,
+            "exploreUrl": String(decoding: alternateData, as: UTF8.self),
+            "searchUrl": "https://other.fixture/search?q={{key}}", "ruleExplore": source["ruleExplore"]!
+        ]
+        try JSONSerialization.data(withJSONObject: [source, other]).write(to: sources.appendingPathComponent("book_sources.json"))
         let home = directory.appendingPathComponent("home.json")
         try JSONSerialization.data(withJSONObject: ["schemaVersion": 3, "sections": [], "configurations": []]).write(to: home)
         let app = XCUIApplication()
@@ -66,6 +81,16 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         let filters = app.scrollViews["discovery.source.filters"].firstMatch
         XCTAssertTrue(filters.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertLessThanOrEqual(filters.frame.height, 64, "Horizontal filters must not absorb the feed height")
+        for id in ["discovery.source.more", "discovery.category.change"] {
+            let control = app.buttons[id].firstMatch
+            XCTAssertTrue(control.exists, app.debugDescription)
+            XCTAssertLessThanOrEqual(control.frame.maxY, filters.frame.minY + 1,
+                                     "The filter row must not overlap \(id)")
+        }
+        let firstCategory = app.buttons["discovery.category.slot.0"].firstMatch
+        XCTAssertTrue(firstCategory.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertLessThanOrEqual(app.buttons["discovery.category.change"].frame.maxY, firstCategory.frame.minY + 1)
+        XCTAssertLessThanOrEqual(firstCategory.frame.maxY, filters.frame.minY + 1)
         XCTAssertLessThanOrEqual(first.frame.minY - filters.frame.maxY, 32,
                                  "No blank spacer band between filters and first book")
         XCTAssertLessThanOrEqual(first.frame.minY - list.frame.minY, 32,
@@ -84,28 +109,62 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     }
 
     @MainActor
-    func testSearchFieldReplacesTopIconsAndSubmitsOriginalQuery() throws {
+    func testTopSearchOpensOriginalSearchForCurrentSource() throws {
         let app = try launch()
         app.buttons["rootTab.search"].tap()
-        let field = app.textFields["search.keywordField"]
-        XCTAssertTrue(field.waitForExistence(timeout: 20), app.debugDescription)
-        XCTAssertFalse(app.buttons["search.keywordEntry"].exists)
-        XCTAssertFalse(app.buttons["search.allTypes"].exists, "Types belongs in More, not the top toolbar")
-        XCTAssertTrue(app.buttons["discovery.category.change"].exists)
-        XCTAssertGreaterThanOrEqual(app.buttons["discovery.category.change"].frame.width, 44)
-        XCTAssertGreaterThanOrEqual(app.buttons["discovery.category.change"].frame.height, 44)
-        let header = XCTAttachment(screenshot: app.screenshot())
-        header.name = "search-field-and-compact-controls"
-        header.lifetime = .keepAlways
-        add(header)
-        field.tap()
-        field.typeText("  回滚测试  ")
-        app.keyboards.buttons["搜索"].tap()
+        let entry = app.buttons["search.keywordEntry"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 20), app.debugDescription)
+        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: entry)
+        wait(for: [ready], timeout: 10)
+        XCTAssertFalse(app.textFields["search.keywordField"].exists, "The root must not open its own keyboard")
+
+        entry.tap()
         let originalSearch = app.searchFields.firstMatch
         XCTAssertTrue(originalSearch.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertEqual(originalSearch.value as? String, "回滚测试")
+        let scope = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "已选 1 个来源配置")).firstMatch
+        XCTAssertTrue(scope.waitForExistence(timeout: 10), "Only the active source is initially selected\n\(app.debugDescription)")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    @MainActor
+    func testSwitchSourceReplacesEntireCategoryRowAndRestoresSelection() throws {
+        let app = try launch(alternate: true)
+        app.buttons["rootTab.search"].tap()
+        let switcher = app.buttons["discovery.category.change"].firstMatch
+        XCTAssertTrue(switcher.waitForExistence(timeout: 20), app.debugDescription)
+        func pick(_ url: String) {
+            switcher.tap()
+            let bar = app.navigationBars["来源配置"].firstMatch
+            XCTAssertTrue(bar.waitForExistence(timeout: 10), app.debugDescription)
+            XCTAssertFalse(bar.buttons["设置五个分类"].exists)
+            let source = app.buttons["discovery.source.choose.\(url)"].firstMatch
+            XCTAssertTrue(source.waitForExistence(timeout: 10), app.debugDescription)
+            source.tap()
+        }
+        func expectBook(_ title: String) {
+            let first = app.buttons["discovery.book.0"].firstMatch
+            wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", title), evaluatedWith: first)], timeout: 20)
+        }
+        let firstCategory = app.buttons["discovery.category.slot.0"].firstMatch
+        let thirdCategory = app.buttons["discovery.category.slot.2"].firstMatch
+        pick("https://discovery.fixture")
+        XCTAssertTrue(thirdCategory.waitForExistence(timeout: 20), app.debugDescription)
+        thirdCategory.tap()
+        expectBook("分類2-作品1")
+
+        pick("https://other.fixture")
+        expectBook("B-Short-book")
+        XCTAssertEqual(firstCategory.label, "B-Short")
+        XCTAssertEqual(app.buttons["discovery.category.slot.1"].firstMatch.label, "B-Wuxia")
+        XCTAssertFalse(thirdCategory.exists, "The old source must not fill empty slots")
+        XCTAssertLessThanOrEqual(switcher.frame.maxY, firstCategory.frame.minY + 1)
+        app.buttons["discovery.category.slot.1"].firstMatch.tap()
+        expectBook("B-Wuxia-book")
+
+        pick("https://discovery.fixture")
+        expectBook("分類2-作品1")
+        XCTAssertTrue(thirdCategory.isSelected)
     }
 
     @MainActor
@@ -134,10 +193,14 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         XCTAssertFalse(app.buttons["explore.search"].exists)
         XCTAssertTrue(app.buttons["discovery.category.change"].exists)
         app.buttons["discovery.source.more"].tap()
-        app.buttons["search.allTypes"].tap()
-        XCTAssertTrue(app.navigationBars["所有类型"].waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertTrue(app.buttons["genres.fiction"].waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertFalse(app.staticTexts["暂无栏目"].exists)
+        XCTAssertTrue(app.buttons["发现页设置"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["登录"].exists, app.debugDescription)
+        XCTAssertFalse(app.buttons["所有类型"].exists)
+        XCTAssertFalse(app.buttons["源内搜索"].exists)
+        app.buttons["发现页设置"].tap()
+        let settings = app.navigationBars["发现页设置"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), app.debugDescription)
+        settings.buttons["关闭"].firstMatch.tap()
         app.buttons["rootTab.explore"].tap()
         XCTAssertTrue(app.buttons["explore.more"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(app.buttons["discovery.category.slot.0"].exists)
