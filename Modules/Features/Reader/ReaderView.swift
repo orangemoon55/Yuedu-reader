@@ -1200,6 +1200,7 @@ struct ReaderView: View {
         let chapterChanged = newChapter != currentChapterIndex
 
         currentChapterIndex = newChapter
+        commentDecorator.retryMissingIfNeeded(spine: newChapter, title: chapterTitle(forSpineIndex: newChapter))
         moveReaderSession(
             to: settledPosition,
             source: .settledPage,

@@ -109,6 +109,22 @@ struct ReaderTranslationLayout: Equatable, Sendable {
         let length: Int
     }
 
+    /// Comment cards own no source characters. Preserve bookmarks/TTS/highlights when
+    /// the paginator removes repeated hot cards from a display page.
+    func removingHotCommentDisplayRanges(_ ranges: [NSRange]) -> Self {
+        guard !ranges.isEmpty else { return self }
+        let deleted = ranges.sorted { $0.location < $1.location }
+        func offset(_ value: Int) -> Int { ReaderHotCommentPageLimit.mappedOffset(value, deleting: deleted) }
+        func range(_ value: NSRange) -> NSRange { ReaderHotCommentPageLimit.mappedRange(value, deleting: deleted) }
+        let remappedBlocks = blocks.map { block in
+            Block(source: block.source, anchor: block.anchor, inserted: range(block.inserted),
+                  translation: range(block.translation), replacesSource: block.replacesSource)
+        }.filter { $0.inserted.length > 0 || $0.replacesSource }
+        let remappedCopies = copies.map { Copy(source: $0.source, display: offset($0.display), length: $0.length) }
+        return Self(mode: mode, sourceText: sourceText, sourceLength: sourceLength,
+                    displayLength: offset(displayLength), blocks: remappedBlocks, copies: remappedCopies)
+    }
+
     /// The attribute marking translated text in the display string.
     static let attribute = NSAttributedString.Key("YDReaderTranslation")
 

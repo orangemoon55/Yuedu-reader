@@ -26,9 +26,9 @@ final class ReaderChapterCommentDecorator: ReaderChapterDecorationSource {
     }
 
     private enum State {
-        case loading
-        /// Nil: no module has the chapter, or it has nothing about it.
-        case ready(ChapterData?)
+        case loading(ChapterData?)
+        /// Empty answers are short-lived: a failed request must not poison the session.
+        case ready(ChapterData?, retryAt: Date?)
     }
 
     /// 設定 → 模組's 「在正文顯示模組的評論」; on unless the reader turned it off.
@@ -44,17 +44,31 @@ final class ReaderChapterCommentDecorator: ReaderChapterDecorationSource {
     /// Every chapter's title, in order, read when a chapter is asked about.
     var chapterTitles: () -> [String] = { [] }
 
+    typealias Progress = @MainActor @Sendable (ChapterData) -> Void
+    typealias StreamingLoad = @MainActor (ChapterCommentQuery, @escaping Progress) async -> ChapterData?
+
     private var states: [Int: State] = [:]
     private var tasks: [Int: Task<Void, Never>] = [:]
-    private let load: (ChapterCommentQuery) async -> ChapterData?
+    private var generation = UUID()
+    private let load: StreamingLoad
+    private let now: () -> Date
 
-    init(load: @escaping (ChapterCommentQuery) async -> ChapterData? = ReaderChapterCommentDecorator.load) {
-        self.load = load
+    /// Existing injected loaders still announce only their final answer.
+    init(load: @escaping (ChapterCommentQuery) async -> ChapterData?, now: @escaping () -> Date = { .now }) {
+        self.load = { query, _ in await load(query) }
+        self.now = now
+    }
+
+    init(streamingLoad: @escaping StreamingLoad = ReaderChapterCommentDecorator.loadStreaming,
+         now: @escaping () -> Date = { .now }) {
+        self.load = streamingLoad
+        self.now = now
     }
 
     /// Another book: nothing of the last one's is kept.
     func reset(work: WorkReviewQuery?, chapterTitles: @escaping () -> [String]) {
         tasks.values.forEach { $0.cancel() }
+        generation = UUID()
         tasks = [:]
         states = [:]
         self.work = work
@@ -81,28 +95,76 @@ final class ReaderChapterCommentDecorator: ReaderChapterDecorationSource {
         return data
     }
 
+    @MainActor private final class Accumulator {
+        var data: ChapterData
+        init(_ data: ChapterData) { self.data = data }
+    }
+
+    /// Counts and hot cards publish independently; a slow author note or chapter list
+    /// no longer holds every paragraph bubble behind all of the other requests.
+    static func loadStreaming(_ query: ChapterCommentQuery, progress: @escaping Progress) async -> ChapterData? {
+        guard let thread = await ChapterComments.thread(for: query), !Task.isCancelled else { return nil }
+        let state = Accumulator(ChapterData(thread: thread, notes: RuleModuleChapterNotes(fetchedAt: .now)))
+        guard let block = thread.module.comments else { return state.data }
+        state.data.notes = await RuleModuleClient().chapterNotes(chapterID: thread.chapter.id, of: thread.record,
+                                                                 by: block, in: thread.module) { notes in
+            state.data.notes = notes
+            progress(state.data)
+        }
+        guard !Task.isCancelled else { return nil }
+        do {
+            let page = try await ChapterComments.comments(in: thread, sort: nil, page: 1)
+            state.data.top = Array(page.comments.prefix(cardComments))
+            state.data.total = page.total
+        } catch is CancellationError { return nil }
+        catch {
+            AppLogger.network("⟐ chapter comments: the chapter's own comments failed", error: SourceFailure.loggable(error),
+                              context: ["module": thread.module.id])
+        }
+        return state.data
+    }
+
+    /// Reaching another page is an explicit retry opportunity, not an unbounded timer.
+    func retryMissingIfNeeded(spine: Int, title: String) {
+        guard case .ready(let data, let deadline?) = states[spine], now() >= deadline else { return }
+        ask(spine: spine, title: title, previous: data)
+    }
+
     private func data(forSpine spine: Int, title: String) -> ChapterData? {
         switch states[spine] {
-        case .ready(let data): return data
-        case .loading: return nil
+        case .ready(let data, let retryAt):
+            if let retryAt, now() >= retryAt {
+                ask(spine: spine, title: title, previous: data)
+                return data
+            }
+            return data
+        case .loading(let data): return data
         case nil:
             ask(spine: spine, title: title)
             return nil
         }
     }
 
-    private func ask(spine: Int, title: String) {
+    private func ask(spine: Int, title: String, previous: ChapterData? = nil) {
         guard Self.isEnabled, let work, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            states[spine] = .ready(nil)
+            states[spine] = .ready(nil, retryAt: now().addingTimeInterval(10))
             return
         }
-        states[spine] = .loading
+        let requestGeneration = generation
+        states[spine] = .loading(previous)
         let query = ChapterCommentQuery(work: work, chapterTitle: title, chapterTitles: chapterTitles())
         tasks[spine] = Task { [weak self, load] in
-            let found = await load(query)
-            guard let self, !Task.isCancelled else { return }
-            let data = found.flatMap { $0.isEmpty ? nil : $0 }
-            self.states[spine] = .ready(data)
+            let found = await load(query) { [weak self] partial in
+                guard let self, self.generation == requestGeneration, !Task.isCancelled else { return }
+                let visible = partial.isEmpty ? previous : partial
+                self.states[spine] = .loading(visible)
+                if visible != nil { self.updates.send(spine) }
+            }
+            guard let self, self.generation == requestGeneration, !Task.isCancelled else { return }
+            let fresh = found.flatMap { $0.isEmpty ? nil : $0 }
+            let data = fresh ?? previous
+            let retryDelay = fresh == nil ? 10.0 : 300.0
+            self.states[spine] = .ready(data, retryAt: self.now().addingTimeInterval(retryDelay))
             self.tasks[spine] = nil
             if data != nil { self.updates.send(spine) }
         }
@@ -117,6 +179,7 @@ final class ReaderChapterCommentDecorator: ReaderChapterDecorationSource {
         let chapterToken = ModuleCommentTargets.token(for: ModuleCommentTarget(thread: data.thread, paragraphID: nil, heading: title))
         let hasParagraphComments = data.thread.module.comments?.paragraph != nil
         var placements = ReaderCommentPlacements()
+        placements.limitsHotCardsPerPage = data.thread.module.id == "local.hanyujian.comments"
 
         /// The paragraph a site's item is about, and the comments tapping it opens: that
         /// paragraph's when the module reads them, else the chapter's.
