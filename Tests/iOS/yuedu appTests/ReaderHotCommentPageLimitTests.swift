@@ -15,18 +15,18 @@ struct ReaderHotCommentPageLimitTests {
     private static let chapterHref = "ydreview://r?d=page-limit-chapter"
     private static let insets = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
 
-    private struct Fixture {
+    private struct Fixture: Sendable {
         let source: String
-        let display: NSAttributedString
+        // Same explicit, immutable layout snapshot as ChapterDocument and ChapterLayout.
+        @LayoutShared var display: NSAttributedString
         let mapping: ReaderTranslationLayout
-        let decorations: ReaderTranslationLayout.Decorations
-        let settings: ReaderRenderSettings
+        let writingMode: ReaderWritingMode
         let bubbleHrefs: [String]
     }
 
     @MainActor
     private func fixture(size: CGSize, fontSize: CGFloat, vertical: Bool,
-                         limited: Bool = true, bilingual: Bool = false) async throws -> sending Fixture {
+                         limited: Bool = true, bilingual: Bool = false) async throws -> Fixture {
         let settings = ReaderRenderSettings(
             theme: "test", textColor: .black, backgroundColor: .white, fontSize: fontSize,
             lineHeightMultiple: 1.4, lineSpacing: 0, paragraphSpacing: 4, letterSpacing: 0,
@@ -72,8 +72,35 @@ struct ReaderHotCommentPageLimitTests {
         let spliced = try #require(ReaderTranslationLayout.splice(
             source, mode: bilingual ? .bilingual : .off, decorations: decorations,
             translation: { _ in bilingual ? "The wind rises." : nil }))
-        return Fixture(source: text, display: spliced.display, mapping: spliced.layout,
-                       decorations: decorations, settings: settings, bubbleHrefs: bubbleHrefs)
+        // The only test that inspects individual pieces does so before leaving their actor.
+        if bilingual { try assertMarkers(decorations, bubbleHrefs: bubbleHrefs) }
+        return Fixture(source: text, display: NSAttributedString(attributedString: spliced.display),
+                       mapping: spliced.layout, writingMode: settings.writingMode, bubbleHrefs: bubbleHrefs)
+    }
+
+    @MainActor
+    private func assertMarkers(_ decorations: ReaderTranslationLayout.Decorations,
+                               bubbleHrefs: [String]) throws {
+        for index in 0..<Self.paragraphCount {
+            let paragraph = try #require(decorations.paragraphs[index])
+            let bubble = try #require(paragraph.trailing)
+            #expect(ReaderHotCommentPageLimit.candidates(in: bubble).isEmpty, "count bubbles are never candidates")
+            #expect(linkLength(bubbleHrefs[index], in: bubble) > 0)
+            try #require(paragraph.below.count == 2)
+            for piece in paragraph.below {
+                let markers = ReaderHotCommentPageLimit.candidates(in: piece)
+                try #require(markers.count == 1)
+                let marker = try #require(markers.first)
+                #expect(!marker.id.isEmpty)
+                #expect(marker.range == NSRange(location: 0, length: piece.length),
+                        "the marker includes all card padding and its newline, not only the image")
+                #expect(linkLength(Self.sharedHotHref, in: piece) > 0)
+            }
+        }
+        try #require(decorations.chapterEnd.count == 2)
+        for piece in decorations.chapterEnd {
+            #expect(ReaderHotCommentPageLimit.candidates(in: piece).isEmpty, "作者说/本章说 are not hot cards")
+        }
     }
 
     private func linkLength(_ href: String, in text: NSAttributedString) -> Int {
@@ -189,12 +216,12 @@ struct ReaderHotCommentPageLimitTests {
                 // hit would make the opening-page parity assertion vacuous.
                 let first = try #require(await paginator.paginateFirstPage(
                     spineIndex: 0, attrStr: NSAttributedString(attributedString: chapter.display), renderSize: size, fontSize: fontSize,
-                    contentInsets: Self.insets, writingMode: chapter.settings.writingMode, revision: revision))
+                    contentInsets: Self.insets, writingMode: chapter.writingMode, revision: revision))
                 #expect(first.isPartial)
                 #expect(first.pageRanges.count == 1)
                 let full = await paginator.paginate(
                     spineIndex: 0, attrStr: NSAttributedString(attributedString: chapter.display), renderSize: size, fontSize: fontSize,
-                    contentInsets: Self.insets, writingMode: chapter.settings.writingMode, revision: revision)
+                    contentInsets: Self.insets, writingMode: chapter.writingMode, revision: revision)
                 let context = "\(size), \(fontSize) pt, vertical=\(vertical)"
                 try assertFinalLayout(full, fixture: chapter, context: context)
                 let partialRange = try #require(first.pageRanges.first)
@@ -222,26 +249,6 @@ struct ReaderHotCommentPageLimitTests {
     func markersElisionsAndBilingualMapping() async throws {
         let size = CGSize(width: 390, height: 844)
         let chapter = try await fixture(size: size, fontSize: 18, vertical: false, bilingual: true)
-        for index in 0..<Self.paragraphCount {
-            let paragraph = try #require(chapter.decorations.paragraphs[index])
-            let bubble = try #require(paragraph.trailing)
-            #expect(ReaderHotCommentPageLimit.candidates(in: bubble).isEmpty, "count bubbles are never candidates")
-            #expect(linkLength(chapter.bubbleHrefs[index], in: bubble) > 0)
-            try #require(paragraph.below.count == 2)
-            for piece in paragraph.below {
-                let markers = ReaderHotCommentPageLimit.candidates(in: piece)
-                try #require(markers.count == 1)
-                let marker = try #require(markers.first)
-                #expect(!marker.id.isEmpty)
-                #expect(marker.range == NSRange(location: 0, length: piece.length),
-                        "the marker includes all card padding and its newline, not only the image")
-                #expect(linkLength(Self.sharedHotHref, in: piece) > 0)
-            }
-        }
-        try #require(chapter.decorations.chapterEnd.count == 2)
-        for piece in chapter.decorations.chapterEnd {
-            #expect(ReaderHotCommentPageLimit.candidates(in: piece).isEmpty, "作者说/本章说 are not hot cards")
-        }
         #expect(chapter.mapping.blocks.contains { $0.translation.length > 0 })
         let unrestricted = NSMutableAttributedString(attributedString: chapter.display)
         unrestricted.removeAttribute(ReaderHotCommentPageLimit.attribute,
