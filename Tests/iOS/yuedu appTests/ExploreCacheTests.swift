@@ -32,9 +32,10 @@ struct ExploreCacheTests {
         await store.write(ForYouCandidates(sourceURL: source.bookSourceUrl, categoryURL: ref.url, fetchedAt: now.addingTimeInterval(-60),
                                           books: [book("Cached", source: source)], contextID: context))
         let requests = CacheRequestProbe()
+        let updated = book("Updated", source: source)
         let pages = DiscoverFirstPages(pageLoader: SectionPageLoader { _, _, _ in
             _ = await requests.next()
-            return [self.book("Updated", source: source)]
+            return [updated]
         }, primeCookies: { _ in }, store: store, lanes: DiscoverRequestLanes(), now: { now })
         let first = try await pages.firstPage(of: ref, in: source).value
         #expect(first.map(\.name) == ["Cached"])

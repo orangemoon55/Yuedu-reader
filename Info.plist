@@ -363,5 +363,9 @@
 			</dict>
 		</dict>
 	</array>
+	<key>CFBundleDisplayName</key>
+	<string>Readcc</string>
+	<key>CFBundleName</key>
+	<string>readcc</string>
 </dict>
 </plist>

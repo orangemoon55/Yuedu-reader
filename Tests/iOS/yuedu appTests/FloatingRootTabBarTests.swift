@@ -36,7 +36,7 @@ final class FloatingRootTabBarTests: XCTestCase {
         XCTAssertGreaterThan(narrow.rows, 1, "Narrow layouts wrap instead of scrolling")
         let searchOnly = FloatingRootTabBarLayout(availableWidth: 320, mainTabCount: 0, hasSearch: true, height: 64)
         XCTAssertEqual(searchOnly.capsuleWidth, 0)
-        XCTAssertEqual(searchOnly.searchDiameter, 48)
+        XCTAssertEqual(searchOnly.searchDiameter, 52)
         XCTAssertEqual(searchOnly.searchHitWidth, 64)
         let compact = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 2, hasSearch: true, height: 56)
         XCTAssertEqual(compact.height, 56)

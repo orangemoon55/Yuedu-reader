@@ -63,8 +63,8 @@ def cloud_only():
 
 
 def identity():
-    bid = os.environ.get("TEST_BUNDLE_ID", "com.local.qingyun")
-    name = os.environ.get("TEST_DISPLAY_NAME", "轻云出岫")
+    bid = os.environ.get("TEST_BUNDLE_ID", "com.local.readcc")
+    name = os.environ.get("TEST_DISPLAY_NAME", "Readcc")
     need(re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+){2,}", bid)
          and len(bid) <= 150 and not bid.lower().startswith(OLD.lower()),
          "新的 Bundle ID 格式不正确，或仍在原应用标识命名空间下。")
@@ -95,9 +95,10 @@ def firebase(bid):
 
 
 def verify_brand_icon():
-    # 使用已确认的「云起书山 · 月夜苍岚」资源，避免云端准备阶段覆盖用户图标。
+    # 使用用户指定的最终read艺术字体版资源，避免云端准备阶段覆盖用户图标。
     brand = json.loads((ROOT / "scripts/qingyun_branding.json").read_text(encoding="utf-8"))
-    need(brand.get("name") == "轻云出岫" and brand.get("palette") == "月夜苍岚",
+    need(brand.get("name") == "Readcc" and brand.get("packageName") == "readcc"
+         and brand.get("bundleID") == "com.local.readcc",
          "应用品牌清单不匹配。")
     assets = ROOT / "Resources/Assets.xcassets"
     directory = assets / "AppIcon.appiconset"
@@ -114,14 +115,14 @@ def verify_brand_icon():
         need((width, height, depth, color) == (1024, 1024, 8, 2),
              "应用图标须为 1024×1024、不透明的 RGB PNG。")
         need(hashlib.sha256(png).hexdigest() == brand.get("iconSHA256"),
-             "应用图标与确认的月夜苍岚原图不一致。")
+             "应用图标与确认的read最终原图不一致。")
     for filename, expected in brand.get("assetSHA256", {}).items():
         path = assets / filename
         need(path.resolve().is_relative_to(assets.resolve()) and path.is_file(),
              "应用内品牌资源缺失或路径无效。")
         need(hashlib.sha256(path.read_bytes()).hexdigest() == expected,
              "应用内图标资源校验失败：" + filename)
-    print("品牌资源复核通过：轻云出岫 · 云起书山 · 月夜苍岚。")
+    print("品牌资源复核通过：Readcc · 最终read图标。")
 
 
 def prepare():
@@ -160,7 +161,7 @@ def prepare():
         info["GIDClientID"] = config["CLIENT_ID"]
         info["CFBundleURLTypes"] = [{"CFBundleTypeRole": "Editor", "CFBundleURLSchemes": [config["REVERSED_CLIENT_ID"]]}]
     info["CFBundleDisplayName"] = name
-    info["CFBundleName"] = name
+    info["CFBundleName"] = "readcc"
     info["ReaderStandalone"] = True
     info["FirebaseDataCollectionDefaultEnabled"] = False
     info["FirebaseCrashlyticsCollectionEnabled"] = False

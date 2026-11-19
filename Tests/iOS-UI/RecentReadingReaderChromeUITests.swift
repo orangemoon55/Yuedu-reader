@@ -34,12 +34,11 @@ final class RecentReadingReaderChromeUITests: XCTestCase {
         let fromShelf = try readerBackButtonFrame(in: app)
         app.buttons["reader_back_button"].tap()
 
-        let searchButton = app.buttons["explore.search"]
+        let searchButton = app.buttons["rootTab.search"]
         XCTAssertTrue(searchButton.waitForExistence(timeout: 10), app.debugDescription)
         searchButton.tap()
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(app.buttons["explore.search.close"].exists, "Explore's magnifier must open the full search page")
         field.tap()
         let recentBook = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
         XCTAssertTrue(recentBook.waitForExistence(timeout: 10), app.debugDescription)

@@ -10,7 +10,7 @@ struct FloatingRootTabBarLayout: Equatable {
     static let topSpacing = DSSpacing.xs
     static let bottomSpacing: CGFloat = 0
     static let defaultIconSize: CGFloat = 26
-    static let compactHeight = DSLayout.minimumTapTarget
+    static let compactHeight = DSLayout.minimumTapTarget + surfacePadding * 2
     static let maximumItemWidth: CGFloat = 80
     static let threeTabItemWidth: CGFloat = 82
     static let maximumWidth: CGFloat = 560
@@ -175,26 +175,13 @@ struct FloatingRootTabBar: View {
     }
 
     private var selectionFill: Color {
-        tint.opacity(contrast == .increased ? 0.28 : (colorScheme == .dark ? 0.22 : 0.12))
+        NavigationGlassCapsule.selectionFill(tint: tint, scheme: colorScheme, contrast: contrast)
     }
 
     private var surface: some View {
-        Capsule(style: .continuous)
-            .fill(.regularMaterial)
-            .overlay {
-                Capsule(style: .continuous)
-                    .fill(reduceTransparency ? Color(uiColor: .secondarySystemBackground)
-                          : Color(red: 0.83, green: 0.77, blue: 0.68).opacity(colorScheme == .dark ? 0.04 : 0.12))
-            }
-            .overlay { Capsule(style: .continuous).fill(tint.opacity(reduceTransparency ? 0.04 : 0.035)) }
-            .overlay {
-                Capsule(style: .continuous).strokeBorder(
-                    Color.white.opacity(contrast == .increased ? 0.65 : (colorScheme == .dark ? 0.16 : 0.55)),
-                    lineWidth: contrast == .increased ? 1.5 : 0.75
-                )
-            }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 12, y: 5)
+        NavigationGlassCapsule(tint: tint, reduceTransparencyOverride: reduceTransparency)
     }
+
 }
 
 /// Pure layout: the width offered by the parent determines wrapping and total height.

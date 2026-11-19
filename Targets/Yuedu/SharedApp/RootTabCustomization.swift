@@ -15,12 +15,11 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Search is opened from Explore's existing magnifier; keep its enum/icon settings
-    /// decodable but do not offer a duplicate entry in bottom or sidebar navigation.
-    static let tabs: [RootTabItem] = [.explore, .bookshelf, .settings]
+    /// Search has its own floating circle beside the main tabs (and a sidebar entry).
+    static let tabs: [RootTabItem] = [.explore, .bookshelf, .settings, .search]
 
-    /// No later-added tab should be automatically restored from older saved preferences.
-    static let addedLater: [RootTabItem] = []
+    /// Restore search for older three-tab preferences; an explicit hidden marker wins.
+    static let addedLater: [RootTabItem] = [.search]
 
     /// What a saved list holds for a tab in `addedLater` the reader hid.
     var hiddenMarker: String { "-" + rawValue }
@@ -279,7 +278,7 @@ extension GlobalSettings {
     /// The tabs shown, in `RootTabItem.tabs` order, then the markers of the later tabs hidden.
     /// A tab added later that the list does not name is shown: the list predates it.
     nonisolated static func sanitizedRootTabVisibleIDs(_ ids: [String]) -> [String] {
-        let requested = Set(ids.filter { $0 != RootTabItem.search.rawValue && $0 != RootTabItem.search.hiddenMarker })
+        let requested = Set(ids)
         let hidden = RootTabItem.addedLater.filter { requested.contains($0.hiddenMarker) && !requested.contains($0.rawValue) }
         var visible = RootTabItem.tabs.filter { tab in
             requested.contains(tab.rawValue) || (RootTabItem.addedLater.contains(tab) && !hidden.contains(tab))
