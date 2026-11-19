@@ -17,11 +17,11 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
 
     @MainActor
     private func launch(bookCount: Int = 12, alternate: Bool = false) throws -> XCUIApplication {
-        let names = ["巔峰", "榜單", "男頻", "女頻", "出版"]
+        let names = ["月票榜單", "榜單", "男頻", "女頻", "出版"]
         let categories: [[String: String]] = try names.enumerated().map { index, name in
             let answer: [String: Any] = ["books": (1...bookCount).map { number in
                 ["name": "分類\(index)-作品\(number)", "author": "測試作者", "kind": "小說 · 連載中",
-                 "cover": "", "url": "https://discovery.fixture/\(index)/\(number)"]
+                 "intro": "測試簡介：這一行應在作者下方。", "cover": "", "url": "https://discovery.fixture/\(index)/\(number)"]
             }]
             let data = try JSONSerialization.data(withJSONObject: answer)
             return ["title": name, "url": "data:application/json;base64," + data.base64EncodedString()]
@@ -44,7 +44,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
             "searchUrl": try offlineSearch("https://discovery.fixture", title: "Witness A"), "ruleSearch": searchRules,
             "exploreUrl": String(decoding: categoryData, as: UTF8.self),
             "ruleExplore": ["bookList": "$.books[*]", "name": "$.name", "author": "$.author",
-                            "bookUrl": "$.url", "coverUrl": "$.cover", "kind": "$.kind"]
+                            "bookUrl": "$.url", "coverUrl": "$.cover", "kind": "$.kind", "intro": "$.intro"]
         ]
         let sources = directory.appendingPathComponent("sources")
         try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
@@ -77,10 +77,38 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     }
 
     @MainActor
+    private func openSearch(_ app: XCUIApplication) {
+        // The iOS 27.3 tree exposes the grouped floating-tab identifier on its
+        // container; its actual Button still exposes the localized title.
+        let tab = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR label == %@", "rootTab.search", "搜索"
+        )).firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 20), app.debugDescription)
+        tab.tap()
+    }
+
+    @MainActor
+    func testSearchFeedUsesCompactRankRows() throws {
+        let app = try launch()
+        openSearch(app)
+        let first = app.buttons["discovery.book.0"].firstMatch
+        let second = app.buttons["discovery.book.1"].firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(second.waitForExistence(timeout: 10), app.debugDescription)
+        let stride = second.frame.minY - first.frame.minY
+        XCTAssertGreaterThan(stride, 90, "Keep space for the 78pt cover and vertical padding")
+        XCTAssertLessThan(stride, 104, "Do not use the old 108pt cover plus row padding")
+        XCTAssertTrue(first.label.contains("測試簡介"), first.label)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "native-search-compact-rank-rows"
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
+    @MainActor
     func testSearchListDoesNotReturnToFirstBookAfterRepeatedUpwardScrolls() throws {
         let app = try launch(bookCount: 48)
-        XCTAssertTrue(app.buttons["rootTab.search"].waitForExistence(timeout: 15), app.debugDescription)
-        app.buttons["rootTab.search"].tap()
+        openSearch(app)
         let list = app.scrollViews["discovery.bookList"].firstMatch
         XCTAssertTrue(list.waitForExistence(timeout: 20), app.debugDescription)
         let first = app.buttons["discovery.book.0"].firstMatch
@@ -137,9 +165,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     @MainActor
     func testAggregateFiltersStayBelowCategoriesWithAndWithoutKeyboard() throws {
         let app = try launch()
-        let tab = app.buttons["rootTab.search"].firstMatch
-        XCTAssertTrue(tab.waitForExistence(timeout: 15), app.debugDescription)
-        tab.tap()
+        openSearch(app)
         assertActualFilterBounds(app)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "native-aggregate-category-filter-spacing"
@@ -155,9 +181,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     @MainActor
     func testTopFieldSubmitsCurrentSourceQueryWithoutSecondEntry() throws {
         let app = try launch(alternate: true)
-        let tab = app.buttons["rootTab.search"].firstMatch
-        XCTAssertTrue(tab.waitForExistence(timeout: 15), app.debugDescription)
-        tab.tap()
+        openSearch(app)
         let switcher = app.buttons["discovery.category.change"].firstMatch
         XCTAssertTrue(switcher.waitForExistence(timeout: 20), app.debugDescription)
         switcher.tap()
@@ -187,7 +211,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     @MainActor
     func testSwitchSourceReplacesEntireCategoryRowAndRestoresSelection() throws {
         let app = try launch(alternate: true)
-        app.buttons["rootTab.search"].tap()
+        openSearch(app)
         let switcher = app.buttons["discovery.category.change"].firstMatch
         XCTAssertTrue(switcher.waitForExistence(timeout: 20), app.debugDescription)
         func pick(_ url: String) {
@@ -229,7 +253,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         let app = try launch()
         XCTAssertTrue(app.buttons["explore.more"].waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertFalse(app.buttons["discovery.category.slot.0"].exists, "Discovery must keep its original HomePage")
-        app.buttons["rootTab.search"].tap()
+        openSearch(app)
         for index in 0..<5 {
             let button = app.buttons["discovery.category.slot.\(index)"]
             XCTAssertTrue(button.waitForExistence(timeout: 20), app.debugDescription)

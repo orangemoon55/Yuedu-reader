@@ -572,7 +572,7 @@ struct DiscoverCover: View {
 /// A chart or 查看全部 row: cover, the rank in plain bold numerals when the category
 /// is a ranking (Apple Books' charts colour none of them), title and author, and the
 /// description where there is room for it.
-private struct DiscoverBookRow: View {
+struct DiscoverBookRow: View {
     let rank: Int?
     let display: DiscoverBookDisplay
     let section: DiscoverShowcaseSection

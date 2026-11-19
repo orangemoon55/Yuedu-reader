@@ -99,16 +99,23 @@ struct DiscoveryFiveCategoryPage: View {
 
 struct DiscoveryBookList: View {
     @ObservedObject var model: DiscoveryBookListModel
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @ScaledMetric(relativeTo: .body) private var coverWidth: CGFloat = 72
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if let section = model.section {
                     ForEach(Array(model.books.enumerated()), id: \.element.id) { index, display in
+                        if index > 0 {
+                            Divider()
+                                .padding(.leading, DSLayout.discoverRowCoverWidth + DSSpacing.md)
+                        }
                         NavigationLink(value: ExploreNavigationRoute.book(display.book)) {
-                            row(display, section: section)
+                            DiscoverBookRow(
+                                rank: section.style == .ranked ? index + 1 : nil,
+                                display: display,
+                                section: section,
+                                showsIntro: true
+                            )
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("discovery.book.\(index)")
@@ -147,25 +154,5 @@ struct DiscoveryBookList: View {
         .refreshable { await model.loadFirst(force: true) }
         .task(id: ObjectIdentifier(model)) { await model.loadFirst() }
         .accessibilityIdentifier("discovery.bookList")
-    }
-
-    private func row(_ display: DiscoverBookDisplay, section: DiscoverShowcaseSection) -> some View {
-        HStack(alignment: .top, spacing: DSSpacing.md) {
-            DiscoverCover(display: display, section: section,
-                          size: CGSize(width: coverWidth, height: coverWidth / DSLayout.discoverCoverAspectRatio))
-            VStack(alignment: .leading, spacing: DSSpacing.md) {
-                Text(display.book.name)
-                    .font(DSFont.headline).foregroundStyle(DSColor.textPrimary)
-                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 2)
-                Text([display.book.author, display.book.kind].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(DSFont.subheadline).foregroundStyle(DSColor.textSecondary)
-                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, DSSpacing.xs)
-        }
-        .padding(.vertical, DSSpacing.md)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
     }
 }
