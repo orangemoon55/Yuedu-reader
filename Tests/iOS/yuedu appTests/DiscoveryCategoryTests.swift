@@ -44,16 +44,18 @@ final class DiscoveryCategoryTests: XCTestCase {
         XCTAssertEqual(reopened.selection, 3)
     }
 
-    func testGenreDirectoryMatchesRealCategoriesWithoutInventingLists() throws {
-        XCTAssertEqual(DiscoveryGenre.all.count, 30)
-        XCTAssertEqual(Set(DiscoveryGenre.all.map(\.id)).count, 30)
-        let history = try XCTUnwrap(DiscoveryGenre.all.first { $0.id == "history" })
-        let fiction = try XCTUnwrap(DiscoveryGenre.all.first { $0.id == "historical-fiction" })
-        XCTAssertNil(history.matchScore(for: "歷史小說"))
-        XCTAssertNotNil(fiction.matchScore(for: "歷史小說"))
-        XCTAssertNotNil(history.matchScore(for: "世界历史"))
-        XCTAssertNil(fiction.matchScore(for: "世界历史"))
-        let arts = try XCTUnwrap(DiscoveryGenre.all.first { $0.id == "arts" })
-        XCTAssertNil(arts.matchScore(for: "Martial Arts"))
+    func testTypesComeFromModuleStoresWithoutImportedBookSources() throws {
+        func module(_ id: String, _ entry: String) throws -> RuleModule {
+            let object: [String: Any] = ["id": id, "title": id, "version": "1.0", "requiredVersion": "3.0.2",
+                "hosts": ["example.com"], "modules": [["id": entry, "title": entry,
+                "request": ["url": "https://example.com/books"], "list": ["items": "$.books[*]", "title": "$.title"],
+                "store": [["layout": "row"]]]]]
+            return try JSONDecoder().decode(RuleModule.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        let originals = try [module("openlibrary", "kids"), module("trends", "fiction"), module("bangumi", "comics")]
+        let listings = ModuleStores.listings(in: originals)
+        XCTAssertEqual(listings.map(\.id), ["trends/fiction", "bangumi/comics", "openlibrary/kids"])
+        XCTAssertEqual(listings[0].route.moduleID, "trends")
+        XCTAssertEqual(listings[2].route.entryID, "kids")
     }
 }

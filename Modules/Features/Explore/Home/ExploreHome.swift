@@ -46,11 +46,8 @@ private struct ExploreHomeRoot: View {
     @ObservedObject private var modules = RuleModuleLibrary.shared
     @AppStorage(ExploreSettings.modeKey) private var storedMode = ExploreMode.publicLibraries.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var discovery = DiscoveryCategoryModel()
-    @State private var categoryEditRequest = UUID()
     @State private var showsMoreChooser = false
     @State private var moreSequence = DismissalSequencedPresentation<ExploreMoreAction>()
-    private enum DiscoveryRoute: Hashable { case types }
 
     @State private var path = NavigationPath()
     @State private var exploreSources: [BookSource] = []
@@ -192,14 +189,7 @@ private struct ExploreHomeRoot: View {
         // the status bar).
         NavigationStack(path: $path) {
             if tabModel.isLoaded {
-                Group {
-                    if isEditing { home }
-                    else {
-                        DiscoveryFiveCategoryPage(model: discovery,
-                            configuration: pageStore.selectedConfiguration.rawValue,
-                            page: pageStore.page, sources: exploreSources, editRequest: categoryEditRequest)
-                    }
-                }
+                home
                 .toolbar { if path.isEmpty { toolbar } }
                 // 編輯首頁 hides the tab bar while the home is being edited, as 書架's 選取 does, and
                 // its ＋ takes the bar's place (maintainer, 2026-10-17).
@@ -208,21 +198,6 @@ private struct ExploreHomeRoot: View {
                 .homeEditDestinations(goBack: { if !path.isEmpty { path.removeLast() } })
                 .remoteLibraryDestinations()
                 .publicLibraryDestinations()
-                .navigationDestination(for: DiscoveryRoute.self) { _ in
-                    DiscoveryGenreDirectory(categories: discovery.catalog) { path.append($0) }
-                }
-                .navigationDestination(for: DiscoveryCategoryChoice.self) { choice in
-                    if let source = exploreSources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
-                        DiscoveryBookList(model: discovery.list(for: choice, source: source))
-                            .navigationTitle(choice.title)
-                            .navigationBarTitleDisplayMode(.inline)
-                            .themedAppSurface(for: .explore)
-                    } else {
-                        ContentUnavailableView {
-                            UnavailableLabel(localized("來源配置已停用或移除"), systemImage: "books.vertical")
-                        }
-                    }
-                }
             } else {
                 // The source library is still being read (about a second at 50 000 sources); the
                 // home's default sections depend on whether it holds any, and are saved for good
@@ -253,13 +228,11 @@ private struct ExploreHomeRoot: View {
         }
         .environment(\.explorePush) { $0.open(in: &path, store: store) }
         .environment(\.homeDefaults, defaultsContext)
-        .task(id: syncKey + [AnyHashable(isEditing)]) {
+        .task(id: syncKey) {
             guard tabModel.isLoaded else { return }
             let page = pageStore.pageOrDefaults(mode: defaultsContext.mode,
                 publicLibrariesAvailable: defaultsContext.publicLibrariesAvailable,
                 languages: defaultsContext.languages)
-            // The normal screen loads only the chosen category, not every legacy home row.
-            guard isEditing else { return }
             await model.sync(with: page, hiddenFromLatest: Set(aggregation.settings.hiddenFromLatest ?? []))
         }
         // After the library is read, as when the home was built only then.
@@ -450,7 +423,6 @@ private struct ExploreHomeRoot: View {
 
     /// Pull to refresh, and ••• → 重新整理.
     private func refresh() async {
-        if !isEditing { await discovery.refreshCurrent(); return }
         model.reload()
         // 訂閱的最新文章 shows what the RSS tab stored; refreshing fetches the feeds too, as the
         // RSS tab's own refresh does (decision 29), then reads them again.
@@ -509,9 +481,11 @@ private struct ExploreHomeRoot: View {
             }
         } else {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { path.append(DiscoveryRoute.types) } label: { Image(systemName: "square.grid.2x2") }
-                    .accessibilityLabel(localized("所有類型"))
-                    .accessibilityIdentifier("discovery.allTypes")
+                Button { path.append(ExploreNavigationRoute.genres) } label: {
+                    Image(systemName: "square.grid.2x2")
+                }
+                .accessibilityLabel(localized("所有類型"))
+                .accessibilityIdentifier("explore.allTypes")
             }
             ToolbarItem(placement: .topBarTrailing) { configurationsButton.rootTabBarButton(overColor: barIsOverColor) }
             // 首頁配置 in its own glass, apart from ••• (maintainer, 2026-10-22).
@@ -567,7 +541,6 @@ private struct ExploreHomeRoot: View {
     private var moreChoices: [DismissalSequencedAction<ExploreMoreAction>] {
         [
             .init(route: .editHome, title: localized("編輯首頁"), systemImage: "pencil"),
-            .init(route: .editCategories, title: localized("設定五個分類"), systemImage: "slider.horizontal.3"),
             .init(route: .readingLanguages, title: localized("中繼資料語言偏好推薦"), systemImage: "globe"),
             .init(route: .aggregatedSources, title: localized("參與聚合的來源"), systemImage: "square.stack.3d.up"),
             .init(route: .refresh, title: localized("重新整理"), systemImage: "arrow.clockwise"),
@@ -579,8 +552,6 @@ private struct ExploreHomeRoot: View {
         switch action {
         case .editHome:
             setEditing(true)
-        case .editCategories:
-            categoryEditRequest = UUID()
         case .readingLanguages, .aggregatedSources:
             // Both are 聚合設定's (decision 36): the languages are its first section.
             path.append(ExploreNavigationRoute.aggregationSettings)
@@ -764,7 +735,6 @@ struct LibraryListing: Identifiable, Hashable {
 
 /// What 探索's ••• does (Phase 5 plan, decisions 30 and 36), from the menu or iOS 17's chooser.
 enum ExploreMoreAction: Hashable {
-    case editCategories
     case editHome
     case readingLanguages
     case aggregatedSources

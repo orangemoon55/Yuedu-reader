@@ -6,6 +6,11 @@ enum RuleModuleRuntimeCompatibility {
     static let version = "3.0.2"
 
     static func validateCapabilities(_ module: RuleModule) throws(RuleModuleRejection) {
+        // Native stores are supported for 3.0.2 manifests. Keep old manifests on the old
+        // capability boundary; never whitelist official module ids. Nested volume mapping
+        // and entry detail TTL share the implemented 3.0.2 runtime boundary.
+        let declared = module.requiredVersion.flatMap(RuleModuleVersion.init)
+        let supportsStore = declared.map { $0 >= RuleModuleVersion(RuleModuleFormat.version3_0_2)! } ?? false
         if module.icon != nil { throw .unsupportedCapability("icon") }
         if module.detail != nil { throw .unsupportedCapability("detail") }
         if module.related != nil { throw .unsupportedCapability("related") }
@@ -15,10 +20,10 @@ enum RuleModuleRuntimeCompatibility {
                 entry.map { (path, $0) }
             }
         for (path, entry) in entries {
-            if entry.store != nil { throw .unsupportedCapability("\(path).store") }
-            if entry.list.volumes != nil { throw .unsupportedCapability("\(path).list.volumes") }
+            if entry.store != nil, !supportsStore { throw .unsupportedCapability("\(path).store") }
+            if entry.list.volumes != nil, !supportsStore { throw .unsupportedCapability("\(path).list.volumes") }
             if entry.searchesAuthors != nil { throw .unsupportedCapability("\(path).searchesAuthors") }
-            if entry.detail?.cacheDuration != nil { throw .unsupportedCapability("\(path).detail.cacheDuration") }
+            if entry.detail?.cacheDuration != nil, !supportsStore { throw .unsupportedCapability("\(path).detail.cacheDuration") }
             // Home section editors have not acquired the conditional/suggestion UI. Global
             // settings have it; reject entry-only fields rather than hide their intended UI.
             for (index, param) in entry.params.enumerated() {

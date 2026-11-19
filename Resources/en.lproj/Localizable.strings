@@ -4565,3 +4565,15 @@
 "來源配置已停用或移除" = "Source Disabled or Removed";
 "尚未設定分類" = "No Categories Configured";
 "選擇已啟用書源的真實欄目，設定上方五個分類。" = "Choose real categories from enabled book sources for the five shortcuts above.";
+
+/* Readcc22: sources and glass */
+"效果套用於浮動控制項與界面卡片；閱讀正文及圖片內容不套用玻璃。" = "Glass applies to controls and interface cards, not reading text or images.";
+"玻璃質感也套用於界面卡片；可隨時關閉。" = "Use glass for interface cards too. This can be turned off at any time.";
+"所選分類已失效" = "Selected Category Unavailable";
+"目前篩選條件下找不到原先選擇的欄目，請重新選擇分類。" = "The selected source no longer offers this category with the current filters. Please choose it again.";
+"找不到這個類型" = "Category Unavailable";
+"提供它的模組已移除或更新。" = "Its module was removed or updated.";
+"這個類型還沒有作品" = "No Works in This Category";
+"還沒有類型" = "No Categories";
+"安裝提供類型的模組後會列在這裡。" = "Installed modules that provide categories are listed here.";
+"書店：更多%@" = "More %@";

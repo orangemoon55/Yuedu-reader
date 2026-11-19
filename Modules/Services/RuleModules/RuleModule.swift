@@ -367,6 +367,16 @@ struct RuleModule: Codable, Hashable, Sendable {
         var layout: String
         /// Parameter values by name.
         var params: [String: String]?
+        /// A grouped section's list cards, resolved within this module only.
+        var shelves: [StoreShelf]? = nil
+    }
+
+    /// One list card in a store. Without `list`, it is the owning entry with these values;
+    /// `belongTo` follows the owning entry's parameters, not the referenced list's.
+    struct StoreShelf: Codable, Hashable, Sendable {
+        var list: String?
+        var params: [String: String]?
+        var belongTo: RuleModule.BelongTo?
     }
 
     /// A `search` or `lookup` record's own page (Open Library: a work's description is at
@@ -596,7 +606,7 @@ extension RuleModule.ListRules {
                        intro: intro ?? "", wordCount: "", lastChapter: "", kind: kind ?? "", language: language ?? "",
                        aliases: aliases ?? "", tags: tags ?? "", publisher: publisher ?? "", isbn: isbn ?? "",
                        series: series ?? "", seriesCovers: seriesCovers ?? "", contentKind: contentKind ?? "",
-                       id: id ?? "")
+                       id: id ?? "", volumes: volumes ?? "")
     }
 }
 

@@ -6,7 +6,9 @@ struct DiscoveryFiveCategoryPage: View {
     let page: HomePage?
     let sources: [BookSource]
     let editRequest: UUID
+    var titleKey: String = "底部發現"
     @State private var settings: SlotSettingsRequest?
+    @Environment(\.searchTabNavigation) private var searchTabNavigation
 
     private struct SlotSettingsRequest: Identifiable { let id = UUID(); let index: Int? }
     private var prepareKey: [AnyHashable] {
@@ -20,34 +22,22 @@ struct DiscoveryFiveCategoryPage: View {
                 else { model.select(index) }
             }, edit: { settings = .init(index: $0) })
 
-            HStack(spacing: DSSpacing.sm) {
-                if let choice = model.current {
-                    Text(sources.first { $0.bookSourceUrl == choice.reference.sourceURL }?.bookSourceName ?? choice.reference.sourceURL)
-                        .lineLimit(1)
-                } else { Text(localized("選擇來源配置與分類")) }
-                Spacer(minLength: DSSpacing.xs)
-                Button { settings = .init(index: model.selection) } label: {
-                    Label(localized("切換"), systemImage: "arrow.triangle.2.circlepath")
-                }
-                .accessibilityIdentifier("discovery.category.change")
-                Button { settings = .init(index: nil) } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel(localized("設定五個分類"))
-                .accessibilityIdentifier("discovery.category.settings")
+            if let choice = model.current,
+               let source = sources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
+                DiscoverySourceControls(source: source, filterValues: choice.filters, onSearch: {
+                    searchTabNavigation?.path.append(ExploreNavigationRoute.searchInSource(sourceURL: source.bookSourceUrl))
+                }, onSwitchSource: {
+                    settings = .init(index: model.selection)
+                }, onReload: { values, items, error in
+                    model.reconcileSource(sourceURL: source.bookSourceUrl, values: values, items: items, error: error)
+                })
+                .id("\(configuration)|\(source.bookSourceUrl)|\(source.lastUpdateTime)")
             }
-            .font(DSFont.caption)
-            .foregroundStyle(DSColor.textSecondary)
-            .padding(.leading, DSSpacing.lg)
-            .padding(.trailing, DSSpacing.xs)
-            .buttonStyle(.plain)
 
             content
         }
         .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
-        .rootTabTitle(localized("底部發現"), onScroll: .minimizesBar)
+        .rootTabTitle(localized(titleKey), onScroll: .minimizesBar)
         .pageBackgroundToolbar(for: .explore)
         .task(id: prepareKey) {
             await model.prepare(configuration: configuration, page: page, sources: sources)
@@ -63,7 +53,16 @@ struct DiscoveryFiveCategoryPage: View {
 
     @ViewBuilder private var content: some View {
         if let choice = model.current {
-            if let source = sources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
+            if model.invalidReferences.contains(choice.reference) {
+                ContentUnavailableView {
+                    UnavailableLabel(localized("所選分類已失效"), systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(model.sourceErrors[choice.reference.sourceURL]
+                         ?? localized("目前篩選條件下找不到原先選擇的欄目，請重新選擇分類。"))
+                } actions: {
+                    Button(localized("更換分類")) { settings = .init(index: model.selection) }
+                }
+            } else if let source = sources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
                 DiscoveryBookList(model: model.list(for: choice, source: source))
                     .id(choice.id)
             } else {
@@ -129,7 +128,7 @@ struct DiscoveryBookList: View {
         }
         .softScrollEdges()
         .refreshable { await model.loadFirst(force: true) }
-        .task { await model.loadFirst() }
+        .task(id: ObjectIdentifier(model)) { await model.loadFirst() }
         .accessibilityIdentifier("discovery.bookList")
     }
 

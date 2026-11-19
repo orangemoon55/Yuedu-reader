@@ -272,13 +272,28 @@ final class ModuleProvider: CollectionBrowsing, HomeSectionProviding {
                 .map { .remote($0, headers: [:]) }
         }
         let cover = allowedCover(item.coverUrl) ?? .generated(seed: title)
-        let summary = WorkSummary(title: title, authors: authors, cover: cover,
+        var summary = WorkSummary(title: title, authors: authors, cover: cover,
                                   blurb: OPDSClient.plainMetadata(item.intro, limit: WorkSummary.blurbLimit),
                                   language: language, contentKind: kind,
                                   category: WorkSummary.category(fromSourceKind: OPDSClient.plainMetadata(item.kind, limit: 200))
                                     ?? entry.tags(of: item).first,
                                   series: OPDSClient.plainMetadata(item.series ?? "", limit: WorkSummary.seriesLimit),
                                   seriesCovers: Array((item.seriesCovers ?? []).lazy.compactMap(allowedCover).prefix(WorkSummary.seriesCoverLimit)))
+        // Read nested records through the exact same metadata, cover and readability gates.
+        // Clear nested volumes even for decoded cache input, so no route can recurse forever.
+        summary.volumes = item.volumes.map { volumes in
+            volumes.enumerated().compactMap { offset, volume -> WorkVolume? in
+                var alone = volume
+                alone.volumes = nil
+                guard case .item(let book, let shown, let opening)? = Self.entry(
+                    alone, of: entry, instance: instance, hasURLRule: hasURLRule,
+                    hosts: hosts, isReadable: isReadable) else { return nil }
+                let cover: CoverReference? = if case .generated? = shown.cover { nil } else { shown.cover }
+                return WorkVolume(id: "\(instance.id)\u{1F}\(itemID)\u{1F}\(offset)", title: shown.title, cover: cover,
+                                  work: volume.bookUrl.isEmpty || !hasURLRule ? nil
+                                    : WorkDetailRoute(record: book, summary: shown, opening: opening))
+            }
+        }
         // A book the module reads has a page of its own: the item's url.
         guard isReadable, hasURLRule, !item.bookUrl.isEmpty else { return .item(record, summary, .bibliographic) }
         var readable = record

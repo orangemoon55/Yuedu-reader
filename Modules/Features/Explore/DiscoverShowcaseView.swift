@@ -123,7 +123,7 @@ private struct DiscoverEmptyState: View {
 /// The source's own controls above its categories, in one scrolling row: each filter
 /// it emits (线路、类型、频道、平台) as a menu of its options, then the categories that
 /// open a web page. legado-E draws the same `select` kinds inline on its explore page.
-private struct DiscoverControlsRow: View {
+struct DiscoverControlsRow: View {
     @ObservedObject var discover: DiscoverViewModel
     let pageItems: [DiscoverCardItem]
     let onOpenPage: (String) -> Void

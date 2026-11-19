@@ -53,9 +53,7 @@ struct SearchTabRoot: View {
     var body: some View {
         @Bindable var navigation = navigation
         NavigationStack(path: $navigation.path) {
-            SourceDiscoveryRoot { entry in
-                browserPresentation = BrowserPresentation(entry: entry)
-            }
+            SearchCategoryHome()
             .toolbar {
                 if let close, navigation.path.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {

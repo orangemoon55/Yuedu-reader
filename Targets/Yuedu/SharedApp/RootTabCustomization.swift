@@ -263,7 +263,7 @@ enum RootTabIconRenderer {
     }
 
     static func sanitizedIconSize(_ value: CGFloat) -> CGFloat {
-        min(max(value, 22), 36)
+        min(max(value, 20), 36)
     }
 }
 

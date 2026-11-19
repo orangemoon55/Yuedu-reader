@@ -187,12 +187,12 @@ struct ReaderHotCommentPageLimitTests {
                 // MUST precede the full request on a fresh paginator, otherwise a full-cache
                 // hit would make the opening-page parity assertion vacuous.
                 let first = try #require(await paginator.paginateFirstPage(
-                    spineIndex: 0, attrStr: chapter.display, renderSize: size, fontSize: fontSize,
+                    spineIndex: 0, attrStr: NSAttributedString(attributedString: chapter.display), renderSize: size, fontSize: fontSize,
                     contentInsets: Self.insets, writingMode: chapter.settings.writingMode, revision: revision))
                 #expect(first.isPartial)
                 #expect(first.pageRanges.count == 1)
                 let full = await paginator.paginate(
-                    spineIndex: 0, attrStr: chapter.display, renderSize: size, fontSize: fontSize,
+                    spineIndex: 0, attrStr: NSAttributedString(attributedString: chapter.display), renderSize: size, fontSize: fontSize,
                     contentInsets: Self.insets, writingMode: chapter.settings.writingMode, revision: revision)
                 let context = "\(size), \(fontSize) pt, vertical=\(vertical)"
                 try assertFinalLayout(full, fixture: chapter, context: context)
@@ -245,7 +245,7 @@ struct ReaderHotCommentPageLimitTests {
         unrestricted.removeAttribute(ReaderHotCommentPageLimit.attribute,
                                      range: NSRange(location: 0, length: unrestricted.length))
         let baseline = await CoreTextPaginator().paginate(
-            spineIndex: 0, attrStr: unrestricted, renderSize: size, fontSize: 18,
+            spineIndex: 0, attrStr: NSAttributedString(attributedString: unrestricted), renderSize: size, fontSize: 18,
             contentInsets: Self.insets, writingMode: .horizontal)
         #expect(baseline.hotCommentElisions.isEmpty)
         #expect(baseline.attributedString.length == chapter.display.length)
@@ -258,7 +258,7 @@ struct ReaderHotCommentPageLimitTests {
         try #require(!rejected.isEmpty, "the control must contain competing cards on real CoreText pages")
         #expect(ReaderHotCommentPageLimit.duplicateIDs(in: chapter.display, pages: baseline.pageRanges) == rejected)
         let limited = await CoreTextPaginator().paginate(
-            spineIndex: 0, attrStr: chapter.display, renderSize: size, fontSize: 18,
+            spineIndex: 0, attrStr: NSAttributedString(attributedString: chapter.display), renderSize: size, fontSize: 18,
             contentInsets: Self.insets, writingMode: .horizontal)
         #expect(!limited.hotCommentElisions.isEmpty, "the final-page limiter actually deletes competing cards")
         try assertFinalLayout(limited, fixture: chapter, context: "bilingual dense control")
@@ -276,7 +276,7 @@ struct ReaderHotCommentPageLimitTests {
         let chapter = try await fixture(size: size, fontSize: 18, vertical: false, limited: false)
         #expect(ReaderHotCommentPageLimit.candidates(in: chapter.display).isEmpty)
         let layout = await CoreTextPaginator().paginate(
-            spineIndex: 0, attrStr: chapter.display, renderSize: size, fontSize: 18,
+            spineIndex: 0, attrStr: NSAttributedString(attributedString: chapter.display), renderSize: size, fontSize: 18,
             contentInsets: Self.insets, writingMode: .horizontal)
         #expect(layout.hotCommentElisions.isEmpty)
         #expect(layout.attributedString.string == chapter.display.string)

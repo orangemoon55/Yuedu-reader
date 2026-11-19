@@ -40,6 +40,7 @@ on:
           - ranked-home
           - discovery-glass
           - reader-comments
+          - readcc22
 
 permissions:
   contents: read

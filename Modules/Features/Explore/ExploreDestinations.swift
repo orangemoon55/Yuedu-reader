@@ -74,6 +74,10 @@ private struct ExploreRouteDestinations: ViewModifier {
             RuleModuleDetailView(moduleID: id)
         case .moduleList(let route):
             ModuleListPage(route: route)
+        case .genres:
+            ModuleGenresPage()
+        case .moduleStore(let route):
+            ModuleStorePage(route: route)
         case .aiRecommendations:
             AIRecommendationModuleView()
         case .moduleManager:

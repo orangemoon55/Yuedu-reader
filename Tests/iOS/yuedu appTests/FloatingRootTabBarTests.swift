@@ -5,6 +5,16 @@ import XCTest
 
 @MainActor
 final class FloatingRootTabBarTests: XCTestCase {
+    func testDefaultTwentyPointGlyphKeepsExpandedHitTargets() {
+        XCTAssertEqual(FloatingRootTabBarLayout.defaultIconSize, 20)
+        XCTAssertEqual(RootTabIconRenderer.sanitizedIconSize(FloatingRootTabBarLayout.defaultIconSize), 20)
+        let layout = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 3, hasSearch: true, height: 64)
+        XCTAssertGreaterThanOrEqual(layout.itemWidth, 48)
+        XCTAssertGreaterThanOrEqual(layout.touchHeight, 44)
+        XCTAssertEqual(layout.searchHitWidth, 64)
+        XCTAssertEqual(RootTabIconRenderer.sanitizedIconSize(28), 28)
+    }
+
     func testWidthsKeepHitTargetsForOneThroughFiveTabs() {
         for width: CGFloat in [240, 320, 375, 390, 430, 744] {
             for count in 1...5 {

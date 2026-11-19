@@ -204,20 +204,34 @@ struct RuleModuleClient: Sendable {
     /// its empty description and tags given from it. `{{url}}` is the item's `url`, as it is at
     /// the start of the address, percent-encoded anywhere else.
     func detailed(_ item: RuleListItem, by detail: RuleModule.Detail, in module: RuleModule) async throws -> RuleListItem {
+        try Task.checkCancellation()
         let values = module.withGlobalValues(["url": item.bookUrl], language: nil)
+        // Sorted JSON avoids ambiguous delimiter keys and fingerprints the full request,
+        // parsing rules, record URL and globals, independently of the item's existing data.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let fingerprint = try encoder.encode(DetailCacheKey(version: module.version, detail: detail, values: values))
+        let file = cacheFile(module: module.id, entry: "detail", values: ["fingerprint": fingerprint.base64EncodedString()])
+        let duration = TimeInterval(detail.cacheDuration ?? 0)
+        if duration > 0, let patch = cached(DetailPatch.self, at: file) {
+            let age = now().timeIntervalSince(patch.fetchedAt)
+            if age >= 0, age < duration {
+                try Task.checkCancellation()
+                return patch.filling(item)
+            }
+        }
         let started = SourcePerfTrace.now
         let page = try await perform(detail.request, values: values, ofRecord: true, in: module)
+        try Task.checkCancellation()
         let engine = module.ruleEngine()
         engine.setContent(page.text, baseUrl: page.baseURL)
-        var item = item
-        if item.intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let rule = detail.intro, !rule.isEmpty {
-            item.intro = engine.getString(ruleStr: rule)
-        }
-        if (item.tags ?? []).isEmpty, let rule = detail.tags, !rule.isEmpty {
-            item.tags = RuleListMapping.values(engine, rule)
-        }
+        let patch = DetailPatch(
+            intro: detail.intro.flatMap { $0.isEmpty ? nil : engine.getString(ruleStr: $0) },
+            tags: detail.tags.flatMap { RuleListMapping.values(engine, $0) }, fetchedAt: now())
+        try Task.checkCancellation()
+        if duration > 0 { save(patch, to: file) }
         SourcePerfTrace.record("module.detail", "module=\(module.id)", since: started, thresholdMs: 0)
-        return item
+        return patch.filling(item)
     }
 
     /// A request as the module wrote it, sent: its templates filled with `values`, then its
@@ -436,6 +450,26 @@ struct RuleModuleClient: Sendable {
     private static let valueAllowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+#?"))
 
     // MARK: - Cache
+
+    private struct DetailCacheKey: Encodable {
+        var version: String
+        var detail: RuleModule.Detail
+        var values: [String: String]
+    }
+
+    /// Only parsed rule data is cached, never a caller's pre-existing metadata.
+    private struct DetailPatch: Codable {
+        var intro: String?
+        var tags: [String]?
+        var fetchedAt: Date
+
+        func filling(_ original: RuleListItem) -> RuleListItem {
+            var item = original
+            if item.intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let intro { item.intro = intro }
+            if (item.tags ?? []).isEmpty, let tags { item.tags = tags }
+            return item
+        }
+    }
 
     /// One file per entry and its values, so a section's own parameters keep their own pages.
     func cacheFile(module: String, entry: String, values: [String: String]) -> URL {

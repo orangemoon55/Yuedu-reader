@@ -663,6 +663,24 @@ enum QingyunNightCopperRetirementMigration {
 /// `typographyRevision` (the global font and Bold Text, which `GlobalAppTypography` draws from
 /// statics) and `readerBackgroundPicturesRevision` (pictures that arrive after the setting
 /// naming them). Themes reach views through the `appThemes` environment value.
+/// One-time upgrade for the app-wide glass preference. An absent cards key means the
+/// user never chose; a stored `false` is an explicit opt-out and must remain so.
+enum InterfaceGlassDefaultsMigration {
+    static let currentVersion = 1
+    static let versionKey = "yd_interface_glass_defaults_migration_version"
+    static let cardsKey = "yd_interface_glass_list_sections"
+
+    @discardableResult
+    static func runIfNeeded(defaults: UserDefaults) -> Bool {
+        guard defaults.integer(forKey: versionKey) < currentVersion else { return false }
+        if defaults.object(forKey: cardsKey) == nil {
+            defaults.set(true, forKey: cardsKey)
+        }
+        defaults.set(currentVersion, forKey: versionKey)
+        return true
+    }
+}
+
 @MainActor
 @Observable
 class GlobalSettings {
@@ -795,11 +813,10 @@ class GlobalSettings {
     /// before 界面效果 existed, and 透明度 100% reproduces that look exactly.
     static let defaultInterfaceFrostedGlass = true
     static let defaultInterfaceGlassTransparency: Double = 1.0
-    /// Off by default. Apple's HIG puts Liquid Glass in the functional layer
-    /// (controls, navigation, transient UI) and keeps it out of the content layer,
-    /// which is where a settings list's cards live — so this stays opt-in, and off
-    /// reproduces the original opaque cards exactly.
-    static let defaultInterfaceGlassCards = false
+    /// Glass is on by default for content cards as well as functional chrome. Existing
+    /// users are handled by `InterfaceGlassDefaultsMigration`: a missing key is the old
+    /// untouched default, while a stored value is an explicit choice and is retained.
+    static let defaultInterfaceGlassCards = true
     nonisolated static let commentBubbleScaleRange: ClosedRange<Double> = 0.5...2.0
     nonisolated static let commentBubbleTextScaleRange: ClosedRange<Double> = 0.2...0.8
     static let defaultCommentBubbleScale = 1.0
@@ -2252,6 +2269,7 @@ class GlobalSettings {
     }
 
     private init() {
+        InterfaceGlassDefaultsMigration.runIfNeeded(defaults: .standard)
         ReaderThemeStorageMigration.migrateDefaults(.standard)
         let retiredNightCopper = QingyunNightCopperRetirementMigration.runIfNeeded(defaults: .standard)
         UserDefaults.standard.removeObject(forKey: "yd_app_lang")

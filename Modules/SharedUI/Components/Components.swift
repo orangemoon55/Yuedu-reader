@@ -237,11 +237,10 @@ struct DSCard<Content: View>: View {
 }
 
 /// The capsule every chip, filter and quick action in a bar is drawn as. Unselected it
-/// sits on the app's floating surface — glass with 外觀主題 › 界面效果 › 毛玻璃 on, its
-/// fill without — so it matches the controls floating over the page; selected it is the
-/// accent with `DSColor.textOnAccent` text. The label is subheadline at medium weight: a semantic text
-/// style, so it scales with Dynamic Type and keeps the system's tracking, with the
-/// weight rather than the size setting it apart from body text.
+/// sits on the shared floating surface. Selected it uses the same quiet selection wash
+/// as floating navigation and a primary-color label; on a glass card its unselected
+/// state stays a plain fill so it never layers glass on glass. The label remains
+/// subheadline at medium weight and keeps the existing Dynamic Type and hit size.
 struct DSCapsuleLabel: View {
     let title: String
     /// A symbol before the title.
@@ -263,6 +262,17 @@ struct DSCapsuleLabel: View {
     /// otherwise make a capsule narrower than it is tall.
     var minWidth: CGFloat? = nil
 
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var selectionFill: Color {
+        NavigationGlassCapsule.selectionFill(
+            tint: DSColor.accent,
+            scheme: colorScheme,
+            contrast: contrast
+        )
+    }
+
     var body: some View {
         HStack(spacing: DSSpacing.xs) {
             if let systemImage {
@@ -276,7 +286,7 @@ struct DSCapsuleLabel: View {
             if let detail {
                 Text(detail)
                     .fontWeight(.regular)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textSecondary))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DSColor.textSecondary))
                     .lineLimit(1)
             }
             if let trailingSystemImage {
@@ -286,17 +296,19 @@ struct DSCapsuleLabel: View {
             }
         }
         .font(DSFont.subheadline.weight(.medium))
-        .foregroundStyle(isSelected ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textPrimary))
+        .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DSColor.textPrimary))
         .padding(.horizontal, fillsWidth ? DSSpacing.sm : DSSpacing.md)
         .padding(.vertical, fillsWidth ? DSSpacing.xs : 0)
         .frame(minWidth: minWidth, maxWidth: fillsWidth ? .infinity : nil, minHeight: DSLayout.capsuleControlHeight)
         .background {
             if isSelected {
-                Capsule().fill(DSColor.accent)
+                // Navigation and chips share one quiet, adaptive selection wash.
+                Capsule(style: .continuous).fill(selectionFill)
             } else if onCard {
-                Capsule().fill(DSColor.neutralControlFill)
+                // A card already owns its surface: never stack another glass layer.
+                Capsule(style: .continuous).fill(DSColor.neutralControlFill)
             } else {
-                Color.clear.floatingSurfaceBackground(in: Capsule())
+                NavigationGlassCapsule(tint: DSColor.accent)
             }
         }
         .contentShape(Capsule())

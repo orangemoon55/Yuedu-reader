@@ -147,6 +147,14 @@ enum RuleModuleValidator {
             try validate(entry, path: path, hosts: hosts, isSearch: false, globals: globalNames, format3: &format3,
                          format301: &format301, format302: &format302)
         }
+        let entriesByID = Dictionary(uniqueKeysWithValues: module.modules.compactMap { entry in
+            entry.id.map { ($0, entry) }
+        })
+        for (index, entry) in module.modules.enumerated() {
+            if let store = entry.store {
+                try validateStore(store, of: entry, path: "modules[\(index)]", entries: entriesByID)
+            }
+        }
         if let search = module.search {
             try validate(search, path: "search", hosts: hosts, isSearch: true, globals: globalNames, format3: &format3,
                          format301: &format301, format302: &format302)
@@ -404,9 +412,10 @@ enum RuleModuleValidator {
             }
         }
         if entry.excludeTags != nil { uses3("\(path).excludeTags") }
-        if let store = entry.store {
+        if entry.store != nil {
             if format302 == nil { format302 = "\(path).store" }
-            try validateStore(store, of: entry, path: path)
+            guard path.hasPrefix("modules[") else { throw .unknownValue(field: "\(path).store", value: "store") }
+            // Cross-list references are checked after every module entry has been validated.
         }
 
         var declared = pagingNames.union(globals)
@@ -491,15 +500,79 @@ enum RuleModuleValidator {
         }
     }
 
-    /// A list's store (`Entry.store`): only a home list has one, each section a layout of books
-    /// with values its own parameters take.
+    /// A store only names lists in its own module. Shelf values belong to the named list,
+    /// while visibility follows the owning entry (the values used to open this store).
     private static func validateStore(_ store: [RuleModule.StoreSection], of entry: RuleModule.Entry,
-                                      path: String) throws(RuleModuleRejection) {
-        throw .unsupportedCapability("\(path).store")
+                                      path: String, entries: [String: RuleModule.Entry]) throws(RuleModuleRejection) {
+        let field = "\(path).store"
+        guard !store.isEmpty, store.count <= maxStoreSections else {
+            throw .unknownValue(field: field, value: String(store.count))
+        }
+        for (index, section) in store.enumerated() {
+            let sectionPath = "\(field)[\(index)]"
+            guard HomeSectionLayout(rawValue: section.layout).isKnown || ["heroCards", "groupedShelves"].contains(section.layout) else {
+                throw .unknownValue(field: "\(sectionPath).layout", value: section.layout)
+            }
+            try validateStoreValues(section.params ?? [:], of: entry, path: "\(sectionPath).params")
+            guard let shelves = section.shelves else {
+                guard section.layout != "groupedShelves" else { throw .missingField("\(sectionPath).shelves") }
+                continue
+            }
+            guard section.layout == "groupedShelves", section.params == nil else {
+                throw .unknownValue(field: "\(sectionPath).layout", value: section.layout)
+            }
+            guard !shelves.isEmpty, shelves.count <= maxStoreShelves else {
+                throw .unknownValue(field: "\(sectionPath).shelves", value: String(shelves.count))
+            }
+            for (offset, shelf) in shelves.enumerated() {
+                let shelfPath = "\(sectionPath).shelves[\(offset)]"
+                let target: RuleModule.Entry
+                if let id = shelf.list {
+                    guard let referenced = entries[id] else { throw .unknownValue(field: "\(shelfPath).list", value: id) }
+                    target = referenced
+                } else {
+                    target = entry
+                }
+                try validateStoreValues(shelf.params ?? [:], of: target, path: "\(shelfPath).params")
+                if let condition = shelf.belongTo {
+                    guard !condition.value.isEmpty, entry.params.contains(where: { $0.name == condition.paramName }) else {
+                        throw .unknownValue(field: "\(shelfPath).belongTo.paramName", value: condition.paramName)
+                    }
+                    for (valueIndex, value) in condition.value.enumerated() {
+                        try validateStoreValue(value, named: condition.paramName, of: entry,
+                                               path: "\(shelfPath).belongTo.value[\(valueIndex)]")
+                    }
+                }
+            }
+        }
     }
 
-    /// The most sections a list's store has.
+    private static func validateStoreValues(_ values: [String: String], of entry: RuleModule.Entry,
+                                            path: String) throws(RuleModuleRejection) {
+        for name in values.keys.sorted() {
+            try validateStoreValue(values[name]!, named: name, of: entry, path: "\(path).\(name)")
+        }
+    }
+
+    private static func validateStoreValue(_ value: String, named name: String, of entry: RuleModule.Entry,
+                                           path: String) throws(RuleModuleRejection) {
+        guard let param = entry.params.first(where: { $0.name == name }), let kind = param.kind else {
+            throw .unknownValue(field: path, value: value)
+        }
+        switch kind {
+        case .enumeration:
+            guard param.enumOptions?.contains(where: { $0.value == value }) == true else {
+                throw .unknownValue(field: path, value: value)
+            }
+        case .count, .page, .offset:
+            guard let number = Int(value), number >= 0 else { throw .unknownValue(field: path, value: value) }
+        case .input, .constant: break
+        }
+    }
+
+    /// Bounded independently: a store has at most twelve sections, each at most 32 list cards.
     static let maxStoreSections = 12
+    static let maxStoreShelves = 32
 
     /// A record's own page: only a search's or a lookup's records are asked for one (a home
     /// list's rows never are), and it gives a description or tags.

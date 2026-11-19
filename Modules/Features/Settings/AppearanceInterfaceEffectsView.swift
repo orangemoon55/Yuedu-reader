@@ -15,7 +15,7 @@ struct AppearanceInterfaceEffectsView: View {
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
             } footer: {
-                Text(localized("效果套用於底部迷你播放器與閱讀器的浮動工具列、控制欄。"))
+                Text(localized("效果套用於浮動控制項與界面卡片；閱讀正文及圖片內容不套用玻璃。"))
                     .dsSectionFooter()
             }
 
@@ -45,7 +45,7 @@ struct AppearanceInterfaceEffectsView: View {
                             .foregroundStyle(DSColor.textPrimary)
                     }
                 } footer: {
-                    Text(localized("系統設計建議玻璃只用於浮動控制項，所以預設關閉。"))
+                    Text(localized("玻璃質感也套用於界面卡片；可隨時關閉。"))
                         .dsSectionFooter()
                 }
                 .interfaceSectionSurface()

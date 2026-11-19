@@ -2,16 +2,23 @@
   "name": "Readcc",
   "packageName": "readcc",
   "shape": "陶瓷R · 明印 · read衬线斜体",
-  "palette": "深炭灰",
+  "palette": "纯白",
   "bundleID": "com.local.readcc",
-  "iconSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
-  "sourceSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
+  "iconSHA256": "228df29a2859159f36fa942d7aea224c4223607c1121ef24e664b6e59b34e10a",
+  "sourceSHA256": "228df29a2859159f36fa942d7aea224c4223607c1121ef24e664b6e59b34e10a",
   "sourceSession": "86E451FF-1F84-413B-8312-1433157570ED",
   "assetSHA256": {
-    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "8f99cc57bad72db74e9681412b6ea955fc87c0ffd52e128bd5f6829cd52ed088",
-    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "8319b88b4a251a70cfea17087c433d4e17526e07abf91cf312f070b3a8dfc7fd",
-    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "8f99cc57bad72db74e9681412b6ea955fc87c0ffd52e128bd5f6829cd52ed088",
-    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "8319b88b4a251a70cfea17087c433d4e17526e07abf91cf312f070b3a8dfc7fd",
-    "YueduLogo.imageset/YueduLogo.png": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb"
+    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "7168f8dce7b3f0dd1d7123353a9afa2419722d9f1804dd62afd59fb5257fce2d",
+    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "813c195396c0bd4bfce55c68cc5db0306480511f8468ac9a209fbb30da97b2bf",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "7168f8dce7b3f0dd1d7123353a9afa2419722d9f1804dd62afd59fb5257fce2d",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "813c195396c0bd4bfce55c68cc5db0306480511f8468ac9a209fbb30da97b2bf",
+    "YueduLogo.imageset/YueduLogo.png": "228df29a2859159f36fa942d7aea224c4223607c1121ef24e664b6e59b34e10a"
+  },
+  "sourceOriginalSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
+  "sourceVariant": "white-background-125pct",
+  "sourceTransformation": {
+    "background": "#FFFFFF",
+    "foregroundScale": 1.25,
+    "wordmarkColor": "#536762"
   }
 }

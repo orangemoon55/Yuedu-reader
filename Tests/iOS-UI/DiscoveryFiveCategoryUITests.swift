@@ -41,7 +41,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         try JSONSerialization.data(withJSONObject: ["schemaVersion": 3, "sections": [], "configurations": []]).write(to: home)
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
-            "-onboarding.completed", "YES", "-yd_source_disclaimer_accepted", "YES", "-no-official-modules",
+            "-onboarding.completed", "YES", "-yd_source_disclaimer_accepted", "YES",
             "-book-source-store-dir", sources.path, "-reset-explore-home",
             "-explore-home-file", home.path,
             "-explore.mode", "sources", "-yd_discovery_five_categories.v1", "",
@@ -53,6 +53,9 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     @MainActor
     func testFiveGlassCategoriesSwitchActualListsAndRestoreBottomSearch() throws {
         let app = try launch()
+        XCTAssertTrue(app.buttons["explore.more"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertFalse(app.buttons["discovery.category.slot.0"].exists, "Discovery must keep its original HomePage")
+        app.buttons["rootTab.search"].tap()
         for index in 0..<5 {
             let button = app.buttons["discovery.category.slot.\(index)"]
             XCTAssertTrue(button.waitForExistence(timeout: 20), app.debugDescription)
@@ -70,12 +73,14 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         shot.name = "discovery-five-glass-categories-native"
         shot.lifetime = .keepAlways
         add(shot)
-        XCTAssertTrue(app.buttons["explore.more"].exists)
         XCTAssertFalse(app.buttons["explore.search"].exists)
-        app.buttons["rootTab.search"].tap()
-        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons["discovery.category.change"].exists)
+        app.buttons["search.allTypes"].tap()
+        XCTAssertTrue(app.navigationBars["所有类型"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["genres.fiction"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertFalse(app.staticTexts["暂无栏目"].exists)
         app.buttons["rootTab.explore"].tap()
-        app.buttons["discovery.allTypes"].tap()
-        XCTAssertTrue(app.navigationBars["所有类型"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons["explore.more"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.buttons["discovery.category.slot.0"].exists)
     }
 }

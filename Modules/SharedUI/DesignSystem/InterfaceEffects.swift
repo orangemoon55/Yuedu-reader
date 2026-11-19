@@ -2,6 +2,17 @@ import SwiftUI
 
 // MARK: - Design System: 界面效果 (Interface Effects)
 
+/// Pure accessibility gate shared by the glass surfaces and their tests.
+enum InterfaceGlassPolicy {
+    static func shouldUseGlass(
+        isEnabled: Bool,
+        systemReduceTransparency: Bool,
+        override: Bool? = nil
+    ) -> Bool {
+        isEnabled && !(override ?? systemReduceTransparency)
+    }
+}
+
 /// The surface every floating element in the app sits on — the mini player, the
 /// reader's toolbars, control bars and quick panels. One entry point so the two
 /// knobs in 外觀主題 › 界面效果 reach all of them:
@@ -45,9 +56,15 @@ extension View {
     /// accent-tinted, reads as a focused field, and its placeholder loses contrast.
     func floatingSurfaceBackground<SurfaceShape: Shape>(
         in shape: SurfaceShape,
-        fill: Color = DSColor.surface
+        fill: Color = DSColor.surface,
+        reduceTransparencyOverride: Bool? = nil
     ) -> some View {
-        modifier(InterfaceSurfaceModifier(shape: shape, fill: fill, glassAllowed: true))
+        modifier(InterfaceSurfaceModifier(
+            shape: shape,
+            fill: fill,
+            glassAllowed: true,
+            reduceTransparencyOverride: reduceTransparencyOverride
+        ))
     }
 
     /// The 光暈 alone, for elements that already own their background and only need
@@ -98,19 +115,22 @@ extension View {
 private struct InterfaceSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     let shape: SurfaceShape
     let fill: Color
-    /// The caller's own gate. Floating chrome passes `true` — it is the functional
-    /// layer, where the system design puts glass unconditionally. Content-layer
-    /// cards pass 分組卡片, which is opt-in.
+    /// Content-layer cards pass 分組卡片; only those explicitly gated surfaces use it.
     let glassAllowed: Bool
+    /// Explicit environment override used by navigation controls in deterministic hosts.
+    var reduceTransparencyOverride: Bool? = nil
 
     @Bindable private var settings = GlobalSettings.shared
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Reduce Transparency is a system-level request for solid surfaces; it outranks
-    /// a cosmetic preference, so it forces the opaque fill regardless of the toggle.
+    /// Reduce Transparency outranks the cosmetic preference and requests a solid fill.
     private var usesFrostedGlass: Bool {
-        glassAllowed && settings.interfaceFrostedGlass && !reduceTransparency
+        InterfaceGlassPolicy.shouldUseGlass(
+            isEnabled: glassAllowed && settings.interfaceFrostedGlass,
+            systemReduceTransparency: reduceTransparency,
+            override: reduceTransparencyOverride
+        )
     }
 
     /// The active theme's card artwork for this appearance, or nil for the plain fill.

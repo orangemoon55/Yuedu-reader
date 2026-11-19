@@ -129,7 +129,9 @@ struct RootTabCustomizationTests {
 
     @Test("tab icon size is clamped")
     func tabIconSizeIsClamped() {
-        #expect(RootTabIconRenderer.sanitizedIconSize(10) == 22)
+        #expect(FloatingRootTabBarLayout.defaultIconSize == 20)
+        #expect(RootTabIconRenderer.sanitizedIconSize(10) == 20)
+        #expect(RootTabIconRenderer.sanitizedIconSize(20) == 20)
         #expect(RootTabIconRenderer.sanitizedIconSize(28) == 28)
         #expect(RootTabIconRenderer.sanitizedIconSize(80) == 36)
     }
@@ -138,6 +140,6 @@ struct RootTabCustomizationTests {
     func zeroTabIconSizeKeepsSystemDefault() {
         #expect(GlobalSettings.sanitizedRootTabIconSize(0) == 0)
         #expect(GlobalSettings.sanitizedRootTabIconSize(-8) == 0)
-        #expect(GlobalSettings.sanitizedRootTabIconSize(10) == 22)
+        #expect(GlobalSettings.sanitizedRootTabIconSize(10) == 20)
     }
 }

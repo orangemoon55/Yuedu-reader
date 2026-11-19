@@ -8,7 +8,7 @@ enum RuleModuleSchema {
         case module, entry, request, list, detail, parameter, option, belongTo, placeholder
         case reading, toc, content, attribution, localization, entryText, paramText
         case comments, chapters, chapterList, commentPage, counts, countList, hot, hotList, authorSay
-        case reviews, reviewList, rating, related, storeSection
+        case reviews, reviewList, rating, related, storeSection, storeShelf
     }
 
     static func validate(_ data: Data) throws(RuleModuleRejection) {
@@ -50,7 +50,8 @@ enum RuleModuleSchema {
         case .reviewList: words = "items text title author date rating likes"
         case .rating: words = "score count distribution"
         case .related: words = "request cacheDuration list"
-        case .storeSection: words = "layout params"
+        case .storeSection: words = "layout params shelves"
+        case .storeShelf: words = "list params belongTo"
         }
         return Set(words.split(separator: " ").map(String.init))
     }
@@ -85,6 +86,8 @@ enum RuleModuleSchema {
             try child("detail", .detail); try array("store", .storeSection)
         case .parameter:
             try array("enumOptions", .option); try child("belongTo", .belongTo); try array("placeholders", .placeholder)
+        case .storeSection: try array("shelves", .storeShelf)
+        case .storeShelf: try child("belongTo", .belongTo)
         case .reading: try child("toc", .toc); try child("content", .content)
         case .localization: try map("entries", .entryText)
         case .entryText: try map("params", .paramText)
