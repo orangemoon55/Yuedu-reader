@@ -28,14 +28,20 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         }
         let filters: [[String: Any]] = [
             ["title": "性別", "type": "select", "chars": ["男頻", "女頻"], "default": "男頻"],
-            ["title": "模式", "type": "select", "chars": ["小說", "漫畫"], "default": "小說"]
+            ["title": "模式", "type": "select", "chars": ["小說", "漫畫"], "default": "小說"],
+            ["title": "段評圖標", "type": "select", "chars": ["開啟", "關閉"], "default": "開啟"]
         ]
         let categoryData = try JSONSerialization.data(withJSONObject: categories.map { $0 as [String: Any] } + filters)
+        let searchRules = ["bookList": "$.books[*]", "name": "$.name", "author": "$.author", "bookUrl": "$.url"]
+        func offlineSearch(_ host: String, title: String) throws -> String {
+            let body = ["books": [["name": title, "author": "Test author", "url": "\(host)/matched"]]]
+            return "data:application/json;base64," + (try JSONSerialization.data(withJSONObject: body)).base64EncodedString()
+        }
         let source: [String: Any] = [
             "id": "D413D0C1-0C00-4C00-8000-123456789012", "bookSourceName": "五分類離線測試",
             "bookSourceUrl": "https://discovery.fixture", "enabled": true, "enabledExplore": true,
             "bookSourceType": 0, "loginUrl": "https://discovery.fixture/login",
-            "searchUrl": "https://discovery.fixture/search?q={{key}}",
+            "searchUrl": try offlineSearch("https://discovery.fixture", title: "Witness A"), "ruleSearch": searchRules,
             "exploreUrl": String(decoding: categoryData, as: UTF8.self),
             "ruleExplore": ["bookList": "$.books[*]", "name": "$.name", "author": "$.author",
                             "bookUrl": "$.url", "coverUrl": "$.cover", "kind": "$.kind"]
@@ -53,7 +59,8 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
             "id": "D413D0C1-0C00-4C00-8000-123456789013", "bookSourceName": "另一來源",
             "bookSourceUrl": "https://other.fixture", "enabled": true, "enabledExplore": alternate, "bookSourceType": 0,
             "exploreUrl": String(decoding: alternateData, as: UTF8.self),
-            "searchUrl": "https://other.fixture/search?q={{key}}", "ruleExplore": source["ruleExplore"]!
+            "searchUrl": try offlineSearch("https://other.fixture", title: "Witness B"), "ruleSearch": searchRules,
+            "ruleExplore": source["ruleExplore"]!
         ]
         try JSONSerialization.data(withJSONObject: [source, other]).write(to: sources.appendingPathComponent("book_sources.json"))
         let home = directory.appendingPathComponent("home.json")
@@ -91,6 +98,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         XCTAssertTrue(firstCategory.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertLessThanOrEqual(app.buttons["discovery.category.change"].frame.maxY, firstCategory.frame.minY + 1)
         XCTAssertLessThanOrEqual(firstCategory.frame.maxY, filters.frame.minY + 1)
+        assertActualFilterBounds(app)
         XCTAssertLessThanOrEqual(first.frame.minY - filters.frame.maxY, 32,
                                  "No blank spacer band between filters and first book")
         XCTAssertLessThanOrEqual(first.frame.minY - list.frame.minY, 32,
@@ -108,23 +116,72 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         add(shot)
     }
 
+    /// Compare the real menu targets with the category, not only the scroll view's outer frame.
     @MainActor
-    func testTopSearchOpensOriginalSearchForCurrentSource() throws {
+    private func assertActualFilterBounds(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let category = app.buttons["discovery.category.slot.0"].firstMatch
+        let viewport = app.scrollViews["discovery.source.filters"].firstMatch
+        XCTAssertTrue(category.waitForExistence(timeout: 10), app.debugDescription, file: file, line: line)
+        XCTAssertTrue(viewport.waitForExistence(timeout: 10), app.debugDescription, file: file, line: line)
+        for id in ["性別", "模式"] {
+            let chip = app.descendants(matching: .any)["discovery.source.filter.\(id)"].firstMatch
+            XCTAssertTrue(chip.waitForExistence(timeout: 10), app.debugDescription, file: file, line: line)
+            let actual = chip.frame
+            XCTAssertGreaterThan(actual.height, 16, "The chip must be visible, not just clipped away", file: file, line: line)
+            XCTAssertGreaterThanOrEqual(actual.minY, category.frame.maxY + 1, "\(id) overlaps the category", file: file, line: line)
+            XCTAssertGreaterThanOrEqual(actual.minY + 1, viewport.frame.minY, file: file, line: line)
+            XCTAssertLessThanOrEqual(actual.maxY, viewport.frame.maxY + 1, file: file, line: line)
+        }
+    }
+
+    @MainActor
+    func testAggregateFiltersStayBelowCategoriesWithAndWithoutKeyboard() throws {
         let app = try launch()
-        app.buttons["rootTab.search"].tap()
-        let entry = app.buttons["search.keywordEntry"].firstMatch
+        let tab = app.buttons["rootTab.search"].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 15), app.debugDescription)
+        tab.tap()
+        assertActualFilterBounds(app)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "native-aggregate-category-filter-spacing"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let entry = app.textFields["search.keywordField"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+        entry.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        assertActualFilterBounds(app)
+    }
+
+    @MainActor
+    func testTopFieldSubmitsCurrentSourceQueryWithoutSecondEntry() throws {
+        let app = try launch(alternate: true)
+        let tab = app.buttons["rootTab.search"].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 15), app.debugDescription)
+        tab.tap()
+        let switcher = app.buttons["discovery.category.change"].firstMatch
+        XCTAssertTrue(switcher.waitForExistence(timeout: 20), app.debugDescription)
+        switcher.tap()
+        let source = app.buttons["discovery.source.choose.https://other.fixture"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 10), app.debugDescription)
+        source.tap()
+
+        let entry = app.textFields["search.keywordField"].firstMatch
         XCTAssertTrue(entry.waitForExistence(timeout: 20), app.debugDescription)
         let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: entry)
         wait(for: [ready], timeout: 10)
-        XCTAssertFalse(app.textFields["search.keywordField"].exists, "The root must not open its own keyboard")
-
         entry.tap()
-        let originalSearch = app.searchFields.firstMatch
-        XCTAssertTrue(originalSearch.waitForExistence(timeout: 15), app.debugDescription)
+        entry.typeText("  Witness  ")
+        XCTAssertTrue(entry.exists, "Tapping the field must not navigate to a second empty search form")
+        XCTAssertFalse(app.searchFields.firstMatch.exists)
+        let keyboardSearch = app.keyboards.buttons["搜索"].firstMatch
+        if keyboardSearch.exists { keyboardSearch.tap() } else { entry.typeText("\n") }
+
+        let result = app.staticTexts["Witness B"].firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertFalse(app.staticTexts["Witness A"].exists, "Do not query the other imported source")
+        XCTAssertEqual(app.searchFields.firstMatch.value as? String, "Witness")
         let scope = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "已选 1 个来源配置")).firstMatch
-        XCTAssertTrue(scope.waitForExistence(timeout: 10), "Only the active source is initially selected\n\(app.debugDescription)")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(scope.exists, app.debugDescription)
     }
 
     @MainActor

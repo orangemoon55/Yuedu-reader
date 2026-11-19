@@ -129,6 +129,10 @@ struct DiscoverControlsRow: View {
     let onOpenPage: (String) -> Void
     @ScaledMetric(relativeTo: .subheadline) private var controlsHeight: CGFloat = DSLayout.minimumTapTarget
 
+    private var viewportHeight: CGFloat {
+        max(DSLayout.minimumTapTarget, controlsHeight) + DSSpacing.xs * 2
+    }
+
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: DSSpacing.sm) {
@@ -146,11 +150,15 @@ struct DiscoverControlsRow: View {
                 }
             }
             .padding(.horizontal, DSSpacing.lg)
-            .padding(.vertical, DSSpacing.xs)
+            .frame(height: viewportHeight)
         }
-        // A horizontal ScrollView otherwise accepts spare vertical space from the
-        // VStack and leaves a large blank band above the independently scrolling feed.
-        .frame(height: controlsHeight + DSSpacing.xs * 2)
+        // The floating tab bar reserves its height as a scroll-content margin for
+        // vertical lists. This horizontal scroller must not inherit that reservation:
+        // it displaces the filter chips upward into the category bar on iPhone.
+        .contentMargins(.vertical, 0, for: .scrollContent)
+        .contentMargins(.vertical, 0, for: .scrollIndicators)
+        .frame(height: viewportHeight)
+        .clipped()
         .scrollIndicators(.hidden)
         .accessibilityIdentifier("discovery.source.filters")
     }
@@ -181,6 +189,7 @@ struct DiscoverControlsRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(value)
+        .accessibilityIdentifier("discovery.source.filter.\(filter.paramKey)")
     }
 
     static func filterTitle(_ title: String) -> String {

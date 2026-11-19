@@ -43,6 +43,7 @@ on:
           - readcc22
           - readcc23
           - readcc24
+          - readcc25
 
 permissions:
   contents: read

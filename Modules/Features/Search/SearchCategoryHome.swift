@@ -9,6 +9,14 @@ struct SearchCategoryHome: View {
     @State private var sources: [BookSource] = []
     @State private var publishedSources: [BookSource] = []
     @State private var sourceRevision = 0
+    @State private var sourceSearchText = ""
+    @FocusState private var sourceSearchFocused: Bool
+
+    private struct SourceSearchRequest: Hashable {
+        let sourceURL: String
+        let query: String
+    }
+
     private var currentSearchSource: BookSource? {
         guard let source = categories.activeSource else { return nil }
         return sources.first {
@@ -18,7 +26,7 @@ struct SearchCategoryHome: View {
 
     var body: some View {
         VStack(spacing: DSSpacing.sm) {
-            sourceSearchEntry
+            sourceSearchField
                 .padding(.horizontal, DSSpacing.lg)
                 .padding(.top, DSSpacing.xs)
             DiscoveryFiveCategoryPage(model: categories,
@@ -30,6 +38,11 @@ struct SearchCategoryHome: View {
             .pageBackgroundToolbar(for: .explore)
             .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
             .accessibilityIdentifier("search.fiveCategoryHome")
+            .navigationDestination(for: SourceSearchRequest.self) { request in
+                SearchView(initialQuery: request.query, sessionScope: SearchSourceScope(
+                    mode: .custom, selectedSourceURLs: [request.sourceURL]
+                ))
+            }
             .navigationDestination(for: DiscoveryCategoryChoice.self) { choice in
                 if let source = sources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
                     DiscoveryBookList(model: categories.list(for: choice, source: source))
@@ -56,28 +69,46 @@ struct SearchCategoryHome: View {
             }
     }
 
-    private var sourceSearchEntry: some View {
-        Button {
-            guard let source = currentSearchSource else { return }
-            navigation?.path.append(ExploreNavigationRoute.searchInSource(sourceURL: source.bookSourceUrl))
-        } label: {
-            HStack(spacing: DSSpacing.sm) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                    .accessibilityHidden(true)
-                Text(localized("搜尋書名或作者"))
-                    .font(DSFont.body)
+    private var sourceSearchField: some View {
+        HStack(spacing: DSSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(DSColor.textSecondary)
+                .accessibilityHidden(true)
+            TextField(localized("搜尋書名或作者"), text: $sourceSearchText)
+                .font(DSFont.body)
+                .focused($sourceSearchFocused)
+                .submitLabel(.search)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .frame(minHeight: DSLayout.minimumTapTarget)
+                .onSubmit { submitSourceSearch() }
+                .accessibilityHint(localized("源內搜索"))
+                .accessibilityIdentifier("search.keywordField")
+            if !sourceSearchText.isEmpty {
+                Button {
+                    sourceSearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(DSColor.textSecondary)
+                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(localized("清除"))
             }
-            .foregroundStyle(DSColor.textSecondary)
-            .padding(.horizontal, DSSpacing.md)
-            .frame(maxWidth: .infinity, minHeight: DSLayout.minimumTapTarget, alignment: .leading)
-            .background { NavigationGlassCapsule(tint: DSColor.accent) }
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .accessibilityHint(localized("源內搜索"))
-        .accessibilityIdentifier("search.keywordEntry")
+        .padding(.leading, DSSpacing.md)
+        .padding(.trailing, sourceSearchText.isEmpty ? DSSpacing.md : DSSpacing.xs)
+        .background { NavigationGlassCapsule(tint: DSColor.accent) }
         .disabled(currentSearchSource == nil || navigation == nil)
+    }
+
+    private func submitSourceSearch() {
+        let term = sourceSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty, let source = currentSearchSource, let navigation else { return }
+        sourceSearchFocused = false
+        navigation.path.append(SourceSearchRequest(sourceURL: source.bookSourceUrl, query: term))
     }
 
     /// Filtering the library once per source update, not during each book-row body.
