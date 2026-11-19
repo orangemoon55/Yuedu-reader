@@ -127,6 +127,7 @@ struct DiscoverControlsRow: View {
     @ObservedObject var discover: DiscoverViewModel
     let pageItems: [DiscoverCardItem]
     let onOpenPage: (String) -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var controlsHeight: CGFloat = DSLayout.minimumTapTarget
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -147,7 +148,11 @@ struct DiscoverControlsRow: View {
             .padding(.horizontal, DSSpacing.lg)
             .padding(.vertical, DSSpacing.xs)
         }
+        // A horizontal ScrollView otherwise accepts spare vertical space from the
+        // VStack and leaves a large blank band above the independently scrolling feed.
+        .frame(height: controlsHeight + DSSpacing.xs * 2)
         .scrollIndicators(.hidden)
+        .accessibilityIdentifier("discovery.source.filters")
     }
 
     /// Each filter reads 「線路：<chosen line>」, its name and its value together; one

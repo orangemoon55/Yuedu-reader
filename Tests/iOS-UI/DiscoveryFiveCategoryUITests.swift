@@ -26,7 +26,11 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
             let data = try JSONSerialization.data(withJSONObject: answer)
             return ["title": name, "url": "data:application/json;base64," + data.base64EncodedString()]
         }
-        let categoryData = try JSONSerialization.data(withJSONObject: categories)
+        let filters: [[String: Any]] = [
+            ["title": "性別", "type": "select", "chars": ["男頻", "女頻"], "default": "男頻"],
+            ["title": "模式", "type": "select", "chars": ["小說", "漫畫"], "default": "小說"]
+        ]
+        let categoryData = try JSONSerialization.data(withJSONObject: categories.map { $0 as [String: Any] } + filters)
         let source: [String: Any] = [
             "id": "D413D0C1-0C00-4C00-8000-123456789012", "bookSourceName": "五分類離線測試",
             "bookSourceUrl": "https://discovery.fixture", "enabled": true, "enabledExplore": true,
@@ -59,6 +63,11 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         XCTAssertTrue(list.waitForExistence(timeout: 20), app.debugDescription)
         let first = app.buttons["discovery.book.0"].firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 20), app.debugDescription)
+        let filters = app.scrollViews["discovery.source.filters"].firstMatch
+        XCTAssertTrue(filters.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertLessThanOrEqual(filters.frame.height, 64, "Horizontal filters must not absorb the feed height")
+        XCTAssertLessThanOrEqual(first.frame.minY - filters.frame.maxY, 32,
+                                 "No blank spacer band between filters and first book")
         XCTAssertLessThanOrEqual(first.frame.minY - list.frame.minY, 32,
                                  "Nested scroll content must not add a second top safe-area gap")
         // Exercise real native inertia/layout, without tapping categories or pulling down.
