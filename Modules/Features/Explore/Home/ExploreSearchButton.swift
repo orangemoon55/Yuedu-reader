@@ -3,7 +3,7 @@ import SwiftUI
 /// Exactly the search icon the root navigation used, including imported day/night artwork.
 struct ExploreSearchButton: View {
     let open: () -> Void
-    var iconSize: CGFloat = 26
+    var iconSize: CGFloat = 20
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
 
@@ -28,7 +28,7 @@ struct ExploreSearchButton: View {
                 .frame(width: iconSize, height: iconSize)
         } else {
             Image(systemName: RootTabItem.search.defaultSystemImage)
-                .font(.system(size: FloatingRootTabBarLayout.defaultIconSize))
+                .font(.system(size: iconSize))
         }
     }
 }
