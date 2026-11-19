@@ -6,7 +6,7 @@ import Testing
 @MainActor
 @Suite("Reader module comments refresh", .serialized)
 struct ReaderCommentRefreshTests {
-    private final class Gate {
+    @MainActor private final class Gate {
         var continuation: CheckedContinuation<ReaderChapterCommentDecorator.ChapterData?, Never>?
         var started: (() -> Void)?
         func value() async -> ReaderChapterCommentDecorator.ChapterData? {
