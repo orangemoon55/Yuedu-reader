@@ -1,4 +1,4 @@
-name: 轻云出岫 · 自用版云端构建
+name: Readcc · 自用版云端构建
 
 on:
   workflow_dispatch:
@@ -6,12 +6,12 @@ on:
       bundle_id:
         description: 新的主应用标识（不要使用原版标识）
         required: true
-        default: com.local.qingyun
+        default: com.local.readcc
         type: string
       display_name:
         description: 桌面显示名称
         required: true
-        default: 轻云出岫
+        default: Readcc
         type: string
       regressions_only:
         description: 只重跑回归，不重复生成已通过的真机包
@@ -65,7 +65,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 轻云出岫-回归-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Readcc-回归-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             trollstore-output/regressions.log
             trollstore-output/regressions.xcresult.zip
@@ -91,7 +91,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: 轻云出岫-IPA-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Readcc-IPA-${{ github.run_id }}-${{ github.run_attempt }}
           path: trollstore-output/*.ipa
           if-no-files-found: error
           retention-days: 3
@@ -100,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 轻云出岫-日志-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Readcc-日志-${{ github.run_id }}-${{ github.run_attempt }}
           path: trollstore-output/build.log
           if-no-files-found: warn
           retention-days: 7

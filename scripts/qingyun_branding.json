@@ -1,14 +1,17 @@
 {
-  "name": "轻云出岫",
-  "shape": "云起书山",
-  "palette": "月夜苍岚",
-  "bundleID": "com.local.qingyun",
-  "iconSHA256": "5883b232ee913bf11bb746ce108ba9608a1c38005d62e936f6045a5e1f3fa533",
+  "name": "Readcc",
+  "packageName": "readcc",
+  "shape": "陶瓷R · 明印 · read衬线斜体",
+  "palette": "深炭灰",
+  "bundleID": "com.local.readcc",
+  "iconSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
+  "sourceSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
+  "sourceSession": "86E451FF-1F84-413B-8312-1433157570ED",
   "assetSHA256": {
-    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "6b0b7b818e80606ee078ecc691ae09c34ec134f081e2198772209294ec7a46e6",
-    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "8d9800b5c6bdb15ba3b5ac888865c6a536f41dc956ac95edd13276ef31df2eaf",
-    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "6b0b7b818e80606ee078ecc691ae09c34ec134f081e2198772209294ec7a46e6",
-    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "8d9800b5c6bdb15ba3b5ac888865c6a536f41dc956ac95edd13276ef31df2eaf",
-    "YueduLogo.imageset/YueduLogo.png": "5883b232ee913bf11bb746ce108ba9608a1c38005d62e936f6045a5e1f3fa533"
+    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "8f99cc57bad72db74e9681412b6ea955fc87c0ffd52e128bd5f6829cd52ed088",
+    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "8319b88b4a251a70cfea17087c433d4e17526e07abf91cf312f070b3a8dfc7fd",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "8f99cc57bad72db74e9681412b6ea955fc87c0ffd52e128bd5f6829cd52ed088",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "8319b88b4a251a70cfea17087c433d4e17526e07abf91cf312f070b3a8dfc7fd",
+    "YueduLogo.imageset/YueduLogo.png": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb"
   }
 }
