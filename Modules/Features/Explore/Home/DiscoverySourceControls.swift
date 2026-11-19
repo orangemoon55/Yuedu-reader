@@ -8,6 +8,7 @@ struct DiscoverySourceControls<Catalog: View>: View {
     let catalog: Catalog
     let onSwitchSource: () -> Void
     let onReload: ([String: String], [DiscoverCardItem], String?, Bool) -> Void
+    @ScaledMetric(relativeTo: .caption) private var sourceTitleSize: CGFloat = 14
     @StateObject private var discover: DiscoverViewModel
     @StateObject private var browser = BrowserState()
     @State private var showsSettings = false
@@ -55,7 +56,7 @@ struct DiscoverySourceControls<Catalog: View>: View {
                 .accessibilityLabel(localized("更多"))
                 .accessibilityIdentifier("discovery.source.more")
                 Text(sourceTitle.isEmpty ? localized("未命名來源配置") : sourceTitle)
-                    .font(DSFont.caption)
+                    .font(GlobalAppTypography.fixedFont(size: sourceTitleSize))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: onSwitchSource) {
