@@ -96,12 +96,11 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
     /// search narrowed its source tiles, which left with them in unified library 5d-1.
     @MainActor
     private func openSearchedBook(_ app: XCUIApplication, query: String, named name: String) {
-        let searchTab = app.buttons["explore.search"]
+        let searchTab = app.buttons["rootTab.search"]
         XCTAssertTrue(searchTab.waitForExistence(timeout: 15), app.debugDescription)
         searchTab.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertTrue(app.buttons["explore.search.close"].exists, "The original full search page must be presented from Explore")
         search.tap()
         search.typeText(query + "\n")
         // iOS 17 lists results in a UIKit table, later systems in a SwiftUI list.
@@ -509,12 +508,11 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-reset-explore-home", "-reset-reading-settings", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
                                "-yd_root_tab_visible_ids", "(bookshelf, explore, settings)"]
         app.launch()
-        let searchButton = app.buttons["explore.search"]
+        let searchButton = app.buttons["rootTab.search"]
         XCTAssertTrue(searchButton.waitForExistence(timeout: 15), app.debugDescription)
         searchButton.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertTrue(app.buttons["explore.search.close"].exists, app.debugDescription)
         search.tap()
         search.typeText("manga fixture\n")
         // iOS 17 lists results in a UIKit table, later systems in a SwiftUI list.
@@ -598,12 +596,11 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-reset-explore-home", "-reset-reading-settings", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
                                "-yd_root_tab_visible_ids", "(bookshelf, explore, settings)"]
         app.launch()
-        let searchButton = app.buttons["explore.search"]
+        let searchButton = app.buttons["rootTab.search"]
         XCTAssertTrue(searchButton.waitForExistence(timeout: 15), app.debugDescription)
         searchButton.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertTrue(app.buttons["explore.search.close"].exists, app.debugDescription)
         search.tap()
         // "fixture" wakes the fixture's pager source: 搜索 keeps fetching its later pages, and
         // publishing them, the whole time the reader below is open — as the reporter's 搜索 did.
@@ -673,12 +670,11 @@ final class DetailReaderBackSwipeUITests: XCTestCase {
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-explore.mode", "sources", "-reset-explore-home", "-reset-reading-settings", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
                                "-yd_root_tab_visible_ids", "(bookshelf, explore, settings)"]
         app.launch()
-        let searchButton = app.buttons["explore.search"]
+        let searchButton = app.buttons["rootTab.search"]
         XCTAssertTrue(searchButton.waitForExistence(timeout: 15), app.debugDescription)
         searchButton.tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertTrue(app.buttons["explore.search.close"].exists, app.debugDescription)
         search.tap()
         search.typeText("manga fixture\n")
         let result = app.descendants(matching: .any)

@@ -38,6 +38,7 @@ on:
           - ui-polish
           - module-compat
           - ranked-home
+          - discovery-glass
 
 permissions:
   contents: read

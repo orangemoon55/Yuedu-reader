@@ -4555,3 +4555,13 @@
 "暫無同作者或同題材作品" = "No related works available";
 "上一本" = "Previous book";
 "下一本" = "Next book";
+
+/* Discover five-category book list */
+"所有類型" = "All Types";
+"分類 %d" = "Category %d";
+"更換分類" = "Change Category";
+"設定五個分類" = "Configure Five Categories";
+"選擇來源配置與分類" = "Choose Source and Category";
+"來源配置已停用或移除" = "Source Disabled or Removed";
+"尚未設定分類" = "No Categories Configured";
+"選擇已啟用書源的真實欄目，設定上方五個分類。" = "Choose real categories from enabled book sources for the five shortcuts above.";

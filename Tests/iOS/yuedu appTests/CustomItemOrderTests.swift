@@ -93,7 +93,7 @@ struct CustomItemOrderTests {
         ]
         for list in lists {
             let old = GlobalSettings.sanitizedRootTabVisibleIDs(list).compactMap(RootTabItem.init(rawValue:))
-            #expect(GlobalSettings.visibleRootTabs(visibleIDs: list, orderIDs: []) == old.filter { $0 != .search })
+            #expect(GlobalSettings.visibleRootTabs(visibleIDs: list, orderIDs: []) == old)
         }
         #expect(GlobalSettings.orderedRootTabs([]) == RootTabItem.tabs)
     }
@@ -102,11 +102,13 @@ struct CustomItemOrderTests {
     func rootTabOrderFiltersHidden() {
         let order = ["search", "settings", "library", "-library", "bookshelf", "explore"]
         let visible = ["explore", "bookshelf", "library", "settings", "search", RootTabItem.library.hiddenMarker]
-        #expect(GlobalSettings.visibleRootTabs(visibleIDs: visible, orderIDs: order) == [.settings, .bookshelf, .explore])
-        #expect(GlobalSettings.orderedRootTabs(order) == [.settings, .bookshelf, .explore])
-        // Removed RSS, 資源庫 and the separate bottom search entry cannot restore tabs.
+        #expect(GlobalSettings.visibleRootTabs(visibleIDs: visible, orderIDs: order) == [.search, .settings, .bookshelf, .explore])
+        #expect(GlobalSettings.orderedRootTabs(order) == [.search, .settings, .bookshelf, .explore])
+        let hiddenSearch = visible.filter { $0 != "search" } + [RootTabItem.search.hiddenMarker]
+        #expect(GlobalSettings.visibleRootTabs(visibleIDs: hiddenSearch, orderIDs: order) == [.settings, .bookshelf, .explore])
+        // Removed RSS and 資源庫 entries cannot restore tabs; search keeps its saved order.
         #expect(GlobalSettings.orderedRootTabs(["rss", "search", "explore", "bookshelf", "library", "settings"])
-            == [.explore, .bookshelf, .settings])
+            == [.search, .explore, .bookshelf, .settings])
     }
 
     // MARK: - Theme data
@@ -173,23 +175,18 @@ struct CustomItemOrderSettingsTests {
         settings.rootTabVisibleIDs = GlobalSettings.defaultRootTabVisibleIDs
 
         settings.moveRootTabs(fromOffsets: IndexSet(integer: 2), toOffset: 0)
-        #expect(settings.visibleRootTabs == [.settings, .explore, .bookshelf])
+        #expect(settings.visibleRootTabs == [.settings, .explore, .bookshelf, .search])
         #expect(UserDefaults.standard.stringArray(forKey: GlobalSettings.rootTabOrderIDsKey)
-            == ["settings", "explore", "bookshelf"])
-        // Which tabs show is untouched, and still saved in the canonical order.
+            == ["settings", "explore", "bookshelf", "search"])
         #expect(settings.rootTabVisibleIDs == GlobalSettings.defaultRootTabVisibleIDs)
-
-        // Hidden tabs keep their place: hide 書架, show it again, it is back after 探索.
         settings.setRootTab(.bookshelf, visible: false)
-        #expect(settings.visibleRootTabs == [.explore, .settings])
+        #expect(settings.visibleRootTabs == settings.orderedRootTabs.filter { $0 != .bookshelf })
         settings.setRootTab(.bookshelf, visible: true)
-        #expect(settings.visibleRootTabs == [.explore, .bookshelf, .settings])
+        #expect(settings.visibleRootTabs == settings.orderedRootTabs)
         #expect(settings.fallbackRootTab(for: .bookshelf) == .bookshelf)
-
-        // Legacy saved orders may still contain Search, but only the three bottom tabs are drawn.
         settings.rootTabOrderIDs = [RootTabItem.search.rawValue, RootTabItem.bookshelf.rawValue]
-        #expect(settings.visibleRootTabs == [.bookshelf, .explore, .settings])
-        #expect(settings.orderedRootTabs == [.bookshelf, .explore, .settings])
+        #expect(settings.visibleRootTabs == [.search, .bookshelf, .explore, .settings])
+        #expect(settings.orderedRootTabs == [.search, .bookshelf, .explore, .settings])
         settings.rootTabOrderIDs = []
     }
 

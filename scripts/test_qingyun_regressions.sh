@@ -57,6 +57,14 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ui-polish ]]; then
     -only-testing:'yuedu appTests/ReaderQuickPanelBackgroundTileTests'
     -only-testing:'yuedu appTests/AccessibilityStepperTests/quickPanelFontSize()'
   )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == discovery-glass ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/DiscoveryCategoryTests'
+    -only-testing:'yuedu appTests/RootTabCustomizationTests'
+    -only-testing:'yuedu appTests/CustomItemOrderTests'
+    -only-testing:'yuedu appTests/FloatingRootTabBarTests'
+    -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests'
+  )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == module-compat ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/commentsValidated()'

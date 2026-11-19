@@ -21,7 +21,6 @@ struct ContentView: View {
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @State private var selectedRootTab: RootTabItem = .explore
     @State private var rootKeyboardVisible = false
-    @State private var homeSettingsNavigation = HomePageSettingsNavigation()
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
     /// A keyword a book source handed back via `java.searchBook`, or a detail page's author,
@@ -113,13 +112,6 @@ struct ContentView: View {
         }
         // For 關於's 新手導覽, and the tabs that open the page a start names.
         .environment(onboarding)
-        .environment(homeSettingsNavigation)
-        .onChange(of: homeSettingsNavigation.request?.id) { _, _ in
-            guard homeSettingsNavigation.request != nil else { return }
-            // A settings action cannot select a tab which was hidden in old preferences.
-            gs.setRootTab(.explore, visible: true)
-            selectedRootTab = .explore
-        }
         // 外觀主題's 淺色／深色 preview is for 外觀主題; another tab is not previewing.
         .onChange(of: selectedRootTab, initial: true) { _, _ in
             gs.endAppearanceSlotPreview()
