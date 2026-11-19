@@ -6,7 +6,7 @@ struct DiscoveryFiveCategoryPage: View {
     let page: HomePage?
     let sources: [BookSource]
     let editRequest: UUID
-    var titleKey: String = "底部發現"
+    var onAllTypes: (() -> Void)? = nil
     @State private var settings: SlotSettingsRequest?
     @Environment(\.searchTabNavigation) private var searchTabNavigation
 
@@ -28,8 +28,9 @@ struct DiscoveryFiveCategoryPage: View {
                     searchTabNavigation?.path.append(ExploreNavigationRoute.searchInSource(sourceURL: source.bookSourceUrl))
                 }, onSwitchSource: {
                     settings = .init(index: model.selection)
-                }, onReload: { values, items, error in
-                    model.reconcileSource(sourceURL: source.bookSourceUrl, values: values, items: items, error: error)
+                }, onAllTypes: onAllTypes, onReload: { values, items, error, refreshBooks in
+                    model.reconcileSource(sourceURL: source.bookSourceUrl, values: values, items: items, error: error,
+                                          refreshBooks: refreshBooks)
                 })
                 .id("\(configuration)|\(source.bookSourceUrl)|\(source.lastUpdateTime)")
             }
@@ -37,8 +38,7 @@ struct DiscoveryFiveCategoryPage: View {
             content
         }
         .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
-        .rootTabTitle(localized(titleKey), onScroll: .minimizesBar)
-        .pageBackgroundToolbar(for: .explore)
+        // SearchCategoryHome owns the single navigation title above the field and chips.
         .task(id: prepareKey) {
             await model.prepare(configuration: configuration, page: page, sources: sources)
         }
@@ -81,6 +81,10 @@ struct DiscoveryFiveCategoryPage: View {
                 Text(model.catalogError ?? localized("選擇已啟用書源的真實欄目，設定上方五個分類。"))
             } actions: {
                 Button(localized("設定五個分類")) { settings = .init(index: nil) }
+                if let onAllTypes {
+                    Button(localized("所有類型"), action: onAllTypes)
+                        .accessibilityIdentifier("search.allTypes")
+                }
             }
         }
     }
@@ -94,7 +98,6 @@ struct DiscoveryBookList: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                Color.clear.frame(height: 0).rootTabTitleScrollAnchor()
                 if let section = model.section {
                     ForEach(Array(model.books.enumerated()), id: \.element.id) { index, display in
                         NavigationLink(value: ExploreNavigationRoute.book(display.book)) {
@@ -102,6 +105,9 @@ struct DiscoveryBookList: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("discovery.book.\(index)")
+                        .task(id: model.loaded) {
+                            await model.loadMoreIfNeeded(after: display.id)
+                        }
                     }
                 }
                 if model.isLoading {
@@ -115,9 +121,10 @@ struct DiscoveryBookList: View {
                 } else if model.hasMore, model.loaded {
                     Button(localized("載入更多")) { Task { await model.loadMore() } }
                         .frame(maxWidth: .infinity, minHeight: DSLayout.minimumTapTarget)
-                        .onAppear { Task { await model.loadMore() } }
                 }
             }
+            // Measure the content container, not a separately recycled zero-height row.
+            .rootTabTitleScrollAnchor()
             .padding(.horizontal, DSSpacing.lg)
             .padding(.bottom, DSSpacing.lg)
         }
@@ -126,6 +133,9 @@ struct DiscoveryBookList: View {
                 ContentUnavailableView { UnavailableLabel(localized("暫無發現內容"), systemImage: "books.vertical") }
             }
         }
+        // The fixed controls above this nested scroll view already occupy the top
+        // safe area. Keep its own content margin explicit (not the refresh inset).
+        .contentMargins(.top, 0, for: .scrollContent)
         .softScrollEdges()
         .refreshable { await model.loadFirst(force: true) }
         .task(id: ObjectIdentifier(model)) { await model.loadFirst() }

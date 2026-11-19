@@ -18,6 +18,9 @@ final class DiscoveryBookListModel: ObservableObject {
     private let pageLoader: SectionPageLoader
     private var nextPage = 2
     private var generation = 0
+    /// Appearance is not a user request: lazy rows may appear repeatedly during layout.
+    /// Try automatic paging once per tail; errors require the existing explicit retry.
+    private var automaticallyRequestedTail: UUID?
 
     init(choice: DiscoveryCategoryChoice, source: BookSource,
          firstPages: DiscoverFirstPages? = nil, pageLoader: SectionPageLoader = .live) {
@@ -56,6 +59,7 @@ final class DiscoveryBookListModel: ObservableObject {
             books = displays
             headers = requestHeaders
             nextPage = 2
+            automaticallyRequestedTail = nil
             hasMore = !displays.isEmpty
             loaded = true
         } catch {
@@ -63,6 +67,22 @@ final class DiscoveryBookListModel: ObservableObject {
             self.error = SourceFailure.loggable(error).localizedDescription
             // Keep cached books on network failure. Retrying must still request page 1.
         }
+    }
+
+    /// Only the actual last row may prefetch. A recycled appearance (or a failure)
+    /// cannot start the same automatic request again; the button/retry still can.
+    func loadMoreIfNeeded(after bookID: UUID) async {
+        guard loaded, hasMore, !isLoading, error == nil,
+              books.last?.id == bookID, automaticallyRequestedTail != bookID else { return }
+        automaticallyRequestedTail = bookID
+        defer {
+            // Leaving the screen cancels a row task, not the reader's right to retry
+            // when they reach the same tail again.
+            if Task.isCancelled, automaticallyRequestedTail == bookID {
+                automaticallyRequestedTail = nil
+            }
+        }
+        await loadMore()
     }
 
     func loadMore() async {

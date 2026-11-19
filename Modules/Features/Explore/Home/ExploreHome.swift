@@ -486,6 +486,7 @@ private struct ExploreHomeRoot: View {
                 }
                 .accessibilityLabel(localized("所有類型"))
                 .accessibilityIdentifier("explore.allTypes")
+                .rootTabBarButton(overColor: barIsOverColor)
             }
             ToolbarItem(placement: .topBarTrailing) { configurationsButton.rootTabBarButton(overColor: barIsOverColor) }
             // 首頁配置 in its own glass, apart from ••• (maintainer, 2026-10-22).

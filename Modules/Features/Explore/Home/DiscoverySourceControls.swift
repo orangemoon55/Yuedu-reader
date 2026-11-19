@@ -7,7 +7,8 @@ struct DiscoverySourceControls: View {
     let filterValues: [String: String]
     let onSearch: () -> Void
     let onSwitchSource: () -> Void
-    let onReload: ([String: String], [DiscoverCardItem], String?) -> Void
+    let onAllTypes: (() -> Void)?
+    let onReload: ([String: String], [DiscoverCardItem], String?, Bool) -> Void
     @StateObject private var discover: DiscoverViewModel
     @StateObject private var browser = BrowserState()
     @State private var showsSettings = false
@@ -15,16 +16,18 @@ struct DiscoverySourceControls: View {
     @State private var pendingAddress: String?
     @State private var browserAddress: BrowserAddress?
     @State private var restoredFilters = false
+    @State private var pendingBookRefresh = false
 
     private struct BrowserAddress: Identifiable { let id = UUID(); let address: String }
 
     init(source: BookSource, filterValues: [String: String], onSearch: @escaping () -> Void,
-         onSwitchSource: @escaping () -> Void,
-         onReload: @escaping ([String: String], [DiscoverCardItem], String?) -> Void) {
+         onSwitchSource: @escaping () -> Void, onAllTypes: (() -> Void)? = nil,
+         onReload: @escaping ([String: String], [DiscoverCardItem], String?, Bool) -> Void) {
         self.source = source
         self.filterValues = filterValues
         self.onSearch = onSearch
         self.onSwitchSource = onSwitchSource
+        self.onAllTypes = onAllTypes
         self.onReload = onReload
         _discover = StateObject(wrappedValue: DiscoverViewModel(source: source))
     }
@@ -36,6 +39,15 @@ struct DiscoverySourceControls: View {
         VStack(spacing: 0) {
             HStack(spacing: DSSpacing.sm) {
                 Menu {
+                    if let onAllTypes {
+                        Button(action: onAllTypes) {
+                            Label(localized("所有類型"), systemImage: "square.grid.2x2")
+                        }
+                        .accessibilityIdentifier("search.allTypes")
+                    }
+                    Button(action: onSearch) {
+                        Label(localized("源內搜索"), systemImage: "magnifyingglass")
+                    }
                     Button { showsSettings = true } label: {
                         Label(localized("發現頁設定"), systemImage: "gearshape")
                     }
@@ -52,13 +64,20 @@ struct DiscoverySourceControls: View {
                         .background { NavigationGlassCapsule(tint: DSColor.accent) }
                 }
                 .accessibilityLabel(localized("更多"))
+                .accessibilityIdentifier("discovery.source.more")
                 Text(sourceTitle.isEmpty ? localized("未命名來源配置") : sourceTitle)
                     .font(DSFont.caption)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button(action: onSearch) { controlLabel("搜索") }
-                    .accessibilityLabel(localized("源內搜索"))
-                Button(action: onSwitchSource) { controlLabel("切換") }
+                Button(action: onSwitchSource) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(DSColor.textPrimary)
+                        .frame(width: 32, height: 32)
+                        .background { NavigationGlassCapsule(tint: DSColor.accent) }
+                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                        .contentShape(Rectangle())
+                }
                     .accessibilityLabel(localized("切換來源配置"))
                     .accessibilityIdentifier("discovery.category.change")
             }
@@ -92,14 +111,6 @@ struct DiscoverySourceControls: View {
             .receive(on: DispatchQueue.main)) { notification in reloadAfterSourceChange(notification) }
     }
 
-    private func controlLabel(_ title: String) -> some View {
-        Text(localized(title))
-            .font(DSFont.body.weight(.medium))
-            .padding(.horizontal, DSSpacing.md)
-            .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
-            .background { NavigationGlassCapsule(tint: DSColor.accent) }
-    }
-
     private func didReload() {
         // Restore a persisted section's filters through the original JS/infoMap path.
         // Once restored, subsequent user/script changes are authoritative.
@@ -114,12 +125,15 @@ struct DiscoverySourceControls: View {
         restoredFilters = true
         let values = Dictionary(discover.filters.map { ($0.paramKey, $0.selected) },
                                 uniquingKeysWith: { first, _ in first })
-        onReload(values, discover.items, discover.exploreError)
+        let refreshBooks = pendingBookRefresh
+        pendingBookRefresh = false
+        onReload(values, discover.items, discover.exploreError, refreshBooks)
     }
 
     private func reloadAfterSourceChange(_ notification: Notification) {
         guard notification.userInfo?["sourceURL"] as? String == source.bookSourceUrl else { return }
         restoredFilters = true
+        pendingBookRefresh = true
         discover.reload(forceRefresh: true)
     }
 

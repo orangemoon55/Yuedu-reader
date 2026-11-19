@@ -16,10 +16,10 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     }
 
     @MainActor
-    private func launch() throws -> XCUIApplication {
+    private func launch(bookCount: Int = 12) throws -> XCUIApplication {
         let names = ["巔峰", "榜單", "男頻", "女頻", "出版"]
         let categories: [[String: String]] = try names.enumerated().map { index, name in
-            let answer: [String: Any] = ["books": (1...12).map { number in
+            let answer: [String: Any] = ["books": (1...bookCount).map { number in
                 ["name": "分類\(index)-作品\(number)", "author": "測試作者", "kind": "小說 · 連載中",
                  "cover": "", "url": "https://discovery.fixture/\(index)/\(number)"]
             }]
@@ -51,6 +51,55 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     }
 
     @MainActor
+    func testSearchListDoesNotReturnToFirstBookAfterRepeatedUpwardScrolls() throws {
+        let app = try launch(bookCount: 48)
+        XCTAssertTrue(app.buttons["rootTab.search"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["rootTab.search"].tap()
+        let list = app.scrollViews["discovery.bookList"].firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 20), app.debugDescription)
+        let first = app.buttons["discovery.book.0"].firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertLessThanOrEqual(first.frame.minY - list.frame.minY, 32,
+                                 "Nested scroll content must not add a second top safe-area gap")
+        // Exercise real native inertia/layout, without tapping categories or pulling down.
+        // Page 2 repeats this fixture's page 1: deduplication must stop pagination normally.
+        for _ in 0..<5 { list.swipeUp(velocity: .slow) }
+        XCTAssertFalse(first.isHittable, "Upward scrolling must not bring page 1 back to the top")
+        let reset = expectation(for: NSPredicate { _, _ in first.isHittable }, evaluatedWith: app)
+        reset.isInverted = true
+        wait(for: [reset], timeout: 3)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "search-list-after-repeated-scroll-no-reset"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    @MainActor
+    func testSearchFieldReplacesTopIconsAndSubmitsOriginalQuery() throws {
+        let app = try launch()
+        app.buttons["rootTab.search"].tap()
+        let field = app.textFields["search.keywordField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertFalse(app.buttons["search.keywordEntry"].exists)
+        XCTAssertFalse(app.buttons["search.allTypes"].exists, "Types belongs in More, not the top toolbar")
+        XCTAssertTrue(app.buttons["discovery.category.change"].exists)
+        XCTAssertGreaterThanOrEqual(app.buttons["discovery.category.change"].frame.width, 44)
+        XCTAssertGreaterThanOrEqual(app.buttons["discovery.category.change"].frame.height, 44)
+        let header = XCTAttachment(screenshot: app.screenshot())
+        header.name = "search-field-and-compact-controls"
+        header.lifetime = .keepAlways
+        add(header)
+        field.tap()
+        field.typeText("  回滚测试  ")
+        app.keyboards.buttons["搜索"].tap()
+        let originalSearch = app.searchFields.firstMatch
+        XCTAssertTrue(originalSearch.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(originalSearch.value as? String, "回滚测试")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    @MainActor
     func testFiveGlassCategoriesSwitchActualListsAndRestoreBottomSearch() throws {
         let app = try launch()
         XCTAssertTrue(app.buttons["explore.more"].waitForExistence(timeout: 15), app.debugDescription)
@@ -75,6 +124,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         add(shot)
         XCTAssertFalse(app.buttons["explore.search"].exists)
         XCTAssertTrue(app.buttons["discovery.category.change"].exists)
+        app.buttons["discovery.source.more"].tap()
         app.buttons["search.allTypes"].tap()
         XCTAssertTrue(app.navigationBars["所有类型"].waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(app.buttons["genres.fiction"].waitForExistence(timeout: 15), app.debugDescription)

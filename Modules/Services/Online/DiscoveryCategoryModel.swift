@@ -123,9 +123,14 @@ final class DiscoveryCategoryModel: ObservableObject {
 
     /// Called only after the selected source's asynchronous reload has completed. Resolve
     /// each slot by its actual source/title, never by a five-slot index or a guessed genre.
-    func reconcileSource(sourceURL: String, values: [String: String], items: [DiscoverCardItem], error: String?) {
+    func reconcileSource(sourceURL: String, values: [String: String], items: [DiscoverCardItem], error: String?,
+                         refreshBooks: Bool = false) {
         applyFilters(values: values, sourceURL: sourceURL)
-        lists = lists.filter { $0.key.choice.reference.sourceURL != sourceURL }
+        // The controls can report the same resolved categories again after appearing or
+        // restoring their filters. ListKey already covers category, filters and source
+        // revision: evicting here replaced a paged model with an empty page-1 model under
+        // the SAME SwiftUI .id(choice.id), discarding the visible list's scroll identity.
+        // A genuinely different category/filter/revision selects a different key itself.
         invalidReferences = invalidReferences.filter { $0.sourceURL != sourceURL }
         sourceErrors[sourceURL] = error
         let references = items.compactMap { item -> ExploreCategoryReference? in
@@ -146,6 +151,15 @@ final class DiscoveryCategoryModel: ObservableObject {
         catalog.removeAll { $0.reference.sourceURL == sourceURL }
         catalog.append(contentsOf: references.map { DiscoveryCategoryChoice(reference: $0, filters: values) })
         save()
+        // Login/user-variable changes may alter books without changing the menu identity.
+        // The caller must distinguish those explicit invalidations from catalog restoration.
+        // Refresh existing instances rather than remounting the ScrollView with empty data.
+        if refreshBooks, error == nil {
+            let matching = lists.filter {
+                $0.key.choice.reference.sourceURL == sourceURL && $0.key.choice.filters == values
+            }.map(\.value)
+            Task { for list in matching { await list.loadFirst(force: true) } }
+        }
     }
 
     func refreshCurrent() async {

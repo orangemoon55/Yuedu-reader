@@ -35,12 +35,13 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc22 ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc22 || "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc23 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/OriginalGenreSourcesTests'
     -only-testing:'yuedu appTests/OriginalGenreRuntimeTests'
     -only-testing:'yuedu appTests/ReadccGlassDesignTests'
     -only-testing:'yuedu appTests/DiscoverySourceControlsTests'
+    -only-testing:'yuedu appTests/DiscoveryScrollStabilityTests'
     -only-testing:'yuedu appTests/DiscoveryCategoryTests'
     -only-testing:'yuedu appTests/RootTabCustomizationTests'
     -only-testing:'yuedu appTests/FloatingRootTabBarTests'

@@ -4,21 +4,40 @@
   "shape": "陶瓷R · 明印 · read衬线斜体",
   "palette": "纯白",
   "bundleID": "com.local.readcc",
-  "iconSHA256": "228df29a2859159f36fa942d7aea224c4223607c1121ef24e664b6e59b34e10a",
-  "sourceSHA256": "228df29a2859159f36fa942d7aea224c4223607c1121ef24e664b6e59b34e10a",
+  "iconSHA256": "6945965849cbe5dba07398468046f239f732661c5b7b97c794519db8bab760ee",
+  "sourceSHA256": "6945965849cbe5dba07398468046f239f732661c5b7b97c794519db8bab760ee",
   "sourceSession": "86E451FF-1F84-413B-8312-1433157570ED",
   "assetSHA256": {
-    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "7168f8dce7b3f0dd1d7123353a9afa2419722d9f1804dd62afd59fb5257fce2d",
-    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "813c195396c0bd4bfce55c68cc5db0306480511f8468ac9a209fbb30da97b2bf",
-    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "7168f8dce7b3f0dd1d7123353a9afa2419722d9f1804dd62afd59fb5257fce2d",
-    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "813c195396c0bd4bfce55c68cc5db0306480511f8468ac9a209fbb30da97b2bf",
-    "YueduLogo.imageset/YueduLogo.png": "228df29a2859159f36fa942d7aea224c4223607c1121ef24e664b6e59b34e10a"
+    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "0cb4fdb9ced082b2d6a47f2c76ac2160f84ab56d74c0d8482aa9d490952994c0",
+    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "a64a3bd3ec4d18a4269810ce87abdc0588864a7a98baca4fa9105f210f0eb600",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "0cb4fdb9ced082b2d6a47f2c76ac2160f84ab56d74c0d8482aa9d490952994c0",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "a64a3bd3ec4d18a4269810ce87abdc0588864a7a98baca4fa9105f210f0eb600",
+    "YueduLogo.imageset/YueduLogo.png": "6945965849cbe5dba07398468046f239f732661c5b7b97c794519db8bab760ee"
   },
   "sourceOriginalSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
-  "sourceVariant": "white-background-125pct",
+  "sourceVariant": "white-background-125pct-sharp-vector",
   "sourceTransformation": {
     "background": "#FFFFFF",
     "foregroundScale": 1.25,
-    "wordmarkColor": "#536762"
+    "wordmarkColor": "#536762",
+    "render": "SVG at 2048px, Lanczos downsample",
+    "edgeRollSigma": [
+      4.2,
+      2.2
+    ],
+    "edgeGlintSigma": [
+      0.7,
+      0.42
+    ],
+    "farCastShadowSigma": [
+      17,
+      11
+    ],
+    "nearCastShadowSigma": [
+      5.7,
+      3.8
+    ],
+    "jointSoftSigma": 0.48,
+    "sourceGeometryChanged": false
   }
 }

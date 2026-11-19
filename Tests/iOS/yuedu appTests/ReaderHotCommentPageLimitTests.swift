@@ -7,7 +7,6 @@ import UIKit
 
 /// Exercises the actual native pagination path: comments are rendered as inline attachments,
 /// spliced into source coordinates, and limited using CoreText's final page ranges.
-@MainActor
 @Suite("Hot comment cards per actual reader page", .serialized)
 struct ReaderHotCommentPageLimitTests {
     private static let paragraphCount = 14
@@ -25,8 +24,9 @@ struct ReaderHotCommentPageLimitTests {
         let bubbleHrefs: [String]
     }
 
+    @MainActor
     private func fixture(size: CGSize, fontSize: CGFloat, vertical: Bool,
-                         limited: Bool = true, bilingual: Bool = false) async throws -> Fixture {
+                         limited: Bool = true, bilingual: Bool = false) async throws -> sending Fixture {
         let settings = ReaderRenderSettings(
             theme: "test", textColor: .black, backgroundColor: .white, fontSize: fontSize,
             lineHeightMultiple: 1.4, lineSpacing: 0, paragraphSpacing: 4, letterSpacing: 0,
@@ -174,6 +174,7 @@ struct ReaderHotCommentPageLimitTests {
 
     @Test("320×500 / 390×844, 18 / 28 pt, horizontal / vertical: one hot card per FINAL page; all bubbles remain",
           arguments: [false, true])
+    @concurrent
     func actualPagination(vertical: Bool) async throws {
         for size in [CGSize(width: 320, height: 500), CGSize(width: 390, height: 844)] {
             for fontSize in [CGFloat(18), CGFloat(28)] {
@@ -217,6 +218,7 @@ struct ReaderHotCommentPageLimitTests {
     }
 
     @Test("only whole hot-card pieces are marked; dense actual pages elide cards and remap bilingual blocks")
+    @concurrent
     func markersElisionsAndBilingualMapping() async throws {
         let size = CGSize(width: 390, height: 844)
         let chapter = try await fixture(size: size, fontSize: 18, vertical: false, bilingual: true)
@@ -271,6 +273,7 @@ struct ReaderHotCommentPageLimitTests {
     }
 
     @Test("sources that do not opt in keep all hot cards, bubbles, and chapter-end cards")
+    @concurrent
     func unmarkedPlacementsAreNotLimited() async throws {
         let size = CGSize(width: 390, height: 844)
         let chapter = try await fixture(size: size, fontSize: 18, vertical: false, limited: false)

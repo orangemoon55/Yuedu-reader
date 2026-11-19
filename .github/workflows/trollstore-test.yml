@@ -41,6 +41,7 @@ on:
           - discovery-glass
           - reader-comments
           - readcc22
+          - readcc23
 
 permissions:
   contents: read
