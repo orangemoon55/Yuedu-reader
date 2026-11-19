@@ -39,6 +39,7 @@ on:
           - module-compat
           - ranked-home
           - discovery-glass
+          - reader-comments
 
 permissions:
   contents: read

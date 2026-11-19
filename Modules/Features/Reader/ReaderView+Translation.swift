@@ -67,6 +67,8 @@ extension ReaderView {
     /// The reader reached another chapter: in scroll mode, bring in translations that
     /// arrived while it was off screen, then ask for what it still lacks.
     func translationChapterDidChange() {
+        let visibleSpine = effectiveScrollMode ? scrollVisibleChapter : currentChapterIndex
+        commentDecorator.retryMissingIfNeeded(spine: visibleSpine, title: chapterTitle(forSpineIndex: visibleSpine))
         // Translations and a module's comments alike: what arrived while the chapter was off screen.
         if effectiveScrollMode, let spine = translationReadingPosition?.spineIndex, staleTranslatedChapters.remove(spine) != nil {
             let request = chapterContentRefreshRequest(chapterIndex: spine)

@@ -186,7 +186,8 @@ extension RuleModuleClient {
     /// Each endpoint owns its TTL. A zero TTL disables that endpoint only, failures
     /// never cache empty data, and a short counts TTL cannot expire a long author note.
     func chapterNotes(chapterID: String, of item: RuleListItem, by comments: RuleModule.Comments,
-                      in module: RuleModule) async -> RuleModuleChapterNotes {
+                      in module: RuleModule,
+                      progress: (@MainActor @Sendable (RuleModuleChapterNotes) -> Void)? = nil) async -> RuleModuleChapterNotes {
         let values = module.withGlobalValues(["id": item.id ?? "", "url": item.bookUrl, "chapterId": chapterID], language: nil)
         var notes = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
         let scripts = module.scripts
@@ -208,27 +209,35 @@ extension RuleModuleClient {
         func page(_ request: RuleModule.Request, _ part: String) async -> (text: String, baseURL: String)? {
             guard !Task.isCancelled else { return nil }
             do { return try await perform(request, values: values, in: module) }
+            catch is CancellationError { return nil }
             catch {
                 AppLogger.network("⟐ module comments: a part of the chapter failed", error: SourceFailure.loggable(error),
                                   context: ["module": module.id, "part": part])
                 return nil
             }
         }
+        func notifyProgress() async {
+            guard !Task.isCancelled else { return }
+            await progress?(notes)
+        }
         if let block = comments.counts {
             if let value = read("counts", ttl: block.cacheDuration) {
                 notes.counts = value.counts; notes.paragraphCount = value.paragraphCount
+                await notifyProgress()
             } else if let answer = await page(block.request, "counts") {
                 let result = await Self.readCounts(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
                 notes.counts = result.counts; notes.paragraphCount = result.paragraphCount
                 var value = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
                 value.counts = result.counts; value.paragraphCount = result.paragraphCount
                 if !Task.isCancelled { keep(value, part: "counts", ttl: block.cacheDuration) }
+                await notifyProgress()
             }
         }
         if let block = comments.hot {
             if let value = read("hot", ttl: block.cacheDuration) {
                 notes.hot = value.hot
                 if notes.paragraphCount == nil { notes.paragraphCount = value.paragraphCount }
+                await notifyProgress()
             } else if let answer = await page(block.request, "hot") {
                 let result = await Self.readHot(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
                 notes.hot = result.hot
@@ -236,16 +245,19 @@ extension RuleModuleClient {
                 var value = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
                 value.hot = result.hot; value.paragraphCount = result.paragraphCount
                 if !Task.isCancelled { keep(value, part: "hot", ttl: block.cacheDuration) }
+                await notifyProgress()
             }
         }
         if let block = comments.authorSay {
             if let value = read("authorSay", ttl: block.cacheDuration) {
                 notes.authorSay = value.authorSay
+                await notifyProgress()
             } else if let answer = await page(block.request, "authorSay") {
                 notes.authorSay = await Self.readAuthorSay(answer.text, baseURL: answer.baseURL, by: block, scripts: scripts)
                 var value = RuleModuleChapterNotes(fetchedAt: now(), version: module.version)
                 value.authorSay = notes.authorSay
                 if !Task.isCancelled { keep(value, part: "authorSay", ttl: block.cacheDuration) }
+                await notifyProgress()
             }
         }
         SourcePerfTrace.record("module.comments.notes",

@@ -17,7 +17,7 @@ finish() {
   fi
   if [[ -n "${DEST:-}" ]]; then
     local container_path
-    container_path="$(xcrun simctl get_app_container "${DEST#id=}" com.local.qingyun data 2>/dev/null || true)"
+    container_path="$(xcrun simctl get_app_container "${DEST#id=}" "${TEST_BUNDLE_ID:-com.local.readcc}" data 2>/dev/null || true)"
     for preview_root in "$container_path/Documents/qingyun-layout-preview" "$container_path/tmp/qingyun-layout-preview"; do
       if [[ -d "$preview_root" ]]; then
         mkdir -p trollstore-output/layout-preview
@@ -35,7 +35,15 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == settings-ui ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == reader-comments ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/ReaderHotCommentPageLimitTests'
+    -only-testing:'yuedu appTests/ReaderCommentRefreshTests'
+    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/decorator()'
+    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/splice()'
+    -only-testing:'yuedu appTests/ModuleScriptAndCommentsTests/paging()'
+  )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == settings-ui ]]; then
   TEST_SELECTION=(-only-testing:'yuedu appUITests/ReaderSettingsEntryUITests')
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == chapter-title ]]; then
   TEST_SELECTION=(-only-testing:'yuedu appTests/ReaderChapterTitlePresentationTests')

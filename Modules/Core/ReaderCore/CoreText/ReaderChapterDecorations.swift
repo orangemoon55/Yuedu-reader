@@ -22,6 +22,8 @@ struct ReaderCommentPlacements: Equatable, Sendable {
 
     /// By the paragraph's position in the list the source was asked with.
     var bubbles: [Int: Bubble] = [:]
+    /// Only hot cards are reduced, after actual pagination; paragraph bubbles stay intact.
+    var limitsHotCardsPerPage = false
     /// Under a paragraph, by the same position.
     var cards: [Int: [Card]] = [:]
     /// After the chapter's last paragraph.
@@ -86,9 +88,14 @@ struct ReaderCommentPieces {
             decorations.paragraphs[position, default: .init()].trailing = piece
         }
         for (position, cards) in placements.cards.sorted(by: { $0.key < $1.key }) where paragraphs.indices.contains(position) {
-            for card in cards {
-                let piece = await self.card(card.content, href: card.href)
-                guard piece.length > 0 else { continue }
+            for (index, card) in cards.enumerated() {
+                let rendered = await self.card(card.content, href: card.href)
+                guard rendered.length > 0 else { continue }
+                let piece = NSMutableAttributedString(attributedString: rendered)
+                if placements.limitsHotCardsPerPage, card.content.kind == .hotComment {
+                    piece.addAttribute(ReaderHotCommentPageLimit.attribute, value: "\(position):\(index)",
+                                       range: NSRange(location: 0, length: piece.length))
+                }
                 decorations.paragraphs[position, default: .init()].below.append(piece)
             }
         }
