@@ -204,8 +204,11 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         XCTAssertTrue(result.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertFalse(app.staticTexts["Witness A"].exists, "Do not query the other imported source")
         XCTAssertEqual(app.searchFields.firstMatch.value as? String, "Witness")
-        let scope = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "已选 1 个来源配置")).firstMatch
-        XCTAssertTrue(scope.exists, app.debugDescription)
+        // The capsule's spoken label is 搜索范围; its displayed scope is its value.
+        let scope = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND value == %@", "搜索范围", "已选 1 个来源配置"
+        )).firstMatch
+        XCTAssertTrue(scope.waitForExistence(timeout: 10), app.debugDescription)
     }
 
     @MainActor

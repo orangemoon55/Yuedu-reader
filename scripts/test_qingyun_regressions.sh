@@ -37,22 +37,7 @@ bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc28 ]]; then
   TEST_SELECTION=(
-    -only-testing:'yuedu appTests/DiscoveryCategoryTests'
-    -only-testing:'yuedu appTests/DiscoverySourceControlsTests'
-    -only-testing:'yuedu appTests/DiscoveryScrollStabilityTests'
-    -only-testing:'yuedu appTests/DiscoverySourcePinsTests'
-    -only-testing:'yuedu appTests/LoginFormLayoutTests'
-    -only-testing:'yuedu appTests/ReaderQuickPanelBackgroundTileTests'
-    -only-testing:'yuedu appTests/FixedPageProcessorsTests'
-    -only-testing:'yuedu appTests/FixedPageWebtoonLayoutTests'
-    -only-testing:'yuedu appTests/FixedPagePositionSaveTests'
-    -only-testing:'yuedu appTests/ChangeSourceTOCResolutionTests'
-    -only-testing:'yuedu appTests/MangaContentPreservationTests'
-    -only-testing:'yuedu appTests/SourceCallBackTests'
-    -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testUnlimitedCategoriesAndSettingsApply'
-    -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testSourcePickerPinAndReopen'
     -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testTopFieldSubmitsCurrentSourceQueryWithoutSecondEntry'
-    -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testSearchFeedUsesCompactRankRows'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc25 || "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc26 ]]; then
   TEST_SELECTION=(
