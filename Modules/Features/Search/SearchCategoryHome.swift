@@ -25,10 +25,10 @@ struct SearchCategoryHome: View {
     }
 
     var body: some View {
-        VStack(spacing: DSSpacing.sm) {
+        VStack(spacing: DSSpacing.xs) {
             sourceSearchField
                 .padding(.horizontal, DSSpacing.lg)
-                .padding(.top, DSSpacing.xs)
+                .padding(.top, DSSpacing.xxs)
             DiscoverySourceCategoryPage(model: categories,
                 configuration: pageStore.selectedConfiguration.rawValue,
                 page: pageStore.page, sources: sources,

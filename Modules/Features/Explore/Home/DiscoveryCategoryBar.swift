@@ -40,7 +40,8 @@ struct DiscoveryCategoryBar: View {
             }
         }
         .padding(.horizontal, DSSpacing.lg)
-        .padding(.vertical, DSSpacing.sm)
+        .padding(.top, DSSpacing.xs)
+        .padding(.bottom, DSSpacing.xxs)
     }
 }
 

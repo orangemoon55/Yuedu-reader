@@ -354,4 +354,35 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         app.buttons["discovery.source.close"].firstMatch.tap()
     }
 
+
+    @MainActor
+    func testCompactHeaderKeepsEqualReferenceButtonsAndSeparateFilterRow() throws {
+        let app = try launch()
+        openSearch(app)
+        let more = app.buttons["discovery.source.more"].firstMatch
+        let change = app.buttons["discovery.category.change"].firstMatch
+        let categories = app.scrollViews["discovery.category.bar"].firstMatch
+        let filters = app.scrollViews["discovery.source.filters"].firstMatch
+        let first = app.buttons["discovery.book.0"].firstMatch
+        for item in [more, change, categories, filters, first] {
+            XCTAssertTrue(item.waitForExistence(timeout: 20), app.debugDescription)
+        }
+        // The circles are both 32pt by construction; their accessible targets must
+        // remain 44pt rather than becoming harder to tap as whitespace tightens.
+        XCTAssertEqual(more.frame.width, change.frame.width, accuracy: 1)
+        XCTAssertEqual(more.frame.height, change.frame.height, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(more.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(change.frame.height, 44)
+        let sourceBottom = max(more.frame.maxY, change.frame.maxY)
+        XCTAssertGreaterThanOrEqual(categories.frame.minY, sourceBottom)
+        XCTAssertLessThanOrEqual(categories.frame.minY - sourceBottom, 8)
+        XCTAssertGreaterThanOrEqual(filters.frame.minY, categories.frame.maxY)
+        XCTAssertLessThanOrEqual(filters.frame.minY - categories.frame.maxY, 6)
+        XCTAssertLessThanOrEqual(first.frame.minY - filters.frame.maxY, 12)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "native-compact-search-equal-32pt-reference-buttons"
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
 }

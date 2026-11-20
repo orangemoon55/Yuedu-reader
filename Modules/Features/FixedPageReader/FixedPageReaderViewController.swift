@@ -30,11 +30,13 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     private(set) var reader: (any FixedPageModeReader)?
     private var loadToken = UUID()
     private var sourceChangeSuspended = false
+    private(set) var hasExited = false
+    private var chapterLoadTask: Task<Void, Never>?
 
     /// Called before the async switch. Keep the page on screen but fence off its callbacks,
     /// fetch continuations and delayed saves until a fresh source controller replaces it.
     private func setSourceChangeSuspended(_ suspended: Bool) {
-        guard sourceChangeSuspended != suspended else { return }
+        guard !hasExited, sourceChangeSuspended != suspended else { return }
         if suspended {
             reader?.stopAutoScroll()
             saveTask?.cancel()
@@ -120,6 +122,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         super.viewDidLoad()
         view.backgroundColor = .black
 
+        state.onPrepareForExit = { [weak self] in self?.prepareForExit() }
         state.onSetSourceChangeSuspended = { [weak self] in self?.setSourceChangeSuspended($0) }
         state.onJumpToPage = { [weak self] page in self?.showPage(page) }
         state.onSelectChapter = { [weak self] index in self?.selectTableOfContentsEntry(at: index) }
@@ -127,7 +130,10 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         state.onNextChapter = { [weak self] in self?.loadNextChapter() }
         state.onPrevChapter = { [weak self] in self?.loadPreviousChapter() }
         state.onStopAutoScroll = { [weak self] in self?.reader?.stopAutoScroll() }
-        state.onToggleAutoScroll = { [weak self] in self?.reader?.toggleAutoScroll() }
+        state.onToggleAutoScroll = { [weak self] in
+            guard let self, !self.hasExited else { return }
+            self.reader?.toggleAutoScroll()
+        }
         state.onReload = { [weak self] in
             guard let self else { return }
             self.loadChapter(at: self.chapterIndex, startPage: self.currentChapterPage)
@@ -145,7 +151,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         // book's first state goes in on the next main-queue turn, once the update is
         // over — the same deferral CoreTextScrollHostView gives its refresh ack.
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, !self.hasExited else { return }
             self.state.fixedPageReaderConfiguration = self.fixedPageReaderConfiguration
             self.state.isManga = self.book.resolvedPipelineKind == .manga
             self.state.followsMangaDefault = self.state.isManga
@@ -199,8 +205,24 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
             chapter: chapterIndex,
             page: page,
             totalChapters: progressChapterCount,
-            pageProgress: documentProgress(forPage: page)
+            pageProgress: documentProgress(forPage: page),
+            forceSave: true
         )
+    }
+
+    /// Terminal and idempotent. Dismantling must not publish SwiftUI/store changes;
+    /// viewWillDisappear owns the final position save, before native teardown.
+    func prepareForExit() {
+        guard !hasExited else { return }
+        hasExited = true
+        loadToken = UUID()
+        chapterLoadTask?.cancel()
+        saveTask?.cancel()
+        prefetchTask?.cancel()
+        imagePrefetcher.stopPrefetching()
+        controlsObservation?.cancel()
+        reader?.container = nil
+        reader?.stopForExit()
     }
 
     // MARK: Native reader bars (iOS 17)
@@ -294,8 +316,9 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     // MARK: Chapter loading
 
     private func loadChapter(at index: Int, startPage: Int) {
-        guard !sourceChangeSuspended, chapters.indices.contains(index) else { return }
+        guard !hasExited, !sourceChangeSuspended, chapters.indices.contains(index) else { return }
         chapterIndex = index
+        chapterLoadTask?.cancel()
         currentPages = []
         heldChapters.clear()
         prefetchTask?.cancel()
@@ -316,12 +339,12 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
             return
         }
 
-        Task { [weak self] in
-            guard let self else { return }
+        chapterLoadTask = Task { [weak self] in
+            guard let self, !self.hasExited else { return }
             do {
                 let package = try await self.chapterFetcher.fetchChapter(
                     book: self.book, chapterIndex: index, priority: .immediate, store: self.store)
-                guard self.loadToken == token else { return }
+                guard self.loadToken == token, !Task.isCancelled else { return }
                 let localDir = MangaChapterParser.chapterDirectory(bookId: self.book.id, chapterIndex: index)
                 let pages = MangaChapterParser.pages(
                     from: package.content, headers: self.headers, localDir: localDir, imageDecoder: self.imageDecoder
@@ -337,7 +360,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
                 self.prefetchAroundChapters()
                 self.prefetchCurrentChapterPages(pages: pages, currentPage: max(0, min(startPage, pages.count - 1)))
             } catch {
-                guard self.loadToken == token else { return }
+                guard self.loadToken == token, !Task.isCancelled else { return }
                 self.state.isLoading = false
                 self.state.errorMessage = error.localizedDescription
             }
@@ -376,8 +399,8 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
             ? LocalPDFArchive.archiveURL(for: filename)
             : LocalMangaArchive.archiveURL(for: filename)
 
-        Task { [weak self] in
-            guard let self else { return }
+        chapterLoadTask = Task { [weak self] in
+            guard let self, !self.hasExited else { return }
 
             var pageCount = 0
             var sections: [FixedPageDocumentSection] = []
@@ -393,7 +416,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
                     AppLogger.render("Fixed-layout EPUB could not be opened: \(filename)", error: error)
                 }
             }
-            guard self.loadToken == token else { return }
+            guard self.loadToken == token, !Task.isCancelled else { return }
 
             self.state.isLoading = false
             guard pageCount > 0 else {
@@ -454,13 +477,14 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     }
 
     private func loadLocalChapter(at index: Int, startPage: Int, token: UUID) {
-        Task { [weak self] in
-            guard let self else { return }
+        chapterLoadTask = Task { [weak self] in
+            guard let self, !self.hasExited else { return }
             do {
                 let chapterURL = self.chapters[index].url
                 let archiveFilename = chapterURL.isEmpty ? self.book.contentFilename : chapterURL
                 // Every page is an entry read straight from the archive; nothing is extracted.
                 let pages = try await LocalMangaArchive.pages(archiveFilename: archiveFilename)
+                guard self.loadToken == token, !Task.isCancelled else { return }
                 // The archive opened and listed its pages, so a copy an older build
                 // extracted at import is dead weight: dropped once, off the main thread.
                 let bookId = self.book.id
@@ -468,7 +492,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
                 Task.detached(priority: .utility) {
                     await LocalMangaArchive.discardLegacyExtractedPages(bookId: bookId, archiveURL: archiveURL)
                 }
-                guard self.loadToken == token else { return }
+                guard self.loadToken == token, !Task.isCancelled else { return }
                 self.state.isLoading = false
                 guard !pages.isEmpty else {
                     self.state.errorMessage = localized("未找到圖片")
@@ -482,7 +506,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
                 self.reader?.setPages(pages, startPage: resolvedStart)
                 self.prefetchCurrentChapterPages(pages: pages, currentPage: resolvedStart)
             } catch {
-                guard self.loadToken == token else { return }
+                guard self.loadToken == token, !Task.isCancelled else { return }
                 self.state.isLoading = false
                 self.state.errorMessage = error.localizedDescription
             }
@@ -492,6 +516,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     /// A table-of-contents row: a chapter load for every book except a PDF, whose
     /// rows are bookmarks inside the single loaded chapter.
     private func selectTableOfContentsEntry(at index: Int) {
+        guard !hasExited else { return }
         if isSingleChapterDocumentBook {
             jumpToDocumentSection(at: index)
         } else {
@@ -535,6 +560,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     }
 
     private func changeConfiguration(_ newConfiguration: FixedPageReaderConfiguration) {
+        guard !hasExited else { return }
         let old = fixedPageReaderConfiguration
         guard newConfiguration != fixedPageReaderConfiguration else { return }
         fixedPageReaderConfiguration = newConfiguration
@@ -557,7 +583,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     /// `page` counts through every held chapter; the title, the slider and the saved
     /// position all take the chapter it falls in and the page within it.
     func reader(didMoveToPage page: Int, total: Int) {
-        guard !sourceChangeSuspended,
+        guard !hasExited, !sourceChangeSuspended,
               let position = heldChapters.position(ofHeldPage: page) else { return }
         if position.chapter != chapterIndex {
             chapterIndex = position.chapter
@@ -577,27 +603,29 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
 
     /// The page on screen, within its own chapter.
     private var currentChapterPage: Int {
-        heldChapters.position(ofHeldPage: reader?.currentPageIndex() ?? 0)?.page ?? 0
+        heldChapters.position(ofHeldPage: reader?.currentPageIndex() ?? 0)?.page ?? bookPageAfterFailedSwitch
     }
 
     /// Shows `page` of the current chapter, wherever the reader holds it.
     private func showPage(_ page: Int) {
+        guard !hasExited else { return }
         guard let held = heldChapters.heldPage(forPage: page, inChapter: chapterIndex) else { return }
         reader?.goToPage(held, animated: false)
     }
 
     func readerRequestsNextChapter() { loadNextChapter() }
     func readerRequestsPreviousChapter() { loadPreviousChapter() }
-    func readerToggleControls() { state.showControls.toggle() }
+    func readerToggleControls() { if !hasExited { state.showControls.toggle() } }
     @discardableResult
     func readerHideControlsForPageTurn() -> Bool {
         // Turning the page puts the controls away, as in every reader. Under
         // VoiceOver they stay: nothing else here can be focused (FixedPageReaderState).
-        guard state.showControls, !UIAccessibility.isVoiceOverRunning else { return false }
+        guard !hasExited, state.showControls, !UIAccessibility.isVoiceOverRunning else { return false }
         state.showControls = false
         return true
     }
     func readerToggleBookmark() {
+        guard !hasExited else { return }
         guard chapters.indices.contains(chapterIndex) else { return }
         let page = currentChapterPage
         // 一頁一個書籤：這些書沒有字元位移，頁序號就是位置，一頁佔一格。
@@ -614,16 +642,17 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
             excerpt: String(format: localized("第 %d 頁"), page + 1)
         )
     }
-    func readerAutoScrollStateChanged(_ isActive: Bool) { state.isAutoScrolling = isActive }
-    func readerContentScrollingChanged(_ isScrolling: Bool) { state.isContentScrolling = isScrolling }
+    func readerAutoScrollStateChanged(_ isActive: Bool) { if !hasExited { state.isAutoScrolling = isActive } }
+    func readerContentScrollingChanged(_ isScrolling: Bool) { if !hasExited { state.isContentScrolling = isScrolling } }
 
     func readerShowTableOfContents() {
+        guard !hasExited else { return }
         reader?.stopAutoScroll()
         state.showChapterList = true
     }
 
     func readerAppendNextChapter() async -> [FixedPage]? {
-        guard !sourceChangeSuspended, !isSingleChapterDocumentBook,
+        guard !hasExited, !sourceChangeSuspended, !isSingleChapterDocumentBook,
               let nextIndex = heldChapters.nextToAppend,
               chapters.indices.contains(nextIndex)
         else { return nil }
@@ -632,7 +661,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         do {
             let package = try await chapterFetcher.fetchChapter(
                 book: book, chapterIndex: nextIndex, priority: .immediate, store: store)
-            guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return nil }
+            guard !hasExited, !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return nil }
             let localDir = MangaChapterParser.chapterDirectory(bookId: book.id, chapterIndex: nextIndex)
             let pages = MangaChapterParser.pages(
                 from: package.content, headers: headers, localDir: localDir, imageDecoder: imageDecoder
@@ -651,7 +680,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     }
 
     func readerPrependPreviousChapter() async -> [FixedPage]? {
-        guard !sourceChangeSuspended, !isSingleChapterDocumentBook,
+        guard !hasExited, !sourceChangeSuspended, !isSingleChapterDocumentBook,
               let prevIndex = heldChapters.previousToPrepend,
               chapters.indices.contains(prevIndex)
         else { return nil }
@@ -660,6 +689,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         do {
             let package = try await chapterFetcher.fetchChapter(
                 book: book, chapterIndex: prevIndex, priority: .immediate, store: store)
+            guard !hasExited, !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return nil }
             let localDir = MangaChapterParser.chapterDirectory(bookId: book.id, chapterIndex: prevIndex)
             let pages = MangaChapterParser.pages(
                 from: package.content, headers: headers, localDir: localDir, imageDecoder: imageDecoder
@@ -706,7 +736,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         if !forwardIndices.isEmpty {
             Task(priority: .utility) {
                 for index in forwardIndices {
-                    guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
+                    guard !hasExited, !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
                     do {
                         _ = try await chapterFetcher.fetchChapter(
                             book: book,
@@ -723,7 +753,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         if !backwardIndices.isEmpty {
             Task(priority: .background) {
                 for index in backwardIndices {
-                    guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
+                    guard !hasExited, !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
                     do {
                         _ = try await chapterFetcher.fetchChapter(
                             book: book,
@@ -780,7 +810,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
                 if self.prefetchedNextChapter == nextIndex { self.prefetchedNextChapter = nil }
                 return
             }
-            guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
+            guard !hasExited, !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
             let localDir = MangaChapterParser.chapterDirectory(bookId: book.id, chapterIndex: nextIndex)
             let pages = MangaChapterParser.pages(
                 from: package.content, headers: headers, localDir: localDir, imageDecoder: imageDecoder
@@ -805,7 +835,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         let progress = documentProgress(forPage: page)
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
-            guard let self, !self.sourceChangeSuspended, !Task.isCancelled else { return }
+            guard let self, !self.hasExited, !self.sourceChangeSuspended, !Task.isCancelled else { return }
             FixedPageFrameGapProbe.span("fixedPage.savePosition", thresholdMs: 4) {
                 // Written without telling the library views: a publish rebuilt the whole
                 // shelf behind the reader — and this reader's own SwiftUI host — once for

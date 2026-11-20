@@ -32,7 +32,7 @@ struct DiscoverySourceControls<Catalog: View>: View {
     private var sourceTitle: String { BookSourceDisplayName.title(currentSource.bookSourceName) }
 
     var body: some View {
-        VStack(spacing: DSSpacing.xs) {
+        VStack(spacing: DSSpacing.xxs) {
             HStack(spacing: DSSpacing.sm) {
                 Menu {
                     Button { showsSettings = true } label: {
@@ -46,9 +46,12 @@ struct DiscoverySourceControls<Catalog: View>: View {
                 } label: {
                     Label(localized("更多"), systemImage: "ellipsis")
                         .labelStyle(.iconOnly)
-                        .font(.system(size: 20))
-                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                        .font(.system(size: 16, weight: .medium))
+                        // Match the switch button's visible circle, not its larger hit area.
+                        .frame(width: 32, height: 32)
                         .background { NavigationGlassCapsule(tint: DSColor.accent) }
+                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(localized("更多"))
                 .accessibilityIdentifier("discovery.source.more")

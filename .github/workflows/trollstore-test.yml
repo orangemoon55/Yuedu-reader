@@ -47,6 +47,7 @@ on:
           - readcc26
           - readcc28
           - readcc29
+          - readcc30
 
 permissions:
   contents: read

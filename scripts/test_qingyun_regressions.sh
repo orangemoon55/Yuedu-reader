@@ -35,7 +35,23 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc29 ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc30 ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/FixedPagePositionSaveTests'
+    -only-testing:'yuedu appTests/FixedPageNextChapterPrefetchTests'
+    -only-testing:'yuedu appTests/FixedPageWebtoonAutoScrollTests'
+    -only-testing:'yuedu appTests/FixedPageToolbarOfflineTests'
+    -only-testing:'yuedu appTests/OfflineChapterStoreTests'
+    -only-testing:'yuedu appTests/OfflineDownloadManagerTests'
+    -only-testing:'yuedu appTests/OfflineDownloadTaskTests'
+    -only-testing:'yuedu appTests/ReaderTOCEdgeNavigationTests'
+    -only-testing:'yuedu appTests/ReaderTOCEdgeRenderingTests'
+    -only-testing:'yuedu appTests/SourceToastLifecycleTests'
+    -only-testing:'yuedu appTests/SourceMenuJSFailureRecoveryTests'
+    -only-testing:'yuedu appTests/DiscoveryScrollStabilityTests'
+    -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testCompactHeaderKeepsEqualReferenceButtonsAndSeparateFilterRow'
+  )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc29 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/AndroidBitmapStripRuleTests'
     -only-testing:'yuedu appTests/FixedPageImageDecodeTests'

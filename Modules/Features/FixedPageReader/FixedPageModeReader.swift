@@ -21,6 +21,9 @@ protocol FixedPageModeReader: UIViewController {
     /// follows them (`FixedPageZoom.showsLiveTextButton`).
     func setControlsShown(_ shown: Bool)
 
+    /// Terminal teardown: stop only this reader's work, never shared caches.
+    func stopForExit()
+
     /// Auto-scroll toggle for webtoon mode.
     func stopAutoScroll()
     func toggleAutoScroll()

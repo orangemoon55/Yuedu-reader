@@ -115,6 +115,18 @@ final class FixedPagePagedViewController: UIViewController, FixedPageModeReader,
         reportPageProgress()
     }
 
+    func stopForExit() {
+        container = nil
+        pageVC.dataSource = nil
+        pageVC.delegate = nil
+        // Include UIKit's retained neighbouring spreads, not just the visible one.
+        for case let spread as FixedPageSpreadViewController in pageVC.children {
+            spread.onDisappear = nil
+            for page in spread.pageControllers { page.clearImage() }
+        }
+        view.isUserInteractionEnabled = false
+    }
+
     // MARK: Split & Spread Building
 
     private func processSplitPages(_ pages: [FixedPage]) -> [FixedPage] {
