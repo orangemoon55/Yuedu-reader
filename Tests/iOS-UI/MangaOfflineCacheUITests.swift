@@ -46,10 +46,10 @@ final class MangaOfflineCacheUITests: XCTestCase {
         let row = app.buttons["discovery.book.0"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 25), app.debugDescription)
         row.tap()
-        let add = app.buttons["加入书架"].firstMatch
-        XCTAssertTrue(add.waitForExistence(timeout: 25), app.debugDescription)
-        add.tap()
-        let shelved = app.buttons["移除书架"].firstMatch
+        let addToShelf = app.buttons["加入书架"].firstMatch
+        XCTAssertTrue(addToShelf.waitForExistence(timeout: 25), app.debugDescription)
+        addToShelf.tap()
+        let shelved = app.buttons["从书架移除"].firstMatch
         XCTAssertTrue(shelved.waitForExistence(timeout: 20), app.debugDescription)
         let read = app.buttons.matching(NSPredicate(format: "label IN %@", ["继续阅读", "立即阅读"])).firstMatch
         XCTAssertTrue(read.waitForExistence(timeout: 15), app.debugDescription)
@@ -71,7 +71,7 @@ final class MangaOfflineCacheUITests: XCTestCase {
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "manga-offline-two-chapters-downloaded-through-real-toolbar"
         image.lifetime = .keepAlways
-        add(image)
+        self.add(image)
         app.buttons["reader.offline.close"].firstMatch.tap()
         XCTAssertTrue(cache.waitForExistence(timeout: 10), app.debugDescription)
     }
