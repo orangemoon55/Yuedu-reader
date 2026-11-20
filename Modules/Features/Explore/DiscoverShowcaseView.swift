@@ -32,7 +32,7 @@ struct DiscoverShowcaseView: View {
         )
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DSSpacing.xl) {
-                if !discover.filters.isEmpty || (onOpenPage != nil && !pageItems.isEmpty) {
+                if showsControlsRow && (!discover.filters.isEmpty || (onOpenPage != nil && !pageItems.isEmpty)) {
                     DiscoverControlsRow(
                         discover: discover,
                         pageItems: onOpenPage == nil ? [] : pageItems,
@@ -64,9 +64,10 @@ struct DiscoverShowcaseView: View {
                 }
             }
             .padding(.vertical, DSSpacing.lg)
-            .padding(.bottom, 120)
+        .padding(.bottom, 120)
         }
         .softScrollEdges()
+        .accessibilityIdentifier("discovery.magazine.layout")
         .scrollDismissesKeyboard(.immediately)
         .refreshable { discover.reload(forceRefresh: true) }
     }
@@ -144,6 +145,7 @@ struct DiscoverControlsRow: View {
                         if let url = item.actionURL { onOpenPage(url) }
                     } label: {
                         DSCapsuleLabel(title: item.title, trailingSystemImage: "arrow.up.right")
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint(localized("在瀏覽器中開啟"))
@@ -184,6 +186,7 @@ struct DiscoverControlsRow: View {
                 trailingSystemImage: "chevron.down",
                 isSelected: isActive
             )
+            .fixedSize(horizontal: true, vertical: false)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

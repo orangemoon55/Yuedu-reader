@@ -16,7 +16,8 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
     }
 
     @MainActor
-    private func launch(bookCount: Int = 12, alternate: Bool = false) throws -> XCUIApplication {
+    private func launch(bookCount: Int = 12, alternate: Bool = false,
+                        displayLayout: String? = nil) throws -> XCUIApplication {
         let names = ["月票榜單", "榜單", "男頻", "女頻", "出版", "全部新書", "更多分類"]
         let categories: [[String: String]] = try names.enumerated().map { index, name in
             let answer: [String: Any] = ["books": (1...bookCount).map { number in
@@ -29,7 +30,10 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         let filters: [[String: Any]] = [
             ["title": "性別", "type": "select", "chars": ["男頻", "女頻"], "default": "男頻"],
             ["title": "模式", "type": "select", "chars": ["小說", "漫畫"], "default": "小說"],
-            ["title": "段評圖標", "type": "select", "chars": ["開啟", "關閉"], "default": "開啟"]
+            ["title": "段評圖標", "type": "select", "chars": ["開啟", "關閉"], "default": "開啟"],
+            ["title": "來源", "type": "select",
+             "chars": ["MissAV 超長聚合线路名称需完整滚动显示而不覆盖其他分类", "备用线路"],
+             "default": "MissAV 超长聚合线路名称需完整滚动显示而不覆盖其他分类"]
         ]
         let categoryData = try JSONSerialization.data(withJSONObject: categories.map { $0 as [String: Any] } + filters)
         let searchRules = ["bookList": "$.books[*]", "name": "$.name", "author": "$.author", "bookUrl": "$.url"]
@@ -66,12 +70,16 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         let home = directory.appendingPathComponent("home.json")
         try JSONSerialization.data(withJSONObject: ["schemaVersion": 3, "sections": [], "configurations": []]).write(to: home)
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+        var arguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
             "-onboarding.completed", "YES", "-yd_source_disclaimer_accepted", "YES",
             "-book-source-store-dir", sources.path, "-reset-explore-home",
             "-explore-home-file", home.path,
             "-explore.mode", "sources", "-yd_discovery_five_categories.v1", "",
             "-yd_root_tab_visible_ids", "(explore,bookshelf,settings,search)", "-yd_root_tab_order_ids", "()"]
+        if let displayLayout {
+            arguments += ["-explore.sourcePageLayout", displayLayout]
+        }
+        app.launchArguments = arguments
         app.launch()
         return app
     }
@@ -379,10 +387,24 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(filters.frame.minY, categories.frame.maxY)
         XCTAssertLessThanOrEqual(filters.frame.minY - categories.frame.maxY, 6)
         XCTAssertLessThanOrEqual(first.frame.minY - filters.frame.maxY, 12)
+        for _ in 0..<4 {
+            filters.swipeLeft()
+            for chip in filters.buttons.allElementsBoundByIndex where chip.isHittable {
+                XCTAssertGreaterThanOrEqual(chip.frame.minY, filters.frame.minY - 1)
+                XCTAssertLessThanOrEqual(chip.frame.maxY, filters.frame.maxY + 1)
+            }
+        }
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "native-compact-search-equal-32pt-reference-buttons"
         image.lifetime = .keepAlways
         add(image)
+    }
+    @MainActor
+    func testSearchSourceHonorsSavedListLayout() throws {
+        let app = try launch(displayLayout: "list")
+        openSearch(app)
+        XCTAssertTrue(app.otherElements["discovery.bookList"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertFalse(app.otherElements["discovery.magazine.layout"].exists)
     }
 
 }
