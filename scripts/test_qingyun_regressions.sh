@@ -69,6 +69,9 @@ PY
     -only-testing:'yuedu appTests/DiscoveryScrollStabilityTests'
     -only-testing:'yuedu appUITests/MangaOfflineCacheUITests/testCacheButtonOpensSelectionAndDownloadsSyntheticPages'
     -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testCompactHeaderKeepsEqualReferenceButtonsAndSeparateFilterRow'
+    -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testSearchSourceHonorsSavedListLayout'
+    -only-testing:'yuedu appTests/VideoHeroActionLayoutTests'
+    -only-testing:'yuedu appTests/ReadccGlassDesignTests'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc29 ]]; then
   TEST_SELECTION=(
