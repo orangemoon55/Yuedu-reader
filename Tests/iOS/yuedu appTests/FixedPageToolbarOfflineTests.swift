@@ -58,6 +58,7 @@ final class FixedPageToolbarOfflineTests: XCTestCase {
                                      "The cache control belongs immediately after the TOC on the leading side")
                 XCTAssertGreaterThanOrEqual(cache.accessibilityFrame.width, 44)
                 XCTAssertTrue(cache.accessibilityActivate())
+                try await wait { offlineCalls == 1 }
                 XCTAssertEqual(offlineCalls, 1)
                 XCTAssertEqual(closes, 0)
                 let image = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image {

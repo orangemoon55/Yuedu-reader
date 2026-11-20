@@ -9,6 +9,10 @@ mkdir -p trollstore-output
 finish() {
   local status=$?
   trap - EXIT
+  if [[ -n "${MANGA_FIXTURE_PID:-}" ]]; then kill "$MANGA_FIXTURE_PID" 2>/dev/null || true; fi
+  if [[ -f "$PRIVATE/manga-fixture.log" ]]; then
+    cat "$PRIVATE/manga-fixture.log" >> "$PRIVATE/test.log"
+  fi
   python3 scripts/prepare_trollstore_test.py redact "$PRIVATE/test.log" trollstore-output/regressions.log || true
   if [[ -f "$PRIVATE/result.xcresult/Info.plist" ]]; then
     mkdir -p trollstore-output/layout-preview
@@ -36,6 +40,20 @@ export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc30 ]]; then
+  python3 -u scripts/readcc_manga_offline_fixture.py > "$PRIVATE/manga-fixture.log" 2>&1 &
+  MANGA_FIXTURE_PID=$!
+  python3 - <<'PY'
+import time, urllib.request
+for attempt in range(40):
+    try:
+        with urllib.request.urlopen('http://localhost:18779/health', timeout=1) as r:
+            assert r.status == 200
+        break
+    except Exception:
+        time.sleep(0.1)
+else:
+    raise SystemExit('Synthetic manga loopback fixture did not start')
+PY
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/FixedPagePositionSaveTests'
     -only-testing:'yuedu appTests/FixedPageNextChapterPrefetchTests'
@@ -49,6 +67,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc30 ]]; then
     -only-testing:'yuedu appTests/SourceToastLifecycleTests'
     -only-testing:'yuedu appTests/SourceMenuJSFailureRecoveryTests'
     -only-testing:'yuedu appTests/DiscoveryScrollStabilityTests'
+    -only-testing:'yuedu appUITests/MangaOfflineCacheUITests/testCacheButtonOpensSelectionAndDownloadsSyntheticPages'
     -only-testing:'yuedu appUITests/DiscoveryFiveCategoryUITests/testCompactHeaderKeepsEqualReferenceButtonsAndSeparateFilterRow'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc29 ]]; then

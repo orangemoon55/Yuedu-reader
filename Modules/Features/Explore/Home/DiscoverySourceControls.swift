@@ -50,9 +50,14 @@ struct DiscoverySourceControls<Catalog: View>: View {
                         // Match the switch button's visible circle, not its larger hit area.
                         .frame(width: 32, height: 32)
                         .background { NavigationGlassCapsule(tint: DSColor.accent) }
-                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
-                        .contentShape(Rectangle())
                 }
+                // Native Menu may add its own circle outside the 32pt label on new iOS.
+                // Bound its drawing before expanding only the invisible hit target.
+                .buttonStyle(.plain)
+                .frame(width: 32, height: 32)
+                .clipShape(Circle())
+                .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                .contentShape(Rectangle())
                 .accessibilityLabel(localized("更多"))
                 .accessibilityIdentifier("discovery.source.more")
                 Text(sourceTitle.isEmpty ? localized("未命名來源配置") : sourceTitle)

@@ -498,7 +498,18 @@ struct FixedPageReaderControlsOverlay: View {
                                     .frame(minWidth: 44, minHeight: 44)
                                     .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+                            .frame(minWidth: 44, minHeight: 44)
+                            // Give VoiceOver and toolbar-hosted accessibility elements
+                            // the same enabled, exactly-once action as a direct tap.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(localized("离线缓存"))
+                            .accessibilityAddTraits(.isButton)
                             .accessibilityIdentifier("manga.offlineCache")
+                            .accessibilityAction {
+                                guard offlineCacheEnabled else { return }
+                                onOfflineCache()
+                            }
                             .disabled(!offlineCacheEnabled)
                         }
                     }
