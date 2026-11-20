@@ -66,7 +66,7 @@ final class BookSourceFileExportTests: XCTestCase {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.keyWindow
         let window = UIWindow(windowScene: scene)
-        let presenter = UIViewController()
+        let presenter = BookSourceExportTestPresenter()
         window.rootViewController = presenter
         window.makeKeyAndVisible()
         defer {
@@ -77,7 +77,11 @@ final class BookSourceFileExportTests: XCTestCase {
         }
         let view = UIView(frame: CGRect(x: 20, y: 100, width: 120, height: 44))
         presenter.view.addSubview(view)
-        for _ in 0..<100 where view.window == nil { try await Task.sleep(for: .milliseconds(20)) }
+        // Window attachment precedes viewDidAppear. A real Share tap comes after
+        // appearance; the test must not tear down the presenter mid-transition.
+        for _ in 0..<250 where !presenter.appeared { try await Task.sleep(for: .milliseconds(30)) }
+        XCTAssertTrue(presenter.appeared, "The activity's actual presenter must be on screen")
+        XCTAssertTrue(view.window === window)
         let anchor = BookSourceShareAnchor()
         anchor.view = view
         let source = BookSource(bookSourceUrl: "https://share.fixture", bookSourceName: "share fixture")
@@ -87,12 +91,36 @@ final class BookSourceFileExportTests: XCTestCase {
             XCTAssertNil(error)
             completed = true
         })
+        for _ in 0..<250 where !(presenter.presentedViewController is UIActivityViewController) {
+            try await Task.sleep(for: .milliseconds(30))
+        }
         let activity = try XCTUnwrap(presenter.presentedViewController as? UIActivityViewController)
+        for _ in 0..<250 where activity.viewIfLoaded?.window == nil || activity.isBeingPresented {
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        XCTAssertTrue(activity.viewIfLoaded?.window === window, "The native share UI must actually appear")
+        let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { window.layer.render(in: $0.cgContext) }
+        let attachment = XCTAttachment(image: screenshot)
+        attachment.name = "book-source-json-native-share-presented"
+        attachment.lifetime = .keepAlways
+        add(attachment)
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path), "File must survive activity target selection")
         XCTAssertTrue(activity.popoverPresentationController?.sourceView === view || UIDevice.current.userInterfaceIdiom == .phone)
         activity.completionWithItemsHandler?(nil, false, nil, nil)
         for _ in 0..<100 where !completed { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(completed)
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path))
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            presenter.dismiss(animated: false) { done.resume() }
+        }
+    }
+}
+
+@MainActor
+private final class BookSourceExportTestPresenter: UIViewController {
+    private(set) var appeared = false
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        appeared = true
     }
 }
