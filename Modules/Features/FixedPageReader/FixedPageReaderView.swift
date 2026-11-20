@@ -125,32 +125,7 @@ struct FixedPageReaderView: View {
                 }
 
                 if state.showControls {
-                    FixedPageReaderControlsOverlay(
-                        state: state,
-                        isModal: readerNavigator == nil && !usesParentNavigationStack,
-                        onClose: {
-                            sourceSwitchTask?.cancel()
-                            state.onPrepareForExit?()
-                            if let readerNavigator {
-                                readerNavigator.close()
-                            } else {
-                                // Pops a detail-origin push, dismisses a modal reader.
-                                presentationMode.wrappedValue.dismiss()
-                            }
-                        },
-                        onOpenTouchZoneEditor: {
-                            state.showControls = false
-                            showTouchZoneEditor = true
-                        },
-                        onChangeSource: book.isOnline && book.resolvedPipelineKind == .manga
-                            && book.bookSourceId != nil ? {
-                                guard !isSwitchingSource else { return }
-                                state.onStopAutoScroll?()
-                                sourcePickerBook = currentBook
-                            } : nil,
-                        onOfflineCache: offlineCacheSupported(book) ? openDownloadOptions : nil,
-                        offlineCacheEnabled: !isSwitchingSource && offlineCacheChapterIndex(for: book) != nil
-                    )
+                    readerControls(for: book)
                         .transition(.opacity)
                 }
 
@@ -253,6 +228,49 @@ struct FixedPageReaderView: View {
                     onSelectOrigin: { switchSource(to: $0) }
                 )
             }
+        }
+    }
+
+    /// Keep optional closure inference outside the large reader/sheet ViewBuilder.
+    /// Both actions retain exactly the source/kind/queue guards they used inline.
+    private func readerControls(for book: ReadingBook) -> FixedPageReaderControlsOverlay {
+        let sourceAction: (() -> Void)?
+        if book.isOnline, book.resolvedPipelineKind == .manga, book.bookSourceId != nil {
+            sourceAction = {
+                guard !isSwitchingSource else { return }
+                state.onStopAutoScroll?()
+                sourcePickerBook = currentBook
+            }
+        } else {
+            sourceAction = nil
+        }
+        let cacheAction: (() -> Void)?
+        if offlineCacheSupported(book) {
+            cacheAction = { openDownloadOptions() }
+        } else {
+            cacheAction = nil
+        }
+        return FixedPageReaderControlsOverlay(
+            state: state,
+            isModal: readerNavigator == nil && !usesParentNavigationStack,
+            onClose: closeReader,
+            onOpenTouchZoneEditor: {
+                state.showControls = false
+                showTouchZoneEditor = true
+            },
+            onChangeSource: sourceAction,
+            onOfflineCache: cacheAction,
+            offlineCacheEnabled: !isSwitchingSource && offlineCacheChapterIndex(for: book) != nil
+        )
+    }
+
+    private func closeReader() {
+        sourceSwitchTask?.cancel()
+        state.onPrepareForExit?()
+        if let readerNavigator {
+            readerNavigator.close()
+        } else {
+            presentationMode.wrappedValue.dismiss()
         }
     }
 
