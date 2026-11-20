@@ -52,7 +52,7 @@ final class FixedPageWebtoonLayout: UICollectionViewFlowLayout {
     /// Whether the item's height changed, and so the layout with it.
     @discardableResult
     func setRatio(_ ratio: CGFloat, forItem index: Int) -> Bool {
-        guard ratio > 0, ratios[index] != ratio else { return false }
+        guard ratio.isFinite, ratio > 0, ratios[index] != ratio else { return false }
         ratios[index] = ratio
         return true
     }
@@ -86,15 +86,13 @@ final class FixedPageWebtoonLayout: UICollectionViewFlowLayout {
         width * (ratios[index] ?? defaultRatio)
     }
 
-    /// The item the reader's eye is held to across a relayout, and how far below the
-    /// top of the viewport it starts: the first item starting at or below the top edge,
-    /// or the one covering the whole viewport. An item above it — prepended, or one whose
-    /// image just loaded and changed its height — then grows upwards, out of view,
-    /// instead of pushing what is being read down the screen. Aidoku's webtoon layout
-    /// does the same for cells above the offset.
+    /// The item under the top of the viewport, or the next item if the top is in a gap.
+    /// Anchoring to the next visible item while this one grows would scroll past the
+    /// newly loaded panels at the top of this one.
     private struct ScrollAnchor {
         let item: Int
         let distanceFromTop: CGFloat
+        let previousHeight: CGFloat
     }
 
     private func scrollAnchor(in collectionView: UICollectionView) -> ScrollAnchor? {
@@ -102,21 +100,25 @@ final class FixedPageWebtoonLayout: UICollectionViewFlowLayout {
         let top = collectionView.contentOffset.y
         let bottom = top + collectionView.bounds.height
         var startingBelowTop: UICollectionViewLayoutAttributes?
-        var coveringTop: UICollectionViewLayoutAttributes?
         for attributes in currentAttributes.values {
             let frame = attributes.frame
-            if frame.minY >= top, frame.minY < bottom {
-                if startingBelowTop.map({ frame.minY < $0.frame.minY }) ?? true {
-                    startingBelowTop = attributes
-                }
-            } else if frame.minY < top, frame.maxY > top {
-                coveringTop = attributes
+            if frame.minY <= top, top < frame.maxY {
+                return ScrollAnchor(
+                    item: attributes.indexPath.item + pendingInsertedAtStart,
+                    distanceFromTop: frame.minY - top,
+                    previousHeight: frame.height
+                )
+            }
+            if frame.minY >= top, frame.minY < bottom,
+               startingBelowTop.map({ frame.minY < $0.frame.minY }) ?? true {
+                startingBelowTop = attributes
             }
         }
-        guard let anchor = startingBelowTop ?? coveringTop else { return nil }
+        guard let anchor = startingBelowTop else { return nil }
         return ScrollAnchor(
             item: anchor.indexPath.item + pendingInsertedAtStart,
-            distanceFromTop: anchor.frame.minY - top
+            distanceFromTop: anchor.frame.minY - top,
+            previousHeight: anchor.frame.height
         )
     }
 
@@ -161,26 +163,34 @@ final class FixedPageWebtoonLayout: UICollectionViewFlowLayout {
         let minX = pixelAligned(originX * scale)
         let maxX = pixelAligned((originX + effectiveWidth) * scale)
 
+        // Derive height from the actual rendered width; rounding X first matters on long
+        // strips, where a fraction of a point in width can mean several points in height.
+        let width = maxX - minX
+        let minimumHeight = width > 0 ? 1 / pixelScale : 0
         var originY: CGFloat = 0
         var lastMaxY: CGFloat = 0
         let count = collectionView.numberOfItems(inSection: 0)
         for item in 0..<count {
             let indexPath = IndexPath(item: item, section: 0)
             let attributes = UICollectionViewLayoutAttributes(forCellWith: indexPath)
-            let h = height(for: item, width: effectiveWidth)
-            let minY = pixelAligned(originY * scale)
-            let maxY = pixelAligned((originY + h) * scale)
-            attributes.frame = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            let h = max(minimumHeight, height(for: item, width: width))
+            let minY = pixelAligned(originY)
+            let maxY = pixelAligned(originY + h)
+            attributes.frame = CGRect(x: minX, y: minY, width: width, height: maxY - minY)
             currentAttributes[indexPath] = attributes
             lastMaxY = maxY
-            originY += h + minimumLineSpacing
+            originY += h + minimumLineSpacing * scale
         }
         computedContentSize = CGSize(width: totalWidth * scale, height: lastMaxY)
 
-        // Keep the anchor item where it was on screen.
+        // Leave room for a shorter replacement if it otherwise ends above the viewport.
         if let anchor, let frame = currentAttributes[IndexPath(item: anchor.item, section: 0)]?.frame {
+            var distance = anchor.distanceFromTop
+            if distance < 0, frame.height < anchor.previousHeight {
+                distance *= frame.height / anchor.previousHeight
+            }
             let maxY = max(0, computedContentSize.height - collectionView.bounds.height)
-            let y = min(max(0, frame.minY - anchor.distanceFromTop), maxY)
+            let y = min(max(0, frame.minY - distance), maxY)
             if abs(y - collectionView.contentOffset.y) > 0.5 {
                 UIView.performWithoutAnimation {
                     collectionView.contentOffset.y = y

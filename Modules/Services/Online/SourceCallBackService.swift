@@ -140,10 +140,21 @@ enum SourceCallBackService {
     /// legado `SearchActivity.start(keyword)` / `start(source, keyword)`: the app-wide search
     /// page, full screen over the tabs, scoped to one source when `sourceURL` is given.
     static func requestSearch(keyword: String, sourceURL: String? = nil) {
+        postSearchRequest(keyword: keyword, sourceURL: sourceURL, isAuthorNameSearch: false)
+    }
+
+    /// The detail page's author-name gesture searches all enabled sources for this session;
+    /// unlike a label search, it must not inherit the current source's custom scope.
+    static func requestAuthorSearch(keyword: String) {
+        postSearchRequest(keyword: keyword, sourceURL: nil, isAuthorNameSearch: true)
+    }
+
+    private static func postSearchRequest(keyword: String, sourceURL: String?, isAuthorNameSearch: Bool) {
         let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        var info: [String: String] = ["keyword": trimmed]
+        var info: [String: Any] = ["keyword": trimmed]
         if let sourceURL { info["sourceURL"] = sourceURL }
+        if isAuthorNameSearch { info["authorNameSearch"] = true }
         NotificationCenter.default.post(name: .bookSourceRequestedSearch, object: nil, userInfo: info)
     }
 

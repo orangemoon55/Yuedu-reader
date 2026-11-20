@@ -1,15 +1,12 @@
 import SwiftUI
 
-struct DiscoveryFiveCategoryPage: View {
+struct DiscoverySourceCategoryPage: View {
     @ObservedObject var model: DiscoveryCategoryModel
     let configuration: String
     let page: HomePage?
     let sources: [BookSource]
     var onAllTypes: (() -> Void)? = nil
-    @State private var settings: SlotSettingsRequest?
     @State private var showsSources = false
-
-    private struct SlotSettingsRequest: Identifiable { let id = UUID(); let index: Int }
 
     private var active: BookSource? {
         guard let activation = model.activeSource else { return nil }
@@ -22,15 +19,16 @@ struct DiscoveryFiveCategoryPage: View {
     var body: some View {
         VStack(spacing: 0) {
             if let source = active, let activation = model.activeSource {
-                DiscoverySourceControls(source: source, filterValues: model.current?.filters ?? [:],
+                DiscoverySourceControls(source: source,
                     onSwitchSource: { showsSources = true },
                     onReload: { values, items, error, refreshBooks in
-                        model.reconcileSource(sourceURL: source.bookSourceUrl, values: values, items: items,
+                        model.reconcileSource(values: values, items: items,
                                               error: error, refreshBooks: refreshBooks, activation: activation)
                     }) {
-                    if model.slots.choices.contains(where: { $0 != nil }) {
-                        DiscoveryCategoryBar(slots: model.slots, selection: model.selection,
-                            select: { model.select($0) }, edit: { settings = .init(index: $0) })
+                    if !model.catalog.isEmpty {
+                        DiscoveryCategoryBar(catalog: model.catalog, selection: model.current?.reference) {
+                            model.select($0, activation: activation)
+                        }
                     }
                 }
                 .id(activation)
@@ -50,33 +48,16 @@ struct DiscoveryFiveCategoryPage: View {
                         showsSources = false
                         return
                     }
-                    model.switchSource(to: source, page: page)
+                    model.switchSource(to: source)
                     showsSources = false
                 }, close: { showsSources = false })
-        }
-        .sheet(item: $settings) { request in
-            DiscoverySlotSettings(slots: model.slots, catalog: model.catalog, openSlot: request.index, choose: { choice, index in
-                model.choose(choice, at: index)
-                settings = nil
-            }, close: { settings = nil })
         }
     }
 
     @ViewBuilder private var content: some View {
         if let source = active, let choice = model.current, choice.reference.sourceURL == source.bookSourceUrl {
-            if model.invalidReferences.contains(choice.reference) {
-                ContentUnavailableView {
-                    UnavailableLabel(localized("所選分類已失效"), systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(model.sourceErrors[choice.reference.sourceURL]
-                         ?? localized("目前篩選條件下找不到原先選擇的欄目，請重新選擇分類。"))
-                } actions: {
-                    Button(localized("切換來源配置")) { showsSources = true }
-                }
-            } else {
-                DiscoveryBookList(model: model.list(for: choice, source: source))
-                    .id(choice.id)
-            }
+            DiscoveryBookList(model: model.list(for: choice, source: source))
+                .id(choice.id)
         } else if model.isLoadingCatalog {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

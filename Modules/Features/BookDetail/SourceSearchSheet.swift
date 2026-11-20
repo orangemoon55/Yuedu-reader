@@ -17,6 +17,8 @@ struct SourceSearchSheet: View {
     let currentBookURL: String
     /// The book's kind: deleting its 來源配置 switches to the first origin of the same kind.
     var kind: OnlineBookContentKind = .text
+    /// Fixed-page readers cannot render a text/audio/video result in place.
+    var restrictToKind = false
     /// The origin in use's name and latest chapter, for its 目前來源 row.
     var currentSourceName: String = ""
     var currentLastChapter: String = ""
@@ -56,6 +58,7 @@ struct SourceSearchSheet: View {
                 ChangeSourceResultsSection(
                     search: search,
                     isSwitching: autoSwitchTask != nil,
+                    requiredKind: restrictToKind ? kind : nil,
                     onSelect: { origin in
                         onSelectOrigin(origin)
                         dismiss()

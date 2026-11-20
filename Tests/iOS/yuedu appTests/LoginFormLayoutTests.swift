@@ -165,6 +165,21 @@ struct LoginFormLayoutTests {
         #expect(fields[0].style?.rows == 2)
     }
 
+    @Test("cached rows preserve source order, spans and duplicate identities")
+    func cachedRowsPreserveSourceLayout() {
+        let fields = LoginManager.shared.parseLoginUi("""
+        [{"name":"same","type":"button","style":{"cols":2,"rows":2}},
+         {"name":"next","type":"button","style":{"cols":2}},
+         {"name":"same","type":"password"}]
+        """)
+        let form = LoginFormRows(fields: fields)
+        #expect(form.bands.flatMap(\.controls).map(\.field.name) == ["same", "next", "same"])
+        #expect(form.bands[0].cells[0].rowSpan == 2)
+        #expect(form.bands[1].cells[0].row == 0)
+        #expect(form.bands[0].controls[0].id != form.bands[1].controls[0].id)
+        #expect(form.bands[0].accessibilityCells.allSatisfy { $0.colSpan == 12 && $0.rowSpan == 1 })
+    }
+
     // MARK: - Packing
 
     private func pack(_ spans: [(Int, Int, Bool)]) -> [LoginGridCell] {

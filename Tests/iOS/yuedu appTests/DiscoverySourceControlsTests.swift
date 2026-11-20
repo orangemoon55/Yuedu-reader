@@ -3,50 +3,32 @@ import XCTest
 
 @MainActor
 final class DiscoverySourceControlsTests: XCTestCase {
-    private func choice(_ title: String, source: String = "https://a.test", url: String = "/old") -> DiscoveryCategoryChoice {
-        .init(reference: .init(sourceURL: source, title: title, url: url), filters: ["mode": "old"])
-    }
-
-    func testFilterChangesRekeyEverySameSourceSlotAndKeepOtherSourceCache() throws {
+    func testFilterReloadPreservesOnlyReferencesStillInTheLiveCatalogue() throws {
         let name = "source-controls-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
         let model = DiscoveryCategoryModel(defaults: defaults)
-        let first = choice("First")
-        let second = choice("Second", url: "/second")
-        let other = choice("Other", source: "https://b.test")
-        model.choose(first, at: 0)
-        model.choose(second, at: 1)
-        model.choose(other, at: 2)
-        var sourceA = BookSource(); sourceA.bookSourceUrl = "https://a.test"
-        var sourceB = BookSource(); sourceB.bookSourceUrl = "https://b.test"
-        let oldA = model.list(for: first, source: sourceA)
-        let oldB = model.list(for: other, source: sourceB)
-        model.applyFilters(values: ["mode": "new"], sourceURL: sourceA.bookSourceUrl)
-        let updated = try XCTUnwrap(model.slots.choices[0])
-        XCTAssertNotEqual(updated.id, first.id)
-        XCTAssertEqual(updated.reference, first.reference)
-        XCTAssertEqual(model.slots.choices[1]?.filters, ["mode": "new"])
-        XCTAssertEqual(model.slots.choices[2], other)
-        XCTAssertFalse(oldA === model.list(for: updated, source: sourceA))
-        XCTAssertTrue(oldB === model.list(for: other, source: sourceB))
-    }
+        let source = BookSource(bookSourceUrl: "https://a.test", bookSourceName: "A")
+        model.prepare(configuration: "test", page: nil, sources: [source])
+        let activation = try XCTUnwrap(model.activeSource)
+        let first = try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: "First", url: "/first")))
+        let second = try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: "Second", url: "/second")))
+        let third = try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: "Third", url: "/third")))
+        model.reconcileSource(values: ["mode": "old"], items: [first, second], error: nil, activation: activation)
+        model.select(model.catalog[1].reference, activation: activation)
+        let selected = try XCTUnwrap(model.current)
+        let old = model.list(for: selected, source: source)
+        model.reconcileSource(values: ["mode": "new"], items: [second, third], error: nil, activation: activation)
+        let updated = try XCTUnwrap(model.current)
+        XCTAssertEqual(updated.reference, selected.reference)
+        XCTAssertEqual(updated.filters, ["mode": "new"])
+        XCTAssertFalse(old === model.list(for: updated, source: source))
 
-    func testReloadResolvesOnlyRealSameTitleOrMarksOriginalInvalid() throws {
-        let name = "source-reconcile-\(UUID())"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
-        let model = DiscoveryCategoryModel(defaults: defaults)
-        let first = choice("First")
-        let missing = choice("Missing", url: "/missing")
-        model.choose(first, at: 0)
-        model.choose(missing, at: 1)
-        let item = try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: "First", url: "/real-new")))
-        model.reconcileSource(sourceURL: "https://a.test", values: ["mode": "new"], items: [item], error: nil)
-        XCTAssertEqual(model.slots.choices[0]?.reference.url, "/real-new")
-        XCTAssertEqual(model.slots.choices[0]?.reference.title, "First")
-        XCTAssertEqual(model.slots.choices[1]?.reference, missing.reference)
-        XCTAssertTrue(model.invalidReferences.contains(missing.reference))
-        XCTAssertFalse(model.invalidReferences.contains(try XCTUnwrap(model.slots.choices[0]).reference))
+        model.reconcileSource(values: [:], items: [third, first], error: nil, activation: activation)
+        XCTAssertEqual(model.catalog.map(\.title), ["Third", "First"])
+        XCTAssertEqual(model.current?.title, "Third")
+        model.reconcileSource(values: [:], items: [], error: nil, activation: activation)
+        XCTAssertNil(model.current)
+        XCTAssertTrue(model.catalog.isEmpty)
     }
 }

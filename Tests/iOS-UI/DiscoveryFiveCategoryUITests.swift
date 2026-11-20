@@ -17,7 +17,7 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
 
     @MainActor
     private func launch(bookCount: Int = 12, alternate: Bool = false) throws -> XCUIApplication {
-        let names = ["月票榜單", "榜單", "男頻", "女頻", "出版"]
+        let names = ["月票榜單", "榜單", "男頻", "女頻", "出版", "全部新書", "更多分類"]
         let categories: [[String: String]] = try names.enumerated().map { index, name in
             let answer: [String: Any] = ["books": (1...bookCount).map { number in
                 ["name": "分類\(index)-作品\(number)", "author": "測試作者", "kind": "小說 · 連載中",
@@ -286,4 +286,72 @@ final class DiscoveryFiveCategoryUITests: XCTestCase {
         XCTAssertTrue(app.buttons["explore.more"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(app.buttons["discovery.category.slot.0"].exists)
     }
+
+    @MainActor
+    func testUnlimitedCategoriesAndSettingsApply() throws {
+        let app = try launch()
+        openSearch(app)
+        let categories = app.scrollViews["discovery.category.bar"].firstMatch
+        XCTAssertTrue(categories.waitForExistence(timeout: 20), app.debugDescription)
+        let seventh = app.buttons["更多分類"].firstMatch
+        for _ in 0..<6 where !seventh.isHittable { categories.swipeLeft() }
+        XCTAssertTrue(seventh.isHittable, app.debugDescription)
+        seventh.tap()
+        let row = app.buttons["discovery.book.0"].firstMatch
+        wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", "分類6-作品1"), evaluatedWith: row)], timeout: 20)
+
+        func settings() {
+            let more = app.buttons["discovery.source.more"].firstMatch
+            XCTAssertTrue(more.waitForExistence(timeout: 10), app.debugDescription)
+            more.tap()
+            app.buttons["发现页设置"].firstMatch.tap()
+            XCTAssertTrue(app.buttons["discover.settings.showAll"].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        }
+        settings()
+        let picked = app.buttons["discover.settings.category.更多分類"].firstMatch
+        for _ in 0..<5 where !picked.isHittable { app.swipeUp() }
+        XCTAssertTrue(picked.isHittable, app.debugDescription)
+        picked.tap()
+        app.buttons["discover.settings.close"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["更多分類"].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.buttons["月票榜單"].exists, "Settings must affect the Search catalogue, not only an unused model")
+        settings()
+        XCTAssertTrue(app.buttons["discover.settings.category.更多分類"].firstMatch.isSelected)
+        app.buttons["discover.settings.showAll"].firstMatch.tap()
+        app.buttons["discover.settings.close"].firstMatch.tap()
+        let first = app.buttons["月票榜單"].firstMatch
+        for _ in 0..<6 where !first.isHittable { categories.swipeRight() }
+        XCTAssertTrue(first.isHittable, app.debugDescription)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "search-unlimited-source-categories-and-effective-custom-settings"
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
+    @MainActor
+    func testSourcePickerPinAndReopen() throws {
+        let app = try launch(alternate: true)
+        openSearch(app)
+        func openPicker() {
+            let button = app.buttons["discovery.category.change"].firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 20), app.debugDescription)
+            button.tap()
+        }
+        openPicker()
+        let b = app.buttons["discovery.source.choose.https://other.fixture"].firstMatch
+        XCTAssertTrue(b.waitForExistence(timeout: 10), app.debugDescription)
+        b.swipeLeft()
+        app.buttons["置顶"].firstMatch.tap()
+        let a = app.buttons["discovery.source.choose.https://discovery.fixture"].firstMatch
+        XCTAssertLessThan(b.frame.minY, a.frame.minY)
+        app.buttons["discovery.source.close"].firstMatch.tap()
+        openPicker()
+        XCTAssertLessThan(b.frame.minY, a.frame.minY)
+        XCTAssertEqual(b.value as? String, "已置顶")
+        b.swipeLeft()
+        app.buttons["取消置顶"].firstMatch.tap()
+        XCTAssertLessThan(a.frame.minY, b.frame.minY)
+        app.buttons["discovery.source.close"].firstMatch.tap()
+    }
+
 }

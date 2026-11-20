@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// The five-category book list belongs to Search. Discovery keeps its user's HomePage.
+/// The selected source’s catalogue and book list belongs to Search. Discovery keeps its user's HomePage.
 struct SearchCategoryHome: View {
     @StateObject private var categories = DiscoveryCategoryModel()
     @ObservedObject private var pageStore = HomePageStore.shared
     @ObservedObject private var sourceStore = BookSourceStore.shared
     @Environment(\.searchTabNavigation) private var navigation
     @State private var sources: [BookSource] = []
-    @State private var publishedSources: [BookSource] = []
+    @State private var publishedSources: [BookSource]?
     @State private var sourceRevision = 0
     @State private var sourceSearchText = ""
     @FocusState private var sourceSearchFocused: Bool
@@ -29,7 +29,7 @@ struct SearchCategoryHome: View {
             sourceSearchField
                 .padding(.horizontal, DSSpacing.lg)
                 .padding(.top, DSSpacing.xs)
-            DiscoveryFiveCategoryPage(model: categories,
+            DiscoverySourceCategoryPage(model: categories,
                 configuration: pageStore.selectedConfiguration.rawValue,
                 page: pageStore.page, sources: sources,
                 onAllTypes: { navigation?.path.append(ExploreNavigationRoute.genres) })
@@ -37,7 +37,6 @@ struct SearchCategoryHome: View {
             .rootTabTitle(localized("搜索"), onScroll: .fadesTitle)
             .pageBackgroundToolbar(for: .explore)
             .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
-            .accessibilityIdentifier("search.fiveCategoryHome")
             .navigationDestination(for: SourceSearchRequest.self) { request in
                 SearchView(initialQuery: request.query, sessionScope: SearchSourceScope(
                     mode: .custom, selectedSourceURLs: [request.sourceURL]
@@ -55,11 +54,11 @@ struct SearchCategoryHome: View {
                     }
                 }
             }
-            .task(id: sourceRevision) {
+            .task(id: sourceRevision) { [sourceRevision] in
                 await sourceStore.waitUntilLoaded()
-                let snapshot = publishedSources.isEmpty ? sourceStore.sources : publishedSources
+                let snapshot = publishedSources ?? sourceStore.sources
                 let found = await Self.explorable(snapshot)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, sourceRevision == self.sourceRevision else { return }
                 sources = found
             }
             .onReceive(sourceStore.sourcesPublisher) { snapshot in

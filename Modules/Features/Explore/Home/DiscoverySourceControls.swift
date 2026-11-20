@@ -4,7 +4,6 @@ import SwiftUI
 /// The selected source owns its menus and scripts; no app-defined gender/mode controls.
 struct DiscoverySourceControls<Catalog: View>: View {
     let source: BookSource
-    let filterValues: [String: String]
     let catalog: Catalog
     let onSwitchSource: () -> Void
     let onReload: ([String: String], [DiscoverCardItem], String?, Bool) -> Void
@@ -15,16 +14,14 @@ struct DiscoverySourceControls<Catalog: View>: View {
     @State private var showsLogin = false
     @State private var pendingAddress: String?
     @State private var browserAddress: BrowserAddress?
-    @State private var restoredFilters = false
     @State private var pendingBookRefresh = false
 
     private struct BrowserAddress: Identifiable { let id = UUID(); let address: String }
 
-    init(source: BookSource, filterValues: [String: String], onSwitchSource: @escaping () -> Void,
+    init(source: BookSource, onSwitchSource: @escaping () -> Void,
          onReload: @escaping ([String: String], [DiscoverCardItem], String?, Bool) -> Void,
          @ViewBuilder catalog: () -> Catalog) {
         self.source = source
-        self.filterValues = filterValues
         self.onSwitchSource = onSwitchSource
         self.onReload = onReload
         self.catalog = catalog()
@@ -100,6 +97,11 @@ struct DiscoverySourceControls<Catalog: View>: View {
         .onChange(of: discover.isLoadingItems) { _, loading in
             if !loading { didReload() }
         }
+        .onChange(of: discover.shownCategoryKeys) { _, _ in
+            // A selection edit changes no loading flag. Publish it to the Search catalogue
+            // immediately instead of waiting for a later unrelated network reload.
+            if !discover.isLoadingItems { didReload() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .bookSourceLoginInfoDidChange)
             .receive(on: DispatchQueue.main)) { notification in reloadAfterSourceChange(notification) }
         .onReceive(NotificationCenter.default.publisher(for: .bookSourceUserVariableDidChange)
@@ -107,27 +109,16 @@ struct DiscoverySourceControls<Catalog: View>: View {
     }
 
     private func didReload() {
-        // Restore a persisted section's filters through the original JS/infoMap path.
-        // Once restored, subsequent user/script changes are authoritative.
-        if !restoredFilters, discover.exploreError == nil,
-           let filter = discover.filters.first(where: {
-               guard let value = filterValues[$0.paramKey] else { return false }
-               return value != $0.selected && $0.options.contains(value)
-           }), let value = filterValues[filter.paramKey] {
-            discover.selectFilter(filter, value: value)
-            return
-        }
-        restoredFilters = true
         let values = Dictionary(discover.filters.map { ($0.paramKey, $0.selected) },
                                 uniquingKeysWith: { first, _ in first })
         let refreshBooks = pendingBookRefresh
         pendingBookRefresh = false
-        onReload(values, discover.items, discover.exploreError, refreshBooks)
+        let visible = discover.items.filter { !$0.isFetchable || discover.isCategoryShown($0) }
+        onReload(values, visible, discover.exploreError, refreshBooks)
     }
 
     private func reloadAfterSourceChange(_ notification: Notification) {
         guard notification.userInfo?["sourceURL"] as? String == source.bookSourceUrl else { return }
-        restoredFilters = true
         pendingBookRefresh = true
         discover.reload(forceRefresh: true)
     }

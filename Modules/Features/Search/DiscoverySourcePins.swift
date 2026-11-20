@@ -37,6 +37,13 @@ final class DiscoverySourcePins {
     /// Newest pins first; unpinned rows retain the supplied order. Missing IDs
     /// are ignored, so deletion/reimport never pins an unrelated row. Keep hidden pins
     /// across filtering or temporary disabling; names and URLs are never persisted here.
+    /// The new picker has full BookSource values but must honor the same persisted pins.
+    func orderedBookSources(_ sources: [BookSource]) -> [BookSource] {
+        let byID = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let pinned = Set(pinnedIDs)
+        return pinnedIDs.compactMap { byID[$0] } + sources.filter { !pinned.contains($0.id) }
+    }
+
     func ordered(_ sources: [DiscoverableBookSource]) -> [DiscoverableBookSource] {
         let byID = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let pinned = Set(pinnedIDs)

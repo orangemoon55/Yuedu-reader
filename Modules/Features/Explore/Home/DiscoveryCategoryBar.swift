@@ -1,136 +1,48 @@
 import SwiftUI
 
-/// The five category cells share the bottom bar's glass surface but keep independent hit areas.
+/// Each real category gets its own target; a long catalogue scrolls instead of shrinking.
 struct DiscoveryCategoryBar: View {
-    let slots: DiscoveryCategorySlots
-    let selection: Int
-    let select: (Int) -> Void
-    let edit: (Int) -> Void
-
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.dynamicTypeSize) private var typeSize
+    let catalog: [DiscoveryCategoryChoice]
+    let selection: ExploreCategoryReference?
+    let select: (ExploreCategoryReference) -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var chipHeight: CGFloat = DSLayout.minimumTapTarget
+    private var viewportHeight: CGFloat { max(DSLayout.minimumTapTarget, chipHeight) + DSSpacing.xs * 2 }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(slots.choices.indices.filter { slots.choices[$0] != nil }, id: \.self) { index in
-                let choice = slots.choices[index]
-                let selected = selection == index
-                Button { select(index) } label: {
-                    Text(choice?.title ?? String(format: localized("分類 %d"), index + 1))
-                        .font((typeSize.isAccessibilitySize ? DSFont.caption : DSFont.subheadline).weight(.semibold))
-                        .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                        .minimumScaleFactor(0.80)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(Color.primary)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, DSSpacing.xs)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: typeSize.isAccessibilitySize ? 64 : DSLayout.minimumTapTarget)
-                        .background {
-                            if selected {
-                                Capsule(style: .continuous)
-                                    .fill(NavigationGlassCapsule.selectionFill(tint: DSColor.accent, scheme: scheme, contrast: contrast))
-                                    .overlay {
-                                        Capsule(style: .continuous)
-                                            .strokeBorder(Color.primary.opacity(contrast == .increased ? 0.5 : 0.06))
-                                    }
-                            }
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: DSSpacing.xs) {
+                    ForEach(catalog, id: \.reference) { category in
+                        let selected = category.reference == selection
+                        Button { select(category.reference) } label: {
+                            DSCapsuleLabel(title: category.title, isSelected: selected, onCard: true,
+                                           minWidth: DSLayout.minimumTapTarget)
+                                .frame(minHeight: max(DSLayout.minimumTapTarget, chipHeight))
+                                .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? [.isSelected] : [])
-                .accessibilityIdentifier("discovery.category.slot.\(index)")
-                .contextMenu {
-                    Button { edit(index) } label: {
-                        Label(localized("更換分類"), systemImage: "square.grid.2x2")
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                        .id(category.reference)
                     }
                 }
+                .padding(.horizontal, DSSpacing.xs)
+                .frame(height: viewportHeight)
+            }
+            .contentMargins(.vertical, 0, for: .scrollContent)
+            .contentMargins(.vertical, 0, for: .scrollIndicators)
+            .frame(height: viewportHeight)
+            .clipShape(Capsule())
+            .scrollIndicators(.hidden)
+            .background { NavigationGlassCapsule(tint: DSColor.accent) }
+            .accessibilityIdentifier("discovery.category.bar")
+            .onChange(of: selection, initial: true) { _, reference in
+                if let reference { proxy.scrollTo(reference) }
             }
         }
-        .padding(DSSpacing.xs)
-        .background { NavigationGlassCapsule(tint: DSColor.accent) }
         .padding(.horizontal, DSSpacing.lg)
         .padding(.vertical, DSSpacing.sm)
-        .accessibilityIdentifier("discovery.category.bar")
     }
 }
-
-/// Customize a shortcut without leaving the selected source's real catalog.
-struct DiscoverySlotSettings: View {
-    let slots: DiscoveryCategorySlots
-    let catalog: [DiscoveryCategoryChoice]
-    let openSlot: Int?
-    let choose: (DiscoveryCategoryChoice, Int) -> Void
-    let close: () -> Void
-
-    @State private var opened: Int?
-
-    var body: some View {
-        AdaptiveSheetContainer(maxWidth: DSLayout.readableCompactWidth) {
-            NavigationStack {
-                List {
-                    Section {
-                        ForEach(slots.choices.indices, id: \.self) { index in
-                            let title = String(format: localized("分類 %d"), index + 1)
-                            Button { opened = index } label: {
-                                HStack {
-                                    Text(title).foregroundStyle(DSColor.textPrimary)
-                                    Spacer()
-                                    Text(slots.choices[index]?.title ?? localized("尚未選擇"))
-                                        .foregroundStyle(DSColor.textSecondary)
-                                        .multilineTextAlignment(.trailing)
-                                    Image(systemName: "chevron.right")
-                                        .font(DSFont.footnote)
-                                        .foregroundStyle(DSColor.textTertiary)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                            .accessibilityIdentifier("discovery.category.configure.\(index)")
-                        }
-                    }
-                    .interfaceSectionSurface()
-                }
-                .themedAppSurface(for: .explore)
-                .navigationTitle(localized("設定五個分類"))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(localized("關閉"), action: close)
-                    }
-                }
-                .navigationDestination(item: $opened) { index in
-                    let current = slots.choices[index]
-                    List {
-                        Section {
-                            ForEach(catalog) { choice in
-                                Button { choose(choice, index) } label: {
-                                    HStack {
-                                        Text(choice.title)
-                                        Spacer()
-                                        if choice.id == current?.id {
-                                            Image(systemName: "checkmark").accessibilityHidden(true)
-                                        }
-                                    }
-                                }
-                                .accessibilityAddTraits(choice.id == current?.id ? [.isSelected] : [])
-                            }
-                        }
-                        .interfaceSectionSurface()
-                    }
-                    .navigationTitle(localized("分類"))
-                    .navigationBarTitleDisplayMode(.inline)
-                    .themedAppSurface(for: .explore)
-                    // Use the system chevron (including swipe-back), without the parent title.
-                    .toolbarRole(.editor)
-                }
-                .task { if let openSlot, opened == nil { opened = openSlot } }
-            }
-        }
-    }
-}
-
 
 /// Pick the owner of the entire Search feed, before selecting any of its categories.
 struct DiscoverySearchSourcePicker: View {
@@ -139,13 +51,15 @@ struct DiscoverySearchSourcePicker: View {
     let choose: (BookSource) -> Void
     let close: () -> Void
     @State private var query = ""
+    // Reuse the old picker UUID preferences, not the book-source content/sync order.
+    @State private var pins = DiscoverySourcePins()
 
     private var results: [BookSource] {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return sources.filter {
+        return pins.orderedBookSources(sources.filter {
             term.isEmpty || $0.bookSourceName.localizedStandardContains(term)
                 || $0.bookSourceUrl.localizedStandardContains(term)
-        }
+        })
     }
 
     var body: some View {
@@ -157,6 +71,11 @@ struct DiscoverySearchSourcePicker: View {
                             let selected = source.bookSourceUrl == selectedURL
                             Button { choose(source) } label: {
                                 HStack {
+                                    if pins.isPinned(source.id) {
+                                        Image(systemName: "pin.fill")
+                                            .foregroundStyle(DSColor.accent)
+                                            .accessibilityHidden(true)
+                                    }
                                     Text(BookSourceDisplayName.title(source.bookSourceName))
                                     Spacer()
                                     if selected {
@@ -167,6 +86,16 @@ struct DiscoverySearchSourcePicker: View {
                             }
                             .accessibilityAddTraits(selected ? [.isSelected] : [])
                             .accessibilityIdentifier("discovery.source.choose.\(source.bookSourceUrl)")
+                            .accessibilityValue(pins.isPinned(source.id) ? localized("已置頂") : "")
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    pins.togglePin(source.id, availableIDs: Set(sources.map(\.id)))
+                                } label: {
+                                    Label(localized(pins.isPinned(source.id) ? "取消置頂" : "置頂"),
+                                          systemImage: pins.isPinned(source.id) ? "pin.slash" : "pin")
+                                }
+                                .tint(DSColor.accent)
+                            }
                         }
                     }
                     .interfaceSectionSurface()

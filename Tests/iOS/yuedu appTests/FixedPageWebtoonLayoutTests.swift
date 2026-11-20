@@ -74,6 +74,22 @@ struct FixedPageWebtoonLayoutTests {
         #expect(Self.isClose(collectionView.contentOffset.y, offset))
     }
 
+    @Test("a long strip that finishes loading at the viewport top does not skip its first panels")
+    func visibleStripGrowthDoesNotJumpToNextPage() {
+        let (reader, pages) = Self.makeReader(pageCount: 4, chapter: "visible-growth", displayScale: 3)
+        let collectionView = reader.collectionView
+        collectionView.contentOffset = CGPoint(x: 0, y: 100)
+        collectionView.layoutIfNeeded()
+        #expect(Self.frame(of: 1, in: reader).minY < 100 + collectionView.bounds.height)
+
+        reader.pageImageDidLoad(index: 0, page: pages[0], ratio: 5)
+        collectionView.layoutIfNeeded()
+
+        #expect(Self.isClose(collectionView.contentOffset.y, 100))
+        #expect(Self.isClose(Self.frame(of: 0, in: reader).height, 2000))
+        #expect(Self.frame(of: 0, in: reader).maxY == Self.frame(of: 1, in: reader).minY)
+    }
+
     @Test("prepending a chapter at the top keeps the page on screen in place")
     func prependKeepsViewport() {
         let (reader, pages) = Self.makeReader(pageCount: 4, chapter: "prepend")

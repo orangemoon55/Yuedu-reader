@@ -40,6 +40,8 @@ final class FixedPageReaderState: ObservableObject {
     var onReload: (() -> Void)?
     var onToggleAutoScroll: (() -> Void)?
     var onStopAutoScroll: (() -> Void)?
+    /// Flush the live page, then fence off the old controller until the switch finishes.
+    var onSetSourceChangeSuspended: ((Bool) -> Void)?
 }
 
 struct FixedPageChapterListItem: Identifiable, Equatable {
@@ -77,6 +79,10 @@ struct FixedPageReaderView: View {
     @Bindable private var globalSettings = GlobalSettings.shared
     @State private var readingStatsTracker: ReadingStatsSessionTracker?
     @State private var showTouchZoneEditor = false
+    @State private var sourcePickerBook: ReadingBook?
+    @State private var sourceSwitchTask: Task<Void, Never>?
+    @State private var sourceGeneration = UUID()
+    @State private var isSwitchingSource = false
 
     var body: some View {
         // The shelf's card push hosts this reader in a UIKit controller whose bar
@@ -103,9 +109,12 @@ struct FixedPageReaderView: View {
                     state: state,
                     chapterFetcher: dependencies.chapterFetcher
                 )
+                    // A controller snapshots source headers, decoder, TOC and held pages.
+                    // A successful switch must replace it, not call its old onReload.
+                    .id(sourceGeneration)
                     .ignoresSafeArea()
 
-                if state.isLoading {
+                if state.isLoading || isSwitchingSource {
                     ProgressView().tint(.white).controlSize(.large)
                 }
 
@@ -128,7 +137,13 @@ struct FixedPageReaderView: View {
                         onOpenTouchZoneEditor: {
                             state.showControls = false
                             showTouchZoneEditor = true
-                        }
+                        },
+                        onChangeSource: book.isOnline && book.resolvedPipelineKind == .manga
+                            && book.bookSourceId != nil ? {
+                                guard !isSwitchingSource else { return }
+                                state.onStopAutoScroll?()
+                                sourcePickerBook = currentBook
+                            } : nil
                     )
                         .transition(.opacity)
                 }
@@ -193,6 +208,8 @@ struct FixedPageReaderView: View {
             beginReadingStatsSession()
         }
         .onDisappear {
+            // Leaving the reader while a TOC is pending must not rebind its source later.
+            sourceSwitchTask?.cancel()
             finishReadingStatsSession()
         }
         .onChanged(of: scenePhase) { phase in
@@ -215,6 +232,63 @@ struct FixedPageReaderView: View {
         }
         .sheet(isPresented: $state.showChapterList) {
             FixedPageChapterListView(state: state, bookID: bookId) { state.showChapterList = false }
+        }
+        .sheet(item: $sourcePickerBook) { book in
+            if let sourceID = book.bookSourceId {
+                SourceSearchSheet(
+                    query: book.title, author: book.author,
+                    currentSourceId: sourceID, currentBookURL: book.bookInfoURL ?? "",
+                    kind: .manga, restrictToKind: true,
+                    onSelectOrigin: { switchSource(to: $0) }
+                )
+            }
+        }
+    }
+
+    private func switchSource(to origin: BookOrigin) {
+        guard !isSwitchingSource,
+              let before = currentBook, before.isOnline,
+              before.resolvedPipelineKind == .manga else { return }
+        guard let source = BookSourceStore.shared.source(id: origin.sourceId), source.enabled,
+              origin.inferredContentKind() == .manga else {
+            state.errorMessage = localized("找不到來源配置")
+            return
+        }
+        guard before.bookSourceId != origin.sourceId || before.bookInfoURL != origin.bookUrl else { return }
+        state.onSetSourceChangeSuspended?(true)
+        isSwitchingSource = true
+        sourceSwitchTask = Task { @MainActor in
+            defer {
+                isSwitchingSource = false
+                sourceSwitchTask = nil
+            }
+            do {
+                let search = ChangeSourceSearch(fetcher: dependencies.bookSourceFetcher)
+                let toc = try await search.prepareTOCPackage(for: origin)
+                try Task.checkCancellation()
+                // A candidate may be removed/disabled while its TOC is loading. Also never
+                // rebind a removed book or overwrite another switch that won the race.
+                guard let live = currentBook, live.isOnline,
+                      live.bookSourceId == before.bookSourceId,
+                      live.bookInfoURL == before.bookInfoURL,
+                      let selected = BookSourceStore.shared.source(id: origin.sourceId), selected.enabled,
+                      origin.inferredContentKind() == .manga else {
+                    throw NSError(domain: "FixedPageSourceChange", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: localized("找不到來源配置")])
+                }
+                await dependencies.chapterFetcher.cancelAll(for: bookId, includingDownloads: true)
+                try Task.checkCancellation()
+                try await OnlineBookSourceSwitch(store: store, dependencies: dependencies)
+                    .commit(bookId: bookId, origin: origin, toc: toc)
+                // The old controller stays suspended: its disappearance must not save its
+                // old chapter over the mapped position. The new one reads the same book ID.
+                state.errorMessage = nil
+                state.isLoading = true
+                sourceGeneration = UUID()
+            } catch {
+                state.onSetSourceChangeSuspended?(false)
+                if !(error is CancellationError) { state.errorMessage = error.localizedDescription }
+            }
         }
     }
 
@@ -280,6 +354,7 @@ struct FixedPageReaderControlsOverlay: View {
     var isModal = true
     var onClose: () -> Void
     var onOpenTouchZoneEditor: () -> Void
+    var onChangeSource: (() -> Void)? = nil
     @State private var showSettings = false
     @State private var pendingTouchZoneEditor = false
     /// iOS 17: the paywall a locked setting asked for, presented once settings is gone.
@@ -304,6 +379,14 @@ struct FixedPageReaderControlsOverlay: View {
                                 state.showChapterList = true
                             } label: {
                                 Label(localized("目錄"), systemImage: "list.bullet")
+                                    .labelStyle(.iconOnly)
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if let onChangeSource {
+                            Button(action: onChangeSource) {
+                                Label(localized("換源"), systemImage: "arrow.left.and.right")
                                     .labelStyle(.iconOnly)
                             }
                         }

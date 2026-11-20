@@ -22,7 +22,7 @@ def source(relative):
 PAGE = source("Modules/Features/Explore/Home/DiscoveryFiveCategoryPage.swift").split("struct DiscoveryBookList: View {", 1)[1]
 MODEL = source("Modules/Services/Online/DiscoveryBookListModel.swift")
 CATEGORY = source("Modules/Services/Online/DiscoveryCategoryModel.swift")
-RECONCILE = CATEGORY.split("func reconcileSource(", 1)[1].split("func refreshCurrent()", 1)[0]
+RECONCILE = CATEGORY.split("func reconcileSource(", 1)[1].split("private func commitSelection", 1)[0]
 
 
 class DiscoveryScrollContracts(unittest.TestCase):

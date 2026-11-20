@@ -6,8 +6,8 @@ import JavaScriptCore
 // Handles book sources whose `loginUi` JSON defines form fields (text/password/select/button).
 // After the user fills in credentials and taps "Confirm", the loginUrl JS is executed
 // with those credentials stored via LoginManager — mirroring Legado's SourceLoginDialog.
-// Fields are laid out as a wrapping 12-column grid (LoginFormGrid) so each row's `style`
-// decides its width, like Legado's login dialog.
+// Fields are laid out in a wrapping 12-column grid so their source `style` decides
+// their width and row span, like Legado's login dialog.
 
 struct BookSourceFormLoginView: View {
     /// The library's current copy, not the one the page opened with: a source can update
@@ -25,7 +25,8 @@ struct BookSourceFormLoginView: View {
     @MainActor private static weak var currentToastAlert: UIAlertController?
 
     private let gs = GlobalSettings.shared
-    @State private var fields: [LoginField] = []
+    @State private var form = LoginFormRows(fields: [])
+    private var fields: [LoginField] { form.fields }
     @State private var fieldLabels: [String: String] = [:]
     @State private var values: [String: String] = [:]
     // Dynamic loginUi is evaluated asynchronously. Start in the same loading state
@@ -61,7 +62,7 @@ struct BookSourceFormLoginView: View {
                         ProgressView()
                     }
                     LoginFormGrid(
-                        fields: fields,
+                        form: form,
                         values: $values,
                         labels: fieldLabels,
                         onValueChange: { field, _ in
@@ -103,7 +104,7 @@ struct BookSourceFormLoginView: View {
                     }
                     .accessibilityLabel(localized("取消"))
                 }
-                if !fields.contains(where: { $0.type == .button }) {
+                if !form.hasButtons {
                     ToolbarItem(placement: .topBarTrailing) {
                         if isLoading {
                             ProgressView()
@@ -265,7 +266,7 @@ struct BookSourceFormLoginView: View {
                 let parsed = LoginManager.shared.parseLoginUiResult(evaluation.json)
                 let stored = LoginManager.shared.getLoginInfo(sourceUrl: src.bookSourceUrl)
                 await MainActor.run {
-                    self.fields = parsed ?? []
+                    self.form = LoginFormRows(fields: parsed ?? [])
                     self.fieldLabels = evaluation.labels
                     self.values = Self.initialValues(for: parsed ?? [], stored: stored)
                     self.isLoading = false
@@ -280,7 +281,7 @@ struct BookSourceFormLoginView: View {
             return
         }
 
-        fields = LoginManager.shared.parseLoginUi(source.loginUi)
+        form = LoginFormRows(fields: LoginManager.shared.parseLoginUi(source.loginUi))
         fieldLabels = fields.literalViewNames
         values = Self.initialValues(
             for: fields,
@@ -726,7 +727,7 @@ struct BookSourceFormLoginView: View {
                         "names": parsed.prefix(8).map { $0.name }.joined(separator: "|")
                     ])
                     Task { @MainActor in
-                        self.fields = parsed
+                        self.form = LoginFormRows(fields: parsed)
                         self.fieldLabels = evaluation.labels
                         self.values = Self.initialValues(
                             for: parsed,

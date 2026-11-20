@@ -64,8 +64,8 @@ struct BookDetailSourceCallBacks {
             labels: labels,
             tapName: { request(.clickBookName, result: name) { SourceCallBackService.requestSearch(keyword: name) } },
             longPressName: { request(.longClickBookName, result: name) { SourceCallBackService.requestSearch(keyword: name) } },
-            tapAuthor: { request(.clickAuthor, result: author) { SourceCallBackService.requestSearch(keyword: author) } },
-            longPressAuthor: { request(.longClickAuthor, result: author) { SourceCallBackService.requestSearch(keyword: author) } },
+            tapAuthor: { request(.clickAuthor, result: author) { SourceCallBackService.requestAuthorSearch(keyword: author) } },
+            longPressAuthor: { request(.longClickAuthor, result: author) { SourceCallBackService.requestAuthorSearch(keyword: author) } },
             tapLabel: { label in
                 request(.clickBookLabel, result: label) {
                     SourceCallBackService.requestSearch(keyword: label, sourceURL: sourceKey)

@@ -93,4 +93,23 @@ struct DiscoverySourcePinsTests {
         #expect(!pins.isPinned(first.id))
         #expect(pins.pinnedIDs == [removed.id, third.id])
     }
+
+    @Test("the current full-source picker reuses the former UUID pins without editing source data")
+    func fullSourcePickerSharesOldPins() throws {
+        let suite = "DiscoveryFullSourcePins.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pins = DiscoverySourcePins(defaults: defaults)
+        let a = BookSource(bookSourceUrl: "https://a.fixture", bookSourceName: "A")
+        let b = BookSource(bookSourceUrl: "https://b.fixture", bookSourceName: "B")
+        let rows = [a, b]
+        pins.togglePin(b.id, availableIDs: Set(rows.map(\.id)))
+        #expect(pins.orderedBookSources(rows).map(\.id) == [b.id, a.id])
+        let reopened = DiscoverySourcePins(defaults: defaults)
+        #expect(reopened.orderedBookSources(rows).map(\.id) == [b.id, a.id])
+        reopened.togglePin(b.id, availableIDs: Set(rows.map(\.id)))
+        #expect(reopened.orderedBookSources(rows).map(\.id) == [a.id, b.id])
+        #expect(rows.map(\.lastUpdateTime) == [a.lastUpdateTime, b.lastUpdateTime])
+    }
+
 }

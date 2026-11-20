@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A book-source detail page's genre links and author link, for a source that does not take
 /// those taps itself (`BookDetailSourceGestures`): a genre opens the source's category of that
-/// name, else searches the source for it; the author searches the source for their books.
+/// name, else searches the source for it; the author searches all enabled sources for their books.
 @MainActor
 struct BookDetailSourceLinks {
     let source: BookSource?
@@ -17,10 +17,9 @@ struct BookDetailSourceLinks {
 
     func authorActions(_ author: String) -> [BookDetailAuthorAction] {
         let name = author.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let source, !name.isEmpty, name != localized("未知作者") else { return [] }
-        let sourceKey = SearchSourceScope.sourceKey(for: source)
+        guard source != nil, !name.isEmpty, name != localized("未知作者") else { return [] }
         return [BookDetailAuthorAction(id: "source", name: name, action: {
-            SourceCallBackService.requestSearch(keyword: name, sourceURL: sourceKey)
+            SourceCallBackService.requestAuthorSearch(keyword: name)
         })]
     }
 

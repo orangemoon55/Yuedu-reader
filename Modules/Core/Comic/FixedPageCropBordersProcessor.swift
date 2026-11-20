@@ -5,18 +5,18 @@ import UIKit
 
 // MARK: - Crop borders processor
 //
-// Detects white and black scanning borders around manga pages and crops them out
-// so the art fills the viewport, adapted from Aidoku's CropBordersProcessor.
+// Crop only uniform scanning borders. Work in the original CGImage's pixel space so
+// a narrow mark on an edge, or UIImage's orientation, cannot move the crop inward.
 
 struct FixedPageCropBordersProcessor: ImageProcessing {
 
     var identifier: String {
-        "com.yuedu.reader.cropBorders"
+        "com.yuedu.reader.cropBorders.v2"
     }
 
-    private let whiteThreshold: UInt8 = 0xEA
-    private let blackThreshold: UInt8 = 0x15
-    private let downscale: CGFloat = 0.4
+    // Do not allocate another unbounded bitmap for a very long strip. If we cannot
+    // examine the original pixels, keeping the page is safer than a sampled crop.
+    private let maxScanPixels = 8_000_000
 
     func process(_ image: PlatformImage) -> PlatformImage? {
         guard let cgImage = image.cgImage,
@@ -25,121 +25,75 @@ struct FixedPageCropBordersProcessor: ImageProcessing {
         return PlatformImage(cgImage: cropped, scale: image.scale, orientation: image.imageOrientation)
     }
 
-    /// The part of `image` worth keeping, in its pixel coordinates (top-left origin), or nil
-    /// when there is no border worth cropping. `PDFPageRasterizer` converts it to page
-    /// proportions so every zoom level of a page crops the same region.
+    /// The part of `image` to keep, in unrotated CGImage pixels (top-left origin), or nil
+    /// when there is no confidently detected border. PDF and fixed-layout EPUB renderers
+    /// convert this rectangle to proportions to keep the crop stable across zoom levels.
     func contentRect(in image: PlatformImage) -> CGRect? {
         guard let cgImage = image.cgImage else { return nil }
-
-        return autoreleasepool {
-            let origW = CGFloat(cgImage.width)
-            let origH = CGFloat(cgImage.height)
-            guard origW > 10, origH > 10 else { return nil }
-
-            let downsampledImage = downsample(image)
-            guard let downsampledCG = downsampledImage.cgImage else { return nil }
-            let cropRect = createCropRect(downsampledCG, origW: origW, origH: origH)
-            guard !cropRect.isEmpty else { return nil }
-
-            // Ensure the crop removes at least some border (e.g. > 1% change)
-            // and does not aggressively discard more than 60% of the page.
-            let widthDiff = origW - cropRect.width
-            let heightDiff = origH - cropRect.height
-            guard (widthDiff > origW * 0.01 || heightDiff > origH * 0.01),
-                  cropRect.width > origW * 0.4,
-                  cropRect.height > origH * 0.4 else {
-                return nil
-            }
-            return cropRect
-        }
-    }
-
-    private func createCropRect(_ cgImage: CGImage, origW: CGFloat, origH: CGFloat) -> CGRect {
         let width = cgImage.width
         let height = cgImage.height
-        let widthFloat = CGFloat(width)
-        let heightFloat = CGFloat(height)
+        guard width > 10, height > 10, width <= maxScanPixels / height else { return nil }
 
-        guard let context = createARGBBitmapContext(width: width, height: height),
-              let data = context.data?.assumingMemoryBound(to: UInt8.self) else {
-            return .zero
-        }
+        return autoreleasepool {
+            let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+            guard let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: bitmapInfo
+            ), let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
 
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            defer { withExtendedLifetime(context) {} }
+            context.setBlendMode(.copy)
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-        var lowX = widthFloat
-        var lowY = heightFloat
-        var highX: CGFloat = 0
-        var highY: CGFloat = 0
+            // A border must extend across the edge and match that edge's outermost color.
+            // In particular a black panel after a white margin is not more margin.
+            func matchesBorder(from start: Int, step: Int, count: Int, sample: Int) -> Bool {
+                let sampleOffset = sample * 4
+                let alpha = pixels[sampleOffset + 3]
+                let gray = pixels[sampleOffset]
+                guard alpha == 0 || (alpha == 255 && (gray <= 5 || gray >= 250)
+                    && pixels[sampleOffset + 1] == gray && pixels[sampleOffset + 2] == gray) else { return false }
 
-        // Scan pixels for non-transparent, non-white, non-black content
-        for y in 0..<height {
-            let yF = CGFloat(y)
-            for x in 0..<width {
-                let xF = CGFloat(x)
-                let pixelIndex = (width * y + x) * 4
-
-                let r = data[pixelIndex]
-                let g = data[pixelIndex + 1]
-                let b = data[pixelIndex + 2]
-                let a = data[pixelIndex + 3]
-
-                // Alpha
-                if a == 0 { continue }
-
-                // White border
-                if r > whiteThreshold && g > whiteThreshold && b > whiteThreshold {
-                    continue
+                for index in 0..<count {
+                    let offset = (start + index * step) * 4
+                    if pixels[offset + 3] != alpha { return false }
+                    if alpha != 0 && (pixels[offset] != gray || pixels[offset + 1] != gray || pixels[offset + 2] != gray) {
+                        return false
+                    }
                 }
-
-                // Black border
-                if r < blackThreshold && g < blackThreshold && b < blackThreshold {
-                    continue
-                }
-
-                lowX = min(xF, lowX)
-                highX = max(xF, highX)
-                lowY = min(yF, lowY)
-                highY = max(yF, highY)
+                return true
             }
+
+            var top = 0
+            var bottom = height
+            while top < bottom, matchesBorder(from: top * width, step: 1, count: width, sample: 0) {
+                top += 1
+            }
+            let bottomSample = (height - 1) * width
+            while top < bottom, matchesBorder(from: (bottom - 1) * width, step: 1, count: width, sample: bottomSample) {
+                bottom -= 1
+            }
+            guard top < bottom else { return nil }
+
+            var left = 0
+            var right = width
+            let firstRow = top * width
+            while left < right, matchesBorder(from: firstRow + left, step: width, count: bottom - top, sample: firstRow) {
+                left += 1
+            }
+            while left < right, matchesBorder(
+                from: firstRow + right - 1, step: width, count: bottom - top, sample: firstRow + width - 1
+            ) {
+                right -= 1
+            }
+
+            let cropWidth = right - left
+            let cropHeight = bottom - top
+            guard (Double(width - cropWidth) > Double(width) * 0.01
+                    || Double(height - cropHeight) > Double(height) * 0.01),
+                  Double(cropWidth) > Double(width) * 0.4,
+                  Double(cropHeight) > Double(height) * 0.4 else { return nil }
+            return CGRect(x: left, y: top, width: cropWidth, height: cropHeight)
         }
-
-        guard highX >= lowX, highY >= lowY else { return .zero }
-
-        let scaleX = CGFloat(width) / origW
-        let scaleY = CGFloat(height) / origH
-
-        let cropX = max(0, round(lowX / scaleX))
-        let cropY = max(0, round(lowY / scaleY))
-        let cropW = min(origW - cropX, round((highX - lowX + 1) / scaleX))
-        let cropH = min(origH - cropY, round((highY - lowY + 1) / scaleY))
-
-        return CGRect(x: cropX, y: cropY, width: cropW, height: cropH)
-    }
-
-    private func downsample(_ image: UIImage) -> UIImage {
-        let targetW = max(50, image.size.width * downscale)
-        let targetH = max(50, image.size.height * downscale)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: targetW, height: targetH), format: format)
-        return renderer.image { _ in
-            image.draw(in: CGRect(x: 0, y: 0, width: targetW, height: targetH))
-        }
-    }
-
-    private func createARGBBitmapContext(width: Int, height: Int) -> CGContext? {
-        let bytesPerPixel = 4
-        let bytesPerRow = width * bytesPerPixel
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        return CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )
     }
 }

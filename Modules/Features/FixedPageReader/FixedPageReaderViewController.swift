@@ -29,6 +29,30 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     private var fixedPageReaderConfiguration: FixedPageReaderConfiguration
     private(set) var reader: (any FixedPageModeReader)?
     private var loadToken = UUID()
+    private var sourceChangeSuspended = false
+
+    /// Called before the async switch. Keep the page on screen but fence off its callbacks,
+    /// fetch continuations and delayed saves until a fresh source controller replaces it.
+    private func setSourceChangeSuspended(_ suspended: Bool) {
+        guard sourceChangeSuspended != suspended else { return }
+        if suspended {
+            reader?.stopAutoScroll()
+            saveTask?.cancel()
+            let page = heldChapters.position(ofHeldPage: reader?.currentPageIndex() ?? 0)?.page ?? book.mangaPage
+            store?.updateMangaPosition(bookId: book.id, chapter: chapterIndex, page: page,
+                                       totalChapters: progressChapterCount, forceSave: true)
+            loadToken = UUID()
+            prefetchTask?.cancel()
+            imagePrefetcher.stopPrefetching()
+        }
+        sourceChangeSuspended = suspended
+        reader?.view.isUserInteractionEnabled = !suspended
+        if !suspended { loadChapter(at: chapterIndex, startPage: bookPageAfterFailedSwitch) }
+    }
+
+    private var bookPageAfterFailedSwitch: Int {
+        store?.readingBook(id: book.id)?.mangaPage ?? book.mangaPage
+    }
     private var saveTask: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
     /// The next chapter whose first images were asked for. Every page turned in a chapter's
@@ -96,6 +120,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         super.viewDidLoad()
         view.backgroundColor = .black
 
+        state.onSetSourceChangeSuspended = { [weak self] in self?.setSourceChangeSuspended($0) }
         state.onJumpToPage = { [weak self] page in self?.showPage(page) }
         state.onSelectChapter = { [weak self] index in self?.selectTableOfContentsEntry(at: index) }
         state.onSetConfiguration = { [weak self] configuration in self?.changeConfiguration(configuration) }
@@ -166,6 +191,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         restoreLegacyReaderToolbar()
+        guard !sourceChangeSuspended else { return }
         saveTask?.cancel()
         let page = currentChapterPage
         store?.updateMangaPosition(
@@ -268,7 +294,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     // MARK: Chapter loading
 
     private func loadChapter(at index: Int, startPage: Int) {
-        guard chapters.indices.contains(index) else { return }
+        guard !sourceChangeSuspended, chapters.indices.contains(index) else { return }
         chapterIndex = index
         currentPages = []
         heldChapters.clear()
@@ -531,7 +557,8 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     /// `page` counts through every held chapter; the title, the slider and the saved
     /// position all take the chapter it falls in and the page within it.
     func reader(didMoveToPage page: Int, total: Int) {
-        guard let position = heldChapters.position(ofHeldPage: page) else { return }
+        guard !sourceChangeSuspended,
+              let position = heldChapters.position(ofHeldPage: page) else { return }
         if position.chapter != chapterIndex {
             chapterIndex = position.chapter
             state.currentChapterIndex = position.chapter
@@ -596,7 +623,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     }
 
     func readerAppendNextChapter() async -> [FixedPage]? {
-        guard !isSingleChapterDocumentBook,
+        guard !sourceChangeSuspended, !isSingleChapterDocumentBook,
               let nextIndex = heldChapters.nextToAppend,
               chapters.indices.contains(nextIndex)
         else { return nil }
@@ -605,6 +632,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         do {
             let package = try await chapterFetcher.fetchChapter(
                 book: book, chapterIndex: nextIndex, priority: .immediate, store: store)
+            guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return nil }
             let localDir = MangaChapterParser.chapterDirectory(bookId: book.id, chapterIndex: nextIndex)
             let pages = MangaChapterParser.pages(
                 from: package.content, headers: headers, localDir: localDir, imageDecoder: imageDecoder
@@ -623,7 +651,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     }
 
     func readerPrependPreviousChapter() async -> [FixedPage]? {
-        guard !isSingleChapterDocumentBook,
+        guard !sourceChangeSuspended, !isSingleChapterDocumentBook,
               let prevIndex = heldChapters.previousToPrepend,
               chapters.indices.contains(prevIndex)
         else { return nil }
@@ -668,6 +696,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
     private func prefetchAroundChapters() {
         guard book.isOnline, let refs = book.onlineChapters, !refs.isEmpty else { return }
         let last = refs.count - 1
+        let token = loadToken
 
         let forwardIndices = [chapterIndex + 1, chapterIndex + 2]
             .filter { $0 >= 0 && $0 <= last }
@@ -677,6 +706,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         if !forwardIndices.isEmpty {
             Task(priority: .utility) {
                 for index in forwardIndices {
+                    guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
                     do {
                         _ = try await chapterFetcher.fetchChapter(
                             book: book,
@@ -693,6 +723,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         if !backwardIndices.isEmpty {
             Task(priority: .background) {
                 for index in backwardIndices {
+                    guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
                     do {
                         _ = try await chapterFetcher.fetchChapter(
                             book: book,
@@ -732,6 +763,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         prefetchedNextChapter = nextIndex
 
         prefetchTask?.cancel()
+        let token = loadToken
         prefetchTask = Task { [weak self] in
             guard let self else { return }
             let package: ChapterPackage
@@ -748,6 +780,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
                 if self.prefetchedNextChapter == nextIndex { self.prefetchedNextChapter = nil }
                 return
             }
+            guard !sourceChangeSuspended, loadToken == token, !Task.isCancelled else { return }
             let localDir = MangaChapterParser.chapterDirectory(bookId: book.id, chapterIndex: nextIndex)
             let pages = MangaChapterParser.pages(
                 from: package.content, headers: headers, localDir: localDir, imageDecoder: imageDecoder
@@ -772,7 +805,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         let progress = documentProgress(forPage: page)
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !self.sourceChangeSuspended, !Task.isCancelled else { return }
             FixedPageFrameGapProbe.span("fixedPage.savePosition", thresholdMs: 4) {
                 // Written without telling the library views: a publish rebuilt the whole
                 // shelf behind the reader — and this reader's own SwiftUI host — once for

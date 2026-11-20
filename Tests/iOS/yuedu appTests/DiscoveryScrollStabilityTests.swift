@@ -46,6 +46,13 @@ final class DiscoveryScrollStabilityTests: XCTestCase {
         return (DiscoveryBookListModel(choice: choice(source), source: source, firstPages: first, pageLoader: loader), directory)
     }
 
+    private func activate(_ category: DiscoveryCategoryModel, source: BookSource) throws -> DiscoveryCategoryModel.Activation {
+        var source = source
+        source.enabled = true; source.enabledExplore = true; source.exploreUrl = "/explore"
+        category.prepare(configuration: "test", page: nil, sources: [source])
+        return try XCTUnwrap(category.activeSource)
+    }
+
     func testIdenticalReconciliationPreservesEverySameSourceListInstance() throws {
         let suite = "discovery-scroll-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -54,15 +61,14 @@ final class DiscoveryScrollStabilityTests: XCTestCase {
         var source = BookSource(bookSourceUrl: "https://scroll.fixture", bookSourceName: "fixture")
         let selected = choice(source)
         let second = DiscoveryCategoryChoice(reference: .init(sourceURL: source.bookSourceUrl, title: "Other", url: "/other"), filters: [:])
-        category.choose(selected, at: 0)
-        category.choose(second, at: 1)
+        let activation = try activate(category, source: source)
         let firstList = category.list(for: selected, source: source)
         let secondList = category.list(for: second, source: source)
         let items = try [selected, second].map {
             try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: $0.reference.title, url: $0.reference.url)))
         }
         for _ in 0..<4 {
-            category.reconcileSource(sourceURL: source.bookSourceUrl, values: [:], items: items, error: nil)
+            category.reconcileSource(values: [:], items: items, error: nil, activation: activation)
             XCTAssertTrue(firstList === category.list(for: selected, source: source), "Same choice must not reset to page 1")
             XCTAssertTrue(secondList === category.list(for: second, source: source))
         }
@@ -77,15 +83,15 @@ final class DiscoveryScrollStabilityTests: XCTestCase {
         let category = DiscoveryCategoryModel(defaults: defaults)
         let source = BookSource(bookSourceUrl: "https://scroll.fixture", bookSourceName: "fixture")
         let original = choice(source, filters: ["mode": "old"])
-        category.choose(original, at: 0)
+        let activation = try activate(category, source: source)
         let originalList = category.list(for: original, source: source)
         let item = try XCTUnwrap(DiscoverViewModel.mapItem(.init(title: "Books", url: "/books")))
-        category.reconcileSource(sourceURL: source.bookSourceUrl, values: ["mode": "new"], items: [item], error: nil)
-        let changed = try XCTUnwrap(category.slots.choices[0])
+        category.reconcileSource(values: ["mode": "new"], items: [item], error: nil, activation: activation)
+        let changed = try XCTUnwrap(category.current)
         XCTAssertNotEqual(changed.id, original.id)
         XCTAssertFalse(originalList === category.list(for: changed, source: source))
-        category.reconcileSource(sourceURL: source.bookSourceUrl, values: original.filters, items: [item], error: nil)
-        XCTAssertTrue(originalList === category.list(for: try XCTUnwrap(category.slots.choices[0]), source: source))
+        category.reconcileSource(values: original.filters, items: [item], error: nil, activation: activation)
+        XCTAssertTrue(originalList === category.list(for: try XCTUnwrap(category.current), source: source))
     }
 
     func testRepeatedTailAppearanceDoesNotRetryFailureButExplicitRetryWorks() async throws {

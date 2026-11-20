@@ -37,6 +37,8 @@ struct ContentView: View {
         /// Search only this source (a book label tapped on its detail page, as legado's
         /// `SearchActivity.start(source, kind)`); nil searches every enabled source.
         var sourceURL: String? = nil
+        /// Author-name gestures explicitly start an all-enabled-sources session.
+        var isAuthorNameSearch = false
     }
 
     private var effectiveColorScheme: ColorScheme {
@@ -252,7 +254,8 @@ struct ContentView: View {
             else { return }
             sourceSearchRequest = SourceSearchRequest(
                 keyword: keyword,
-                sourceURL: note.userInfo?["sourceURL"] as? String
+                sourceURL: note.userInfo?["sourceURL"] as? String,
+                isAuthorNameSearch: note.userInfo?["authorNameSearch"] as? Bool ?? false
             )
         }
         // Full screen, not a sheet: a result's 作品詳情 pushes its reader onto this stack, as
@@ -265,9 +268,11 @@ struct ContentView: View {
             NavigationStack {
                 SearchView(
                     initialQuery: request.keyword,
-                    sessionScope: request.sourceURL.map {
-                        SearchSourceScope(mode: .custom, selectedSourceURLs: [$0])
-                    }
+                    sessionScope: request.isAuthorNameSearch
+                        ? SearchSourceScope.all
+                        : request.sourceURL.map {
+                            SearchSourceScope(mode: .custom, selectedSourceURLs: [$0])
+                        }
                 )
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {

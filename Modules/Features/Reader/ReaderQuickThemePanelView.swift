@@ -439,7 +439,8 @@ struct ReaderQuickThemePanelView: View {
                 image: nil,
                 title: background.localizedTitle,
                 titleColor: background.previewTextColor,
-                selected: selected
+                selected: selected,
+                captionSpacing: DSSpacing.sm
             )
         }
         .buttonStyle(.plain)
@@ -580,16 +581,21 @@ struct ReaderQuickPanelBackgroundTile: View {
     let title: String
     let titleColor: Color
     let selected: Bool
+    var captionSpacing = DSSpacing.xs
     @ScaledMetric(relativeTo: .caption) private var sampleHeight = DSLayout.readerQuickPanelBackgroundSampleHeight
 
     var body: some View {
-        VStack(spacing: DSSpacing.xs) {
-            GeometryReader { geometry in
-                ZStack {
-                    fill
+        VStack(spacing: captionSpacing) {
+            // Size the fill first. The preview can want more room than the fixed
+            // sample, so make it an overlay and clip to the sample, not the preview.
+            fill
+                .frame(height: sampleHeight)
+                .overlay {
                     if let image {
-                        Image(uiImage: image).resizable().scaledToFill()
-                            .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                        GeometryReader { geometry in
+                            Image(uiImage: image).resizable().scaledToFill()
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                        }
                     } else {
                         VStack(alignment: .leading, spacing: DSSpacing.xs) {
                             Text(localized("閱讀"))
@@ -619,9 +625,7 @@ struct ReaderQuickPanelBackgroundTile: View {
                             .padding(DSSpacing.xs)
                     }
                 }
-            }
-            .frame(height: sampleHeight)
-            .accessibilityHidden(true)
+                .accessibilityHidden(true)
             Text(title)
                 .font(DSFont.readerMenu(.caption))
                 .foregroundStyle(selected ? DSColor.readerMenuAccent : DSColor.readerMenuText)
