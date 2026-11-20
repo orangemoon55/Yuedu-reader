@@ -305,7 +305,11 @@ struct VideoDetailView: View {
             // draws becomes the full-width poster.
             cover.environment(\.coverImageObserver) { image in poster = image }
         } actions: {
-            heroActions(guide)
+            VideoHeroActions {
+                playButton(guide)
+            } buttons: {
+                iconButtons(guide)
+            }
         } intro: {
             if !displayIntro.isEmpty {
                 BookDetailIntroSection(
@@ -339,33 +343,6 @@ struct VideoDetailView: View {
         for tag in tags where !facts.contains(tag) { facts.append(tag) }
         let maker = displayAuthor.trimmingCharacters(in: .whitespacesAndNewlines)
         return (maker.isEmpty ? [] : [maker]) + facts.prefix(DSLayout.videoHeroFactLimit)
-    }
-
-    /// VidHub's action row: the play button, then the page's other actions together in one
-    /// glass capsule as tall as it (maintainer, 2026-11-01: 「那三個按鈕包在一個膠囊裡面」,
-    /// 「我要的是這樣的玻璃膠囊」); the capsule goes under it when the text is too large for
-    /// one line.
-    private func heroActions(_ guide: VideoEpisodeGuide) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: DSSpacing.lg) {
-                playButton(guide)
-                actionCapsule(guide)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            VStack(spacing: DSSpacing.md) {
-                playButton(guide)
-                actionCapsule(guide)
-            }
-        }
-    }
-
-    private func actionCapsule(_ guide: VideoEpisodeGuide) -> some View {
-        HStack(spacing: 0) { iconButtons(guide) }
-            .font(DSFont.title3)
-            .foregroundStyle(DSColor.textPrimary)
-            .buttonStyle(.borderless)
-            .frame(maxHeight: .infinity)
-            .modifier(CardButtonGlass())
     }
 
     /// 繼續播放 at the saved episode, else 開始播放 at the first; either names the episode.
@@ -892,15 +869,6 @@ struct VideoDetailView: View {
             // Watched without being shelved: only its name stays, for 搜索's 最近閱讀.
             OffShelfReadRecords.record(title: book.title, author: book.author, coverUrl: displayCoverUrl)
         }
-    }
-}
-
-/// An action in the capsule beside the play button: its icon, with a whole tap target.
-private struct VideoHeroCapsuleIcon: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .frame(width: DSLayout.videoActionSlotWidth, height: DSLayout.minimumTapTarget)
-            .contentShape(Rectangle())
     }
 }
 

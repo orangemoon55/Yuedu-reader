@@ -130,6 +130,47 @@ struct VideoDetailHero<Cover: View, Actions: View, Intro: View>: View {
     }
 }
 
+/// Plays first, with the other actions together in one glass capsule. Stack the two
+/// controls when the play label and the icons cannot fit on one line.
+struct VideoHeroActions<Play: View, Buttons: View>: View {
+    @ViewBuilder var play: Play
+    @ViewBuilder var buttons: Buttons
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: DSSpacing.lg) {
+                play
+                actionCapsule
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: DSSpacing.md) {
+                play
+                actionCapsule
+            }
+        }
+    }
+
+    private var actionCapsule: some View {
+        HStack(spacing: 0) { buttons }
+            .font(DSFont.title3)
+            .foregroundStyle(DSColor.textPrimary)
+            .buttonStyle(.borderless)
+            // In the stacked layout the hero can offer the full poster height. Bound the
+            // glass to one control row instead of filling that space.
+            .frame(height: DSLayout.videoPlayButtonHeight)
+            .modifier(CardButtonGlass())
+    }
+}
+
+/// An action in the capsule beside the play button: its icon, with a whole tap target.
+struct VideoHeroCapsuleIcon: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(width: DSLayout.videoActionSlotWidth, height: DSLayout.minimumTapTarget)
+            .contentShape(Rectangle())
+    }
+}
+
 /// The poster behind the hero: filling it from the top edge of the screen and faded out at its
 /// foot, where the page's own colour shows through. Pulled down past the top of the page, it
 /// grows from its bottom edge into the gap.
@@ -176,10 +217,31 @@ private struct VideoPosterBackdrop: View {
         VideoDetailHero(poster: nil, title: "示範短劇", facts: ["主演 示範演員", "共 80 集", "都市", "短劇"]) {
             GeneratedBookCover(title: "示範短劇", author: nil)
         } actions: {
-            Button(localized("開始播放"), systemImage: "play.fill") {}
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
+            VideoHeroActions {
+                Button {} label: {
+                    Label(localized("開始播放"), systemImage: "play.fill")
+                        .frame(width: DSLayout.videoPlayButtonMaxWidth)
+                }
+                .buttonStyle(BookDetailCardActionStyle(fill: DSColor.cardPrimaryActionFill,
+                                                       label: DSColor.cardPrimaryActionLabel,
+                                                       minHeight: DSLayout.videoPlayButtonHeight))
+            } buttons: {
+                Button {} label: {
+                    Label(localized("加入書架"), systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .modifier(VideoHeroCapsuleIcon())
+                }
+                Button {} label: {
+                    Label(localized("選集"), systemImage: "list.bullet")
+                        .labelStyle(.iconOnly)
+                        .modifier(VideoHeroCapsuleIcon())
+                }
+                Button {} label: {
+                    Label(localized("換源"), systemImage: "arrow.triangle.2.circlepath")
+                        .labelStyle(.iconOnly)
+                        .modifier(VideoHeroCapsuleIcon())
+                }
+            }
         } intro: {
             Text("示範簡介：一部示範用的短劇。")
                 .font(DSFont.caption)

@@ -16,7 +16,6 @@ struct SourceDiscoveryRoot: View {
             } else if let source = selection.selectedSource {
                 ExploreSourcePage(
                     source: source,
-                    layoutOverride: .magazine,
                     rankedSectionsFirst: true,
                     onSearch: {
                         navigation?.path.append(ExploreNavigationRoute.searchInSource(sourceURL: source.bookSourceUrl))
