@@ -66,30 +66,20 @@ enum BookSourceRowGroupScope: Equatable {
     case several([String])
 }
 
-/// Native share row for 匯出 …（儲存到「檔案」／AirDrop／…）. See `BookSourceExportFile` for
-/// why the payload is a `Transferable` and not a `.fileExporter` document, and
-/// `MenuShareLinkPresentationPolicy` for why the share sheet cannot open from this
-/// menu before iOS 18.
-struct BookSourceExportShareLink: View {
+/// The menu selects an export; the list's first-level sheet owns presentation.
+struct BookSourceExportMenuRow: View {
     let label: String
     let filenameLabel: String
-    /// Resolved when the row is chosen, not when the menu is built: 匯出全部 over 50,000
-    /// sources used to copy the whole library into every render of the toolbar menu.
+    /// Resolved on tap so building a menu never walks the library.
     let sources: () -> [BookSource]
-    /// Where the payload goes before iOS 18: the owning screen shows the share sheet
-    /// from its own first-level presenter.
-    let onHandoff: (PendingShareExport<BookSourceExportFile>) -> Void
+    let onHandoff: (BookSourceExportRequest) -> Void
 
     var body: some View {
-        MenuShareRow(
-            label: label,
-            makeExport: {
-                let file = BookSourceExportFile(
-                    filename: BookSourceExportFile.filename(for: filenameLabel), sources: sources())
-                return PendingShareExport(title: label, name: file.filename, item: file)
-            },
-            onHandoff: onHandoff
-        )
+        Button {
+            onHandoff(BookSourceExportRequest(title: label, filenameLabel: filenameLabel, sources: sources()))
+        } label: {
+            Label(label, systemImage: "square.and.arrow.up")
+        }
     }
 }
 
@@ -105,9 +95,8 @@ struct BookSourceRowActions {
     var test: (BookSource) -> Void
     var edit: (BookSource) -> Void
     var copyJSON: (BookSource) -> Void
-    /// 匯出書源檔案 — hands the payload to the list's first-level share sheet before
-    /// iOS 18. See `MenuShareLinkPresentationPolicy`.
-    var export: (PendingShareExport<BookSourceExportFile>) -> Void
+    /// 匯出書源檔案 — hands the snapshot to the list's first-level share sheet.
+    var export: (BookSourceExportRequest) -> Void
     var login: (BookSource) -> Void
     var editVariables: (BookSource) -> Void
     /// 移出分組: removes one group from a source and keeps its others.
@@ -303,7 +292,7 @@ struct BookSourceRow: View {
                 Label(localized("設置源變量"), systemImage: "curlybraces")
             }
             Divider()
-            BookSourceExportShareLink(
+            BookSourceExportMenuRow(
                 label: localized("匯出來源配置檔案"),
                 filenameLabel: source.bookSourceName.isEmpty
                     ? localized("未命名來源配置") : source.bookSourceName,
@@ -487,7 +476,7 @@ struct BookSourceGroupActions {
     var select: (Set<UUID>) -> Void
     var copyToPasteboard: (BookSourceRowGroup) -> Void
     /// 匯出該分組 — same first-level share hand-off as `BookSourceRowActions.export`.
-    var export: (PendingShareExport<BookSourceExportFile>) -> Void
+    var export: (BookSourceExportRequest) -> Void
     var delete: (BookSourceRowGroup) -> Void
     /// Looks the members up when an export actually runs.
     var resolveSources: ([UUID]) -> [BookSource]
@@ -568,7 +557,7 @@ struct BookSourceGroupHeaderRow: View {
             } label: {
                 Label(localized("選擇該分組"), systemImage: "checkmark.circle")
             }
-            BookSourceExportShareLink(
+            BookSourceExportMenuRow(
                 label: localized("匯出該分組"),
                 filenameLabel: group.name,
                 sources: { actions.resolveSources(group.sourceIDs) },

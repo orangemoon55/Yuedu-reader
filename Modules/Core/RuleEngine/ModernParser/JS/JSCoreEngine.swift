@@ -1543,6 +1543,7 @@ class JSCoreEngine {
         Self.installJavaElementAccessors(in: ctx)
 
         // Install the authoritative registry-backed Java/Android contract.
+        LegadoBitmapRuntime.install(in: ctx)
         LegadoJavaInteropRuntime.install(in: ctx)
         updateRuntimeErrorContext()
 

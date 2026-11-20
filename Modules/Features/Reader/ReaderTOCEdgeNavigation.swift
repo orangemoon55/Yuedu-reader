@@ -12,6 +12,17 @@ enum ReaderTOCEdge: Hashable {
         }
     }
 
+    /// The same readable-edge rule for image chapters. This only returns an index;
+    /// the chapter array, persisted order and live reader position are never changed.
+    func target<Item>(in items: [Item], index: (Item) -> Int, title: (Item) -> String) -> Int? {
+        let readable: Item?
+        switch self {
+        case .first: readable = items.first { !ReaderTOCScrollTarget.isVolumeHeading(title($0)) } ?? items.first
+        case .latest: readable = items.last { !ReaderTOCScrollTarget.isVolumeHeading(title($0)) } ?? items.last
+        }
+        return readable.map(index)
+    }
+
     func anchor(verticalColumns: Bool) -> UnitPoint {
         if verticalColumns { return self == .first ? .trailing : .leading }
         return self == .first ? .top : .bottom
@@ -53,13 +64,18 @@ struct ReaderTOCEdgeFramesKey: PreferenceKey {
 
 extension View {
     func reportTOCEdges(for chapter: BookChapter, first: Int?, latest: Int?) -> some View {
+        reportTOCEdges(index: chapter.index, first: first, latest: latest)
+    }
+
+    /// Shared geometry reporting for both text chapters and fixed-page chapter items.
+    func reportTOCEdges(index: Int, first: Int?, latest: Int?) -> some View {
         background {
-            if chapter.index == first || chapter.index == latest {
+            if index == first || index == latest {
                 GeometryReader { proxy in
                     let frame = proxy.frame(in: .global)
                     let pairs: [(ReaderTOCEdge, CGRect)] =
-                        (chapter.index == first ? [(.first, frame)] : [])
-                        + (chapter.index == latest ? [(.latest, frame)] : [])
+                        (index == first ? [(.first, frame)] : [])
+                        + (index == latest ? [(.latest, frame)] : [])
                     Color.clear.preference(key: ReaderTOCEdgeFramesKey.self,
                                            value: Dictionary(uniqueKeysWithValues: pairs))
                 }

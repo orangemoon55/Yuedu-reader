@@ -717,49 +717,69 @@ struct FixedPageReaderSettingsView: View {
 
 struct FixedPageChapterListView: View {
     @ObservedObject var state: FixedPageReaderState
-    /// Whose 正序／倒序 to read and save.
+    // Retained call-site identity only; manga TOC no longer reads/writes sort preferences.
     let bookID: UUID?
-    /// Closes this sheet; not `@Environment(\.dismiss)`, for the reason on
-    /// `FixedPageReaderSettingsView.onClose`.
+    /// Stable owner closure, matching the existing fixed-page sheet lifecycle.
     var onClose: () -> Void
-    @State private var chosenOrder: ChapterListOrder?
+    @State private var edgeRequest: ReaderTOCEdgeRequest?
+    @State private var latestRowFrame: CGRect?
+    @State private var viewportFrame: CGRect = .zero
 
-    private var orderBinding: Binding<ChapterListOrder> {
-        ChapterListOrder.binding(chosen: $chosenOrder, for: bookID)
+    private var isAtLatest: Bool {
+        ReaderTOCEdgeVisibility.isAtLatest(row: latestRowFrame, viewport: viewportFrame,
+                                         verticalColumns: false)
+    }
+
+    private var edgeActionTitle: String { localized(isAtLatest ? "回頂部" : "去底部") }
+
+    private func jumpToOtherEdge() {
+        guard !state.chapterListItems.isEmpty else { return }
+        edgeRequest = ReaderTOCEdgeRequest(destination: isAtLatest ? .first : .latest)
     }
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-                List(orderBinding.wrappedValue.arranged(state.chapterListItems)) { item in
-                    Button {
-                        state.onSelectChapter?(item.index)
-                    } label: {
-                        HStack {
-                            Text(item.title)
-                                .foregroundColor(.primary)
-                                .font(DSFont.subheadline)
-                            Spacer()
-                            if item.index == state.currentChapterIndex {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.accentColor)
+                List {
+                    let first = ReaderTOCEdge.first.target(in: state.chapterListItems, index: \.index, title: \.title)
+                    let latest = ReaderTOCEdge.latest.target(in: state.chapterListItems, index: \.index, title: \.title)
+                    ForEach(state.chapterListItems) { item in
+                        Button {
+                            state.onSelectChapter?(item.index)
+                        } label: {
+                            HStack {
+                                Text(item.title)
+                                    .foregroundColor(.primary)
+                                    .font(DSFont.subheadline)
+                                Spacer()
+                                if item.index == state.currentChapterIndex {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.accentColor)
+                                }
                             }
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
+                        .interfaceSectionSurface()
+                        .id(item.index)
+                        .reportTOCEdges(index: item.index, first: first, latest: latest)
                     }
-                    .interfaceSectionSurface()
-                    .id(item.index)
                 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { viewportFrame = $0 }
+                .onPreferenceChange(ReaderTOCEdgeFramesKey.self) { latestRowFrame = $0[.latest] }
                 .softScrollEdges()
-                // Rows need their own transparent surface too — `scrollContentBackground`
-                // only clears the list container. docs/design.md §4.1.
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 0, for: .scrollContent)
+                .accessibilityIdentifier("manga.toc.list")
                 .onAppear {
+                    // Open at the current chapter, just as the novel TOC does.
+                    guard state.chapterListItems.contains(where: { $0.index == state.currentChapterIndex }) else { return }
                     proxy.scrollTo(state.currentChapterIndex, anchor: .center)
                 }
-                // Rows are `.id`'d by chapter index, so the current one is found in either order.
-                .onChange(of: orderBinding.wrappedValue) {
-                    proxy.scrollTo(state.currentChapterIndex, anchor: .center)
+                .onChange(of: edgeRequest, initial: true) { _, request in
+                    guard let request,
+                          let row = request.destination.target(in: state.chapterListItems, index: \.index, title: \.title)
+                    else { return }
+                    proxy.scrollTo(row, anchor: request.destination.anchor(verticalColumns: false))
                 }
             }
             .background(PageBackgroundView(scope: .settings).ignoresSafeArea())
@@ -773,7 +793,10 @@ struct FixedPageChapterListView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    ChapterListOrderMenu(order: orderBinding)
+                    Button(action: jumpToOtherEdge) { Text(edgeActionTitle) }
+                        .disabled(state.chapterListItems.isEmpty)
+                        .accessibilityLabel(edgeActionTitle)
+                        .accessibilityIdentifier("toc.latest")
                 }
             }
         }
@@ -801,14 +824,13 @@ struct FixedPageChapterListView: View {
     }
 }
 
-#Preview("目錄・倒序") {
+#Preview("目錄・首尾跳轉") {
     let state = FixedPageReaderState()
     state.chapterListItems = FixedPageChapterListItem.items(
         from: (0..<12).map { OnlineChapterRef(index: $0, title: "第 \($0 + 1) 話", url: "") }
     )
     state.currentChapterIndex = 4
     let bookID = UUID()
-    ChapterListOrder.store(.descending, for: bookID)
     return FixedPageChapterListView(state: state, bookID: bookID, onClose: {})
 }
 

@@ -681,6 +681,7 @@ enum LegadoJavaInteropRuntime {
                 Socket: Socket, InetSocketAddress: InetSocketAddress
             },
             'javax.net.ssl': { HttpsURLConnection: HttpURLConnection },
+            'android.graphics': global.__yueduBitmapGraphics,
             'android.util': { Base64: AndroidBase64 },
             'android.text': { TextUtils: TextUtils },
             'android.webkit': { CookieManager: CookieManager },

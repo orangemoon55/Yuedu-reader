@@ -13,7 +13,13 @@ final class ReaderTOCEdgeRenderingTests: XCTestCase {
         try await exercise(.verticalRTLColumns)
     }
 
-    private func exercise(_ mode: TOCLayoutMode) async throws {
+    /// Uses the exact same window, visibility reporting, accessibility activation and
+    /// first → latest assertions as the two existing novel directory tests.
+    func testMangaDirectoryReturnsToFirstThenLatestWithoutSelectingOrReversing() async throws {
+        try await exercise(.horizontalList, manga: true)
+    }
+
+    private func exercise(_ mode: TOCLayoutMode, manga: Bool = false) async throws {
         let library = try XCTUnwrap(dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW))
         defer { dlclose(library) }
         typealias Get = @convention(c) () -> Bool
@@ -33,13 +39,34 @@ final class ReaderTOCEdgeRenderingTests: XCTestCase {
         let chapters = (0..<80).map { BookChapter(index: $0 * 2, title: "第\($0 + 1)章 测试目录", content: "") }
         var selections = 0
         var isPresented = true
-        let host = TOCEdgeTestHost(rootView: ReaderTOCView(
-            chapters: chapters, bookTitle: "首尾跳转验证", currentPage: 0, totalPages: 0,
-            tocLayoutMode: mode, pageOffsets: [:], showsPageNumbers: false,
-            currentIndex: chapters.last!.index, currentChapterID: chapters.last!.id,
-            uncachedChapterIndexes: [], onSelectChapter: { _ in selections += 1 },
-            isPresented: Binding(get: { isPresented }, set: { isPresented = $0 })
-        ))
+        let mangaState = FixedPageReaderState()
+        mangaState.chapterListItems = chapters.map { .init(id: $0.id, index: $0.index, title: $0.title) }
+        mangaState.currentChapterIndex = chapters.last!.index
+        mangaState.currentPage = 6
+        mangaState.onSelectChapter = { _ in selections += 1 }
+        let originalItems = mangaState.chapterListItems
+        let id = UUID()
+        let oldOrder = UserDefaults.standard.stringArray(forKey: ChapterListOrder.descendingBooksKey)
+        if manga { ChapterListOrder.store(.descending, for: id) }
+        defer {
+            if manga {
+                if let oldOrder { UserDefaults.standard.set(oldOrder, forKey: ChapterListOrder.descendingBooksKey) }
+                else { UserDefaults.standard.removeObject(forKey: ChapterListOrder.descendingBooksKey) }
+            }
+        }
+        let root: AnyView
+        if manga {
+            root = AnyView(FixedPageChapterListView(state: mangaState, bookID: id, onClose: { isPresented = false }))
+        } else {
+            root = AnyView(ReaderTOCView(
+                chapters: chapters, bookTitle: "首尾跳转验证", currentPage: 0, totalPages: 0,
+                tocLayoutMode: mode, pageOffsets: [:], showsPageNumbers: false,
+                currentIndex: chapters.last!.index, currentChapterID: chapters.last!.id,
+                uncachedChapterIndexes: [], onSelectChapter: { _ in selections += 1 },
+                isPresented: Binding(get: { isPresented }, set: { isPresented = $0 })
+            ))
+        }
+        let host = TOCEdgeTestHost(rootView: root)
         host.modalPresentationStyle = .fullScreen
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             presenter.present(host, animated: false) { done.resume() }
@@ -56,6 +83,12 @@ final class ReaderTOCEdgeRenderingTests: XCTestCase {
             try await wait { self.edgeButton(in: host.view, title: localized("回頂部")) != nil }
             XCTAssertEqual(selections, 0, "Scrolling the TOC must not select or open a chapter")
             XCTAssertTrue(isPresented, "Jumping is not a read action or dismissal")
+            if manga {
+                XCTAssertEqual(mangaState.chapterListItems, originalItems, "Never reverse the manga's source chapter array")
+                XCTAssertEqual(mangaState.currentChapterIndex, chapters.last!.index)
+                XCTAssertEqual(mangaState.currentPage, 6)
+                XCTAssertEqual(ChapterListOrder.stored(for: id), .descending, "The obsolete preference is ignored, not rewritten")
+            }
             let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image {
                 window.layer.render(in: $0.cgContext)
             })
@@ -112,7 +145,7 @@ private final class TOCEdgeTestPresenter: UIViewController {
 }
 
 @MainActor
-private final class TOCEdgeTestHost: UIHostingController<ReaderTOCView> {
+private final class TOCEdgeTestHost: UIHostingController<AnyView> {
     private(set) var appeared = false
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); appeared = true }
 }

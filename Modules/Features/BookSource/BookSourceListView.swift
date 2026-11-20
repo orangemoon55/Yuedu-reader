@@ -44,10 +44,8 @@ struct BookSourceListView: View {
     @State private var groupPicking: PendingGroupPick? = nil
     /// Source shown in the read-only 查看詳情 sheet.
     @State private var infoSource: BookSource? = nil
-    /// 匯出 payload waiting for this screen's first-level share sheet. Book-source
-    /// management is pushed before iOS 18, so this sheet is a first-level
-    /// presentation. See `MenuShareLinkPresentationPolicy`.
-    @State private var pendingExport: PendingShareExport<BookSourceExportFile>? = nil
+    /// Export snapshot owned by this page, not by the dismissing menu.
+    @State private var pendingExport: BookSourceExportRequest?
 
     /// `store` and `healthChecker` are injectable so scale tests can drive a
     /// 50,000-source library without touching the user's own.
@@ -173,21 +171,21 @@ struct BookSourceListView: View {
                         Divider()
                         Menu {
                             if !model.selectedIDs.isEmpty {
-                                BookSourceExportShareLink(
+                                BookSourceExportMenuRow(
                                     label: localized("匯出選中"),
                                     filenameLabel: localized("選中來源配置"),
                                     sources: { [model, store] in
                                         let selected = model.selectedIDs
                                         return store.sources.filter { selected.contains($0.id) }
                                     },
-                                    onHandoff: { pendingExport = $0 }
+                                    onHandoff: presentExport
                                 )
                             }
-                            BookSourceExportShareLink(
+                            BookSourceExportMenuRow(
                                 label: localized("匯出全部"),
                                 filenameLabel: localized("全部來源配置"),
                                 sources: { [store] in store.sources },
-                                onHandoff: { pendingExport = $0 }
+                                onHandoff: presentExport
                             )
                             Divider()
                             Button {
@@ -229,7 +227,7 @@ struct BookSourceListView: View {
             }
             .bookSourceAddFlow(addFlow)
             .sheet(item: $pendingExport) { export in
-                ShareExportSheet(export: export)
+                BookSourceExportSheet(request: export)
             }
             .sheet(item: $infoSource) { src in
                 AdaptiveSheetContainer(maxWidth: DSLayout.readablePanelWidth) {
@@ -477,6 +475,11 @@ struct BookSourceListView: View {
         .ignoresSafeArea(.container, edges: .top)
     }
 
+    private func presentExport(_ request: BookSourceExportRequest) {
+        guard pendingExport == nil else { return }
+        pendingExport = request
+    }
+
     // MARK: - Row & Group Actions
 
     /// Built once per body evaluation and shared by every row, so constructing a row costs
@@ -489,7 +492,7 @@ struct BookSourceListView: View {
             test: { self.presentCheckOptions(for: [$0]) },
             edit: { self.editingSource = $0 },
             copyJSON: { self.copySourceJSON($0) },
-            export: { self.pendingExport = $0 },
+            export: presentExport,
             login: { self.loginSource = $0 },
             editVariables: { self.variableEditingSource = $0 },
             leaveGroup: { group, source in
@@ -515,7 +518,7 @@ struct BookSourceListView: View {
             setEnabled: { self.store.setEnabledByUser(ids: $0, enabled: $1) },
             select: { self.model.select($0) },
             copyToPasteboard: { self.copyGroupToPasteboard($0) },
-            export: { self.pendingExport = $0 },
+            export: presentExport,
             delete: { group in
                 self.deletingGroup = PendingGroupAction(
                     id: group.id, name: group.name, sourceIds: group.sourceIds)
