@@ -961,7 +961,7 @@ final class OnlineProviderAttributedStringBuilder: @preconcurrency AttributedStr
         )
 
         let bodyParaStyle = NSMutableParagraphStyle()
-        bodyParaStyle.alignment = .justified // full justification: both margins align, CJK + Latin alike
+        bodyParaStyle.alignment = settings.textAlignment.nsTextAlignment
         bodyParaStyle.hyphenationFactor = ReaderHyphenation.factor // break long Latin words instead of gapping the line
         bodyParaStyle.lineBreakMode = .byWordWrapping
         bodyParaStyle.minimumLineHeight = bodyTargetLineHeight

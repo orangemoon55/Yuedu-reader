@@ -94,4 +94,65 @@ final class ReaderSettingsEntryUITests: XCTestCase {
         shelf.tap()
         XCTAssertTrue(book.waitForExistence(timeout: 10), "Switching tabs must keep the existing shelf and reader ownership")
     }
+    @MainActor
+    func testParagraphAlignmentBelowBottomAndPersists() throws {
+        _ = try StoreKitTestSessions.fresh(StoreKitTestSessions.yueduPro())
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-no-official-modules", "-onboarding.completed", "YES", "-yd_source_disclaimer_accepted", "YES",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+            "-auto-import-epub", directory.appendingPathComponent("\(title).txt").path,
+            "-auto-import-title", title, "-book-source-store-dir", directory.appendingPathComponent("sources").path,
+            "-bookLayoutIsGrid", "NO", "-bookshelfRingMode", "NO", "-qingyunRingDefaultBuild10", "YES",
+            "-yd_scroll_mode", "NO", "-yd_page_turn_style", "滑動"
+        ]
+        app.launch()
+        let shelf = element("rootTab.bookshelf", in: app)
+        XCTAssertTrue(shelf.waitForExistence(timeout: 30), app.debugDescription)
+        shelf.tap()
+        let book = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", title + "，")).firstMatch
+        XCTAssertTrue(book.waitForExistence(timeout: 30), app.debugDescription)
+        book.tap()
+        let readerSettings = app.buttons["reader_tool_settings"].firstMatch
+        if !readerSettings.waitForExistence(timeout: 10) || !readerSettings.isHittable {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+        XCTAssertTrue(readerSettings.waitForExistence(timeout: 15), app.debugDescription)
+        readerSettings.tap()
+        let spacing = element("reader.quickTool.spacing", in: app)
+        for _ in 0..<5 where !spacing.isHittable { app.swipeUp() }
+        XCTAssertTrue(spacing.waitForExistence(timeout: 10), app.debugDescription)
+        spacing.tap()
+        let picker = app.segmentedControls["reader.textAlignment"].firstMatch
+        for _ in 0..<8 where !picker.isHittable { app.swipeUp() }
+        XCTAssertTrue(picker.waitForExistence(timeout: 10), app.debugDescription)
+        let bottom = element("reader.bottomJustify", in: app)
+        XCTAssertTrue(bottom.exists, app.debugDescription)
+        XCTAssertGreaterThan(picker.frame.minY, bottom.frame.minY)
+        let natural = picker.buttons["自然对齐"].firstMatch
+        let justified = picker.buttons["两端对齐"].firstMatch
+        XCTAssertTrue(natural.exists && justified.exists, app.debugDescription)
+        natural.tap()
+        XCTAssertTrue(natural.isSelected)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "paragraph-alignment-below-bottom-natural"
+        shot.lifetime = .keepAlways
+        add(shot)
+        justified.tap()
+        XCTAssertTrue(justified.isSelected)
+        natural.tap()
+        element("reader.settings.done", in: app).tap()
+        // Enter the same page again: the setting is not a local preview-only value.
+        if !spacing.waitForExistence(timeout: 3) {
+            if !readerSettings.isHittable {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
+            readerSettings.tap()
+        }
+        for _ in 0..<5 where !spacing.isHittable { app.swipeUp() }
+        spacing.tap()
+        for _ in 0..<8 where !picker.isHittable { app.swipeUp() }
+        XCTAssertTrue(natural.isSelected, app.debugDescription)
+    }
+
 }

@@ -4577,3 +4577,9 @@
 "還沒有類型" = "No Categories";
 "安裝提供類型的模組後會列在這裡。" = "Installed modules that provide categories are listed here.";
 "書店：更多%@" = "More %@";
+
+/* Reader paragraph alignment, independent of bottom justification. */
+"對齊方式" = "Text Alignment";
+"自然對齊" = "Natural";
+"兩端對齊" = "Justified";
+"ReaderSettings.TextAlignment.Footer" = "Natural alignment leaves the line end ragged. Justified alignment evens body text across both margins without stretching paragraph endings. Explicit book alignment remains unchanged.";

@@ -322,7 +322,7 @@ struct BrowserLayoutConfigInputs: Sendable {
             paragraphSpacing: settings.paragraphSpacing,
             letterSpacing: settings.letterSpacing,
             isBold: settings.isBold,
-            defaultTextAlignment: .justified,
+            defaultTextAlignment: settings.textAlignment.nsTextAlignment,
             textTransform: BrowserReaderAttributes.transform(settings: settings),
             fontResolver: { families, weight, italic, size in
                 UserReaderFontResolver.epubOverride(postScriptName: selectedFont,

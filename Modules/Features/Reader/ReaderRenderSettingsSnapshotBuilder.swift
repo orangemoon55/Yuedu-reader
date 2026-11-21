@@ -26,6 +26,7 @@ struct ReaderRenderSettingsSnapshotInput {
     var translation: ReaderTranslationPresentation = .off
     var bookID: UUID? = nil
     var bottomJustify: Bool = false
+    var textAlignment: ReaderTextAlignment = .justified
     var usesBookSpacing: Bool = true
 }
 
@@ -83,6 +84,7 @@ enum ReaderRenderSettingsSnapshotBuilder {
             bookID: input.bookID,
             // A scroll column has no page bottom to reach.
             bottomJustify: isPaged && input.bottomJustify,
+            textAlignment: input.textAlignment,
             usesBookSpacing: input.usesBookSpacing,
             displayScale: input.displayScale
         )

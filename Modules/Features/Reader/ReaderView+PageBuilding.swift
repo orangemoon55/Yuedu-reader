@@ -88,6 +88,7 @@ extension ReaderView {
             translation: effectiveReaderTranslation,
             bookID: bookId,
             bottomJustify: settings.readerBottomJustify,
+            textAlignment: settings.readerTextAlignment,
             usesBookSpacing: settings.readerUsesBookSpacing
         )
 

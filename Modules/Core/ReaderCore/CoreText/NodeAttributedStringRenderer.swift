@@ -63,6 +63,7 @@ struct NodeAttributedStringRenderer: Sendable {
         /// (embed players check it, as they do in a browser). nil for EPUB.
         let webEmbedReferer: String?
         let writingMode: ReaderWritingMode
+        let textAlignment: ReaderTextAlignment
         let baseWritingDirection: NSWritingDirection
         let isBold: Bool
         /// Center standalone block images that carry no explicit horizontal alignment. Online
@@ -142,6 +143,7 @@ struct NodeAttributedStringRenderer: Sendable {
             self.mediaURLResolver = mediaURLResolver
             self.webEmbedReferer = webEmbedReferer
             self.writingMode = settings.writingMode
+            self.textAlignment = settings.textAlignment
             self.baseWritingDirection = baseWritingDirection
             self.isBold = settings.isBold
             self.centerStandaloneImages = centerStandaloneImages
@@ -1219,14 +1221,11 @@ struct NodeAttributedStringRenderer: Sendable {
             para.tailIndent = tailInset > 0 ? -tailInset : 0
         }
 
-        // Unspecified CSS text-align (.natural) now defaults to full justification, so both margins
-        // align for CJK + Latin alike — the same thing Readest / Apple Books do by force-injecting
-        // `text-align: justify`. Explicit CSS left/center/right/justify still win. RTL "natural"
-        // keeps the right-alignment resolved just above (other scripts come later). Single-line and
-        // paragraph-last lines are never stretched — that's enforced in the horizontal line drawer —
-        // so headings, captions and hard-wrapped code stay ragged automatically.
+        // Unspecified CSS text-align follows the reader's 对齐方式 setting. Explicit book
+        // alignment still wins, and RTL natural alignment keeps its resolved direction.
+        // Single-line and paragraph-last lines are never stretched by CoreText.
         para.alignment = (style.textAlign == .natural && !rtlRightAligned)
-            ? .justified
+            ? config.textAlignment.nsTextAlignment
             : nsTextAlignment(from: style.textAlign)
         para.hyphenationFactor = ReaderHyphenation.factor
         para.baseWritingDirection = style.baseWritingDirection

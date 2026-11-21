@@ -977,10 +977,15 @@ class GlobalSettings {
             recordReadingSettingEdit { $0.bottomJustify = readerBottomJustify }
         }
     }
-    /// 套用書本間距: whether an EPUB's own stylesheet spacing (line height, paragraph
-    /// margins) wins over 行距／段距. On by default, so a book keeps the look its
-    /// publisher set until the reader turns it off. Global, not part of a theme: it is
-    /// about the book's format, not the reader's look. Part of `ReaderRenderSettings`.
+    /// Default paragraph alignment; independent from bottom justification.
+    /// Keep the existing justified appearance until the user changes it.
+    var readerTextAlignment: ReaderTextAlignment {
+        didSet {
+            UserDefaults.standard.set(readerTextAlignment.rawValue, forKey: "yd_reader_text_alignment")
+            recordReadingSettingEdit { $0.textAlignment = readerTextAlignment.rawValue }
+        }
+    }
+    /// The EPUB's own stylesheet spacing wins while this setting is on.
     var readerUsesBookSpacing: Bool {
         didSet {
             UserDefaults.standard.set(readerUsesBookSpacing, forKey: "yd_reader_uses_book_spacing")
@@ -2331,6 +2336,7 @@ class GlobalSettings {
         pageMarginBottom = (UserDefaults.standard.object(forKey: "yd_page_margin_bottom") as? Double)
             ?? loadedPageMarginV
         readerBottomJustify = (UserDefaults.standard.object(forKey: "yd_reader_bottom_justify") as? Bool) ?? true
+        readerTextAlignment = ReaderTextAlignment(rawValue: UserDefaults.standard.string(forKey: "yd_reader_text_alignment") ?? "") ?? .justified
         readerUsesBookSpacing = (UserDefaults.standard.object(forKey: "yd_reader_uses_book_spacing") as? Bool) ?? true
         readerTextColorOverrides =
             (UserDefaults.standard.dictionary(forKey: Self.readerTextColorOverridesKey) as? [String: Int])?

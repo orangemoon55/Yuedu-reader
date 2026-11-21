@@ -39,7 +39,20 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc30 ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc32 ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/ReaderTextAlignmentTests'
+    -only-testing:'yuedu appTests/PlainTextParagraphFormattingTests'
+    -only-testing:'yuedu appTests/ReaderRenderSettingsSnapshotTests'
+    -only-testing:'yuedu appTests/ReaderRenderRefreshTests'
+    -only-testing:'yuedu appTests/ReadingSettingsScopeTests'
+    -only-testing:'yuedu appTests/BottomJustifyPaginationTests'
+    -only-testing:'yuedu appTests/BrowserLayoutJustificationTests'
+    -only-testing:'yuedu appTests/BrowserBottomJustifyEngineTests'
+    -only-testing:'yuedu appTests/ReadccGlassDesignTests'
+    -only-testing:'yuedu appUITests/ReaderSettingsEntryUITests/testParagraphAlignmentBelowBottomAndPersists'
+  )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc30 ]]; then
   python3 -u scripts/readcc_manga_offline_fixture.py > "$PRIVATE/manga-fixture.log" 2>&1 &
   MANGA_FIXTURE_PID=$!
   python3 - <<'PY'

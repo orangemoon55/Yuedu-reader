@@ -513,6 +513,19 @@ struct ReaderSettingsView: View {
                     SettingsRowLabel(localized(ReadingSettingsScopeItem.bottomJustify.titleKey),
                                      systemImage: ReadingSettingsScopeItem.bottomJustify.systemImage)
                 }
+                .accessibilityIdentifier("reader.bottomJustify")
+            }
+
+            if showsTextAlignment {
+                VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                    SettingsRowLabel(localized("對齊方式"), systemImage: "text.alignleft")
+                    Picker(localized("對齊方式"), selection: $settings.readerTextAlignment) {
+                        Text(localized("自然對齊")).tag(ReaderTextAlignment.natural)
+                        Text(localized("兩端對齊")).tag(ReaderTextAlignment.justified)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("reader.textAlignment")
+                }
             }
 
             Button(role: .destructive) {
@@ -536,6 +549,9 @@ struct ReaderSettingsView: View {
                     if showsBottomJustify {
                         Text(localized("底部對齊：開啟後每頁文字會自動調整行間距以填滿頁面，使底部對齊整齊。"))
                     }
+                    if showsTextAlignment {
+                        Text(localized("ReaderSettings.TextAlignment.Footer"))
+                    }
                 }
                 .dsSectionFooter()
             }
@@ -550,6 +566,10 @@ struct ReaderSettingsView: View {
         supportsLineHeight && !settings.scrollMode && !isVerticalWritingMode
     }
 
+    private var showsTextAlignment: Bool {
+        supportsLineHeight && !isVerticalWritingMode
+    }
+
     private var hasCustomLayout: Bool {
         let spacing = supportsSpacing && (
             abs(readerConfig.lineHeightMultiple - defaultLineHeightMultiple) > 0.001
@@ -562,8 +582,9 @@ struct ReaderSettingsView: View {
                 || abs(readerConfig.pageMarginBottom - defaultPageMarginV) > 0.001
         )
         let bottomJustify = showsBottomJustify && !settings.readerBottomJustify
+        let textAlignment = showsTextAlignment && settings.readerTextAlignment != .justified
         let bookSpacing = showsBookSpacingToggle && !settings.readerUsesBookSpacing
-        return spacing || margins || bottomJustify || bookSpacing
+        return spacing || margins || bottomJustify || textAlignment || bookSpacing
     }
 
     /// The bars' own space is computed from their height, so there is no separate
@@ -582,6 +603,9 @@ struct ReaderSettingsView: View {
         }
         if showsBottomJustify {
             settings.readerBottomJustify = true
+        }
+        if showsTextAlignment {
+            settings.readerTextAlignment = .justified
         }
         if showsBookSpacingToggle {
             settings.readerUsesBookSpacing = true
@@ -958,11 +982,15 @@ struct ReaderSettingsView: View {
                     .font(previewFont(size: 18))
                     .baselineOffset(-6)
             }
-            Text(localized("  這是一段測試文字，用來測試字體大小和行距、字距、段落間距，以及不同主題下的閱讀舒適度。調整設定時，可以觀察文字密度、換行節奏與背景對比是否符合你的閱讀習慣。"))
-                .font(previewFont(size: min(max(fontSize, 17), 24)))
-                .lineSpacing(readerConfig.lineSpacing)
-                .tracking(readerConfig.letterSpacing)
-                .foregroundStyle(theme.textColor)
+            ReaderParagraphAlignmentPreview(
+                text: localized("  這是一段測試文字，用來測試字體大小和行距、字距、段落間距，以及不同主題下的閱讀舒適度。調整設定時，可以觀察文字密度、換行節奏與背景對比是否符合你的閱讀習慣。"),
+                font: UserReaderFontResolver.bodyFont(size: min(max(fontSize, 17), 24), isBold: readerConfig.readerFontBold),
+                color: theme.uiTextColor,
+                alignment: settings.readerTextAlignment,
+                lineSpacing: readerConfig.lineSpacing,
+                letterSpacing: readerConfig.letterSpacing
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, readerConfig.pageMarginH)
         .padding(.top, 26)
@@ -991,6 +1019,40 @@ struct ReaderSettingsView: View {
         return settings.userFonts.first { $0.postScriptName == selected }?.displayName ?? selected
     }
 
+}
+
+/// UILabel honors paragraph justification; SwiftUI Text has no justified alignment.
+private struct ReaderParagraphAlignmentPreview: UIViewRepresentable {
+    let text: String
+    let font: UIFont
+    let color: UIColor
+    let alignment: ReaderTextAlignment
+    let lineSpacing: CGFloat
+    let letterSpacing: CGFloat
+
+    func makeUIView(context: Context) -> UILabel {
+        let view = UILabel()
+        view.numberOfLines = 0
+        view.backgroundColor = .clear
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ uiView: UILabel, context: Context) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment.nsTextAlignment
+        paragraph.lineSpacing = lineSpacing
+        paragraph.lineBreakMode = .byWordWrapping
+        uiView.attributedText = NSAttributedString(string: text, attributes: [
+            .font: font, .foregroundColor: color, .paragraphStyle: paragraph,
+            .kern: letterSpacing
+        ])
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+        guard let width = proposal.width, width > 0 else { return nil }
+        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+    }
 }
 
 private struct LayoutImportAlert: Identifiable {

@@ -28,9 +28,12 @@ struct ReadccGlassDesignTests {
     @Test("Every shared glass selection is opaque, visible and readable for extreme theme accents")
     func selectionContrast() throws {
         let accents: [Color] = [.black, .white, .clear, .gray, .red, .green, .blue, .yellow,
+                                Color(uiColor: .systemBlue),
                                 Color(red: 0.96, green: 0.96, blue: 0.96),
                                 Color(red: 0.84, green: 0.60, blue: 0.18),
-                                .blue.opacity(0.15)]
+                                Color(red: 0.16, green: 0.04, blue: 0.22),
+                                Color(red: 0.02, green: 0.07, blue: 0.04),
+                                .blue.opacity(0.15), .red.opacity(0.35)]
         for scheme in [ColorScheme.light, .dark] {
             for contrast in [ColorSchemeContrast.standard, .increased] {
                 let traits = UITraitCollection(traitsFrom: [
@@ -47,25 +50,62 @@ struct ReadccGlassDesignTests {
                     #expect(abs(fill.3 - 1) < 0.0001)
                     #expect(ratio >= (contrast == .increased ? 7 : 4.5))
                     #expect(abs(selected - luminance(surface)) > 0.035)
+                    // Light selections must be fresh washes, not the old muddy neutral.
+                    if scheme == .light { #expect(selected >= 0.4799) }
+                }
+            }
+        }
+    }
+
+    @Test("Default selections are clean UI blue, pastel in light mode and luminous in dark mode")
+    func selectedBlueDirection() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            for contrast in [ColorSchemeContrast.standard, .increased] {
+                let traits = UITraitCollection(traitsFrom: [
+                    UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light),
+                    UITraitCollection(accessibilityContrast: contrast == .increased ? .high : .normal)
+                ])
+                for accent in [Color.blue, Color(uiColor: .systemBlue),
+                               Color(red: 0.20, green: 0.47, blue: 0.96)] {
+                    let fill = try rgba(UIColor(NavigationGlassCapsule.selectionFill(
+                        tint: accent, scheme: scheme, contrast: contrast)), traits: traits)
+                    #expect(fill.2 > fill.1 && fill.1 > fill.0)
+                    #expect(fill.2 - fill.0 > 0.15)
                     if scheme == .light {
-                        #expect(selected >= 0.3199 && selected <= 0.5801)
+                        #expect(fill.0 > 0.60 && fill.2 > 0.90)
                     } else {
-                        #expect(selected >= 0.0599 && selected <= 0.1401)
+                        #expect(fill.2 > 0.50 && fill.2 - fill.0 > 0.30)
                     }
                 }
             }
         }
     }
 
-    @Test("Colored selections keep a visible theme hue instead of a five-percent neutral wash")
-    func selectedThemeHue() throws {
+    @Test("Neutral accents fall back to UI blue while imported colors retain their hue")
+    func selectedImportedAccents() throws {
         for scheme in [ColorScheme.light, .dark] {
-            let traits = UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
             for contrast in [ColorSchemeContrast.standard, .increased] {
-                let fill = try rgba(UIColor(NavigationGlassCapsule.selectionFill(
-                    tint: Color(red: 0.20, green: 0.47, blue: 0.96),
-                    scheme: scheme, contrast: contrast)), traits: traits)
-                #expect(fill.2 - fill.0 > 0.20)
+                let traits = UITraitCollection(traitsFrom: [
+                    UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light),
+                    UITraitCollection(accessibilityContrast: contrast == .increased ? .high : .normal)
+                ])
+                func fill(_ accent: Color) throws -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+                    try rgba(UIColor(NavigationGlassCapsule.selectionFill(
+                        tint: accent, scheme: scheme, contrast: contrast)), traits: traits)
+                }
+                let blue = try fill(Color(uiColor: .systemBlue))
+                for neutral in [Color.black, .white, .gray, .clear] {
+                    let result = try fill(neutral)
+                    #expect(abs(result.0 - blue.0) < 0.0001)
+                    #expect(abs(result.1 - blue.1) < 0.0001)
+                    #expect(abs(result.2 - blue.2) < 0.0001)
+                }
+                let gold = try fill(Color(red: 0.84, green: 0.60, blue: 0.18))
+                #expect(gold.0 > gold.1 && gold.1 - gold.2 > 0.10)
+                let plum = try fill(Color(red: 0.16, green: 0.04, blue: 0.22))
+                #expect(plum.2 > plum.0 && plum.0 - plum.1 > 0.10)
+                let forest = try fill(Color(red: 0.02, green: 0.07, blue: 0.04))
+                #expect(forest.1 - forest.0 > 0.10 && forest.1 > forest.2)
             }
         }
     }

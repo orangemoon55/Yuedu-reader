@@ -155,6 +155,10 @@ extension GlobalSettings {
             reading.bottomJustify = readerBottomJustify
             completed = true
         }
+        if reading.textAlignment == nil {
+            reading.textAlignment = readerTextAlignment.rawValue
+            completed = true
+        }
         return completed
     }
 
@@ -308,6 +312,7 @@ extension GlobalSettings {
         snapshot.pageMarginTop = pageMarginTop
         snapshot.pageMarginBottom = pageMarginBottom
         snapshot.bottomJustify = readerBottomJustify
+        snapshot.textAlignment = readerTextAlignment.rawValue
         snapshot.pageTurnStyle = pageTurnStyle.rawValue
         snapshot.scrollMode = scrollMode
         snapshot.writingMode = readerWritingMode.rawValue
@@ -409,6 +414,7 @@ extension GlobalSettings {
         assign(\.pageMarginTop, reading.pageMarginTop)
         assign(\.pageMarginBottom, reading.pageMarginBottom)
         assign(\.readerBottomJustify, reading.bottomJustify)
+        assign(\.readerTextAlignment, reading.textAlignment.flatMap(ReaderTextAlignment.init(rawValue:)))
         assign(\.pageTurnStyle, reading.pageTurnStyle.flatMap(PageTurnStyle.init(rawValue:)))
         assign(\.scrollMode, reading.scrollMode)
         assign(\.readerWritingMode, reading.writingMode.flatMap(ReaderWritingMode.init(rawValue:)))
