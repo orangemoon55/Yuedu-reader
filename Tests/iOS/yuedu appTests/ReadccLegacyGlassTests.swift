@@ -35,7 +35,7 @@ final class ReadccLegacyGlassTests: XCTestCase {
         XCTAssertEqual(size.height, 44, accuracy: 0.01)
     }
 
-    func testLiveBackdropAccessibilityFallbackAndLightDarkSnapshots() async throws {
+    func testLiveBackdropGlassOffFallbackAndLightDarkSnapshots() async throws {
         let settings = GlobalSettings.shared
         let originalGlass = settings.interfaceFrostedGlass
         let originalTransparency = settings.interfaceGlassTransparency
@@ -52,9 +52,12 @@ final class ReadccLegacyGlassTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil; oldWindow?.makeKey() }
         for scheme in [ColorScheme.light, .dark] {
             for opaque in [false, true] {
+                // Apple's Reduce Transparency EnvironmentValue is read-only. Host
+                // the same opaque branch via the real glass preference; the shared
+                // accessibility policy is tested separately with its system input.
+                settings.interfaceFrostedGlass = !opaque
                 let content = GlassMaterialHarness()
                     .environment(\.colorScheme, scheme)
-                    .environment(\.accessibilityReduceTransparency, opaque)
                 let host = UIHostingController(rootView: content)
                 window.rootViewController = host
                 window.makeKeyAndVisible()
@@ -67,7 +70,7 @@ final class ReadccLegacyGlassTests: XCTestCase {
                 }
                 let blurs = descendants(host.view).compactMap { $0 as? UIVisualEffectView }
                 if opaque {
-                    XCTAssertTrue(blurs.isEmpty, "Reduce Transparency must not leave live blur layers")
+                    XCTAssertTrue(blurs.isEmpty, "Glass-off fallback must not leave live blur layers")
                 } else {
                     XCTAssertGreaterThanOrEqual(blurs.count, 3, "The iOS17-compatible path must mount real live backdrops")
                     XCTAssertTrue(blurs.allSatisfy { !$0.isUserInteractionEnabled })
