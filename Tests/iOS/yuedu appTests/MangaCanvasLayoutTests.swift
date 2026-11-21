@@ -8,18 +8,31 @@ final class MangaCanvasLayoutTests: XCTestCase {
     func testCanvasInsetsTheWholeViewportWithoutMaskingOrCropping() async throws {
         XCTAssertEqual(MangaCanvasLayout.sideMargin, 8)
         XCTAssertEqual(MangaCanvasLayout.horizontalInset(isManga: false), 0)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let oldWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let parent = UIViewController()
+        window.rootViewController = parent
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; oldWindow?.makeKey() }
         for manga in [false, true] {
             for width: CGFloat in [320, 390, 744] {
                 var pageView: UIView?
                 let content = CanvasViewportProbe { pageView = $0 }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .mangaCanvasMargins(isManga: manga)
+                    .ignoresSafeArea()
                 let host = UIHostingController(rootView: content)
+                parent.addChild(host)
+                parent.view.addSubview(host.view)
                 host.view.frame = CGRect(x: 0, y: 0, width: width, height: 600)
-                host.view.setNeedsLayout()
-                host.view.layoutIfNeeded()
-                await Task.yield()
-                host.view.layoutIfNeeded()
+                host.didMove(toParent: parent)
+                for _ in 0..<8 {
+                    host.view.setNeedsLayout()
+                    host.view.layoutIfNeeded()
+                    await Task.yield()
+                    try await Task.sleep(for: .milliseconds(20))
+                }
                 let page = try XCTUnwrap(pageView)
                 let frame = page.convert(page.bounds, to: host.view)
                 let margin: CGFloat = manga ? 8 : 0
@@ -27,6 +40,9 @@ final class MangaCanvasLayoutTests: XCTestCase {
                 XCTAssertEqual(frame.maxX, width - margin, accuracy: 0.5)
                 XCTAssertEqual(frame.width, width - margin * 2, accuracy: 0.5)
                 XCTAssertNil(page.layer.mask, "A gutter is not a source-image crop mask")
+                host.willMove(toParent: nil)
+                host.view.removeFromSuperview()
+                host.removeFromParent()
             }
         }
     }

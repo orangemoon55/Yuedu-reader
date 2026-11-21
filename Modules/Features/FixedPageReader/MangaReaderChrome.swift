@@ -53,11 +53,15 @@ struct MangaReaderTopBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(isLoading)
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(localized(ReaderChromeActionItem.refresh.titleKey))
             .accessibilityIdentifier("manga.refresh")
+            .accessibilityAction {
+                guard !isLoading else { return }
+                onRefresh()
+            }
+            .disabled(isLoading)
             if let onChangeSource {
                 control(ReaderChromeActionItem.changeSource.defaultSystemImage,
                         label: localized("換源"), id: "manga.changeSource", action: onChangeSource)
@@ -85,6 +89,18 @@ struct MangaReaderTopBar: View {
 
     private func control(_ symbol: String, label: String, id: String,
                          action: @escaping () -> Void) -> some View {
+        MangaToolbarButton(symbol: symbol, label: label, identifier: id, action: action)
+    }
+}
+
+private struct MangaToolbarButton: View {
+    let symbol: String
+    let label: String
+    let identifier: String
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 20))
@@ -95,6 +111,10 @@ struct MangaReaderTopBar: View {
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
+        .accessibilityIdentifier(identifier)
+        .accessibilityAction {
+            guard isEnabled else { return }
+            action()
+        }
     }
 }

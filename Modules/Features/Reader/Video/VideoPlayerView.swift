@@ -445,6 +445,7 @@ struct VideoSkipButton: View {
 
     let direction: Direction
     let onSkip: (Double) -> Void
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button { onSkip(direction.seconds) } label: {
@@ -460,6 +461,10 @@ struct VideoSkipButton: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(direction.label)
         .accessibilityIdentifier(direction.identifier)
+        .accessibilityAction {
+            guard isEnabled else { return }
+            onSkip(direction.seconds)
+        }
     }
 }
 
