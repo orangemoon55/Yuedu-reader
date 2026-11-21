@@ -2,6 +2,7 @@ import CoreText
 import Foundation
 import Testing
 import UIKit
+import YueduCoreText
 @testable import yuedu_app
 
 @Suite("Chinese short-tail fitting")
