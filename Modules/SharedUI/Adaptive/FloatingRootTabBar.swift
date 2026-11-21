@@ -69,6 +69,8 @@ struct FloatingRootTabBar: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selectionGlass
     @ScaledMetric(relativeTo: .caption) private var labelLineHeight: CGFloat = 15
 
     private var reduceTransparency: Bool { reduceTransparencyOverride ?? systemReduceTransparency }
@@ -120,18 +122,18 @@ struct FloatingRootTabBar: View {
             .frame(height: height)
             .background {
                 if selection == tab {
-                    RoundedRectangle(cornerRadius: min(24, height / 2), style: .continuous)
-                        .fill(selectionFill)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: min(24, height / 2), style: .continuous)
-                                .strokeBorder(Color.primary.opacity(contrast == .increased ? 0.5 : 0.06))
-                        }
+                    ReadccGlassSelection(
+                        shape: RoundedRectangle(cornerRadius: min(24, height / 2), style: .continuous),
+                        tint: tint, reduceTransparencyOverride: reduceTransparency
+                    )
+                    .matchedGeometryEffect(id: "selection-glass", in: selectionGlass)
                 }
             }
+            .animation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.88), value: selection)
             .padding(.vertical, FloatingRootTabBarLayout.surfacePadding + FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ReadccGlassPressStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(localized(tab.titleKey))
         .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
@@ -143,16 +145,19 @@ struct FloatingRootTabBar: View {
             ZStack {
                 surface
                 if selection == .search {
-                    Circle().fill(selectionFill).padding(5)
+                    ReadccGlassSelection(shape: Circle(), tint: tint,
+                        reduceTransparencyOverride: reduceTransparency).padding(5)
+                        .matchedGeometryEffect(id: "selection-glass", in: selectionGlass)
                 }
                 // The original bitmap sits above, never inside, the selection wash.
                 icon(for: .search).foregroundStyle(Color.primary)
             }
+            .animation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.88), value: selection)
             .frame(width: diameter, height: diameter)
             .padding(FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ReadccGlassPressStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(localized(RootTabItem.search.titleKey))
         .accessibilityAddTraits(selection == .search ? [.isSelected] : [])

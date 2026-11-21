@@ -21,6 +21,7 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
     private var index = 0
     private var targetWidth: CGFloat = 0
     private var cropBorders = false
+    private var horizontalEdgeCrop = FixedPageEdgeCrop.zero
     private var isLiveTextEnabled = false
     /// Reports a loaded image's height/width with the item index and the page it was
     /// loaded for. The index is the one this cell was configured with, which a prepended
@@ -38,7 +39,8 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
         // overlay does inside it.
         contentView.clipsToBounds = true
         imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
+        // Manual source-edge crop owns the frame; no image constraints are active.
+        imageView.translatesAutoresizingMaskIntoConstraints = true
         contentView.addSubview(imageView)
         spinner.color = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
@@ -53,10 +55,6 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
         }
 
         NSLayoutConstraint.activate([
-            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             spinner.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
         ])
@@ -69,6 +67,24 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
         }
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layoutCroppedImage()
+    }
+
+    private func layoutCroppedImage() {
+        guard imageView.image != nil else { return }
+        let retained = horizontalEdgeCrop.retainedWidthFraction
+        let fullWidth = contentView.bounds.width / retained
+        let frame = CGRect(
+            x: -horizontalEdgeCrop.left * fullWidth,
+            y: 0,
+            width: fullWidth,
+            height: contentView.bounds.height
+        )
+        if imageView.frame != frame { imageView.frame = frame }
+    }
+
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(
@@ -76,6 +92,7 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
         index: Int,
         targetWidth: CGFloat,
         cropBorders: Bool = false,
+        horizontalEdgeCrop: FixedPageEdgeCrop = .zero,
         isLiveTextEnabled: Bool = false,
         onRatio: @escaping (Int, FixedPage, CGFloat) -> Void
     ) {
@@ -83,6 +100,7 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
         self.index = index
         self.targetWidth = targetWidth
         self.cropBorders = cropBorders
+        self.horizontalEdgeCrop = horizontalEdgeCrop
         self.isLiveTextEnabled = isLiveTextEnabled
         self.onRatio = onRatio
     }
@@ -122,11 +140,12 @@ final class FixedPageWebtoonCell: UICollectionViewCell {
         guard image.size.width > 0 else { return }
         FixedPageFrameGapProbe.span("webtoon.imageShown", Self.pixelSize(of: image)) {
             imageView.image = image
+            layoutCroppedImage()
             // UI tests find a strip page by its position once its image is on screen
             // (DetailReaderBackSwipeUITests); cells are reused, so the index is in it.
             // VoiceOver never reads an identifier.
             imageView.accessibilityIdentifier = "webtoon_page_\(index)"
-            onRatio?(index, page, image.size.height / image.size.width)
+            onRatio?(index, page, image.size.height / image.size.width / horizontalEdgeCrop.retainedWidthFraction)
             analyzeLiveText(for: image)
         }
     }

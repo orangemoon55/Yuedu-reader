@@ -1139,7 +1139,12 @@ final class CoreTextPaginator: Sendable {
                 maxInlineAnnotationAdvance: maxInlineAnnotationAdvance
             )
         }
-        let attrStr = preparedAttrStr
+        let attrStr: NSAttributedString
+        if !writingMode.isVertical, imagePage == nil, Self.floatMarkers(in: preparedAttrStr).isEmpty {
+            attrStr = CJKParagraphTailFit.fitting(preparedAttrStr, lineWidth: contentPathRect.width)
+        } else {
+            attrStr = preparedAttrStr
+        }
         if writingMode.isVertical {
             debugVerticalLog("computeLayout spine=\(spineIndex) renderSize=\(renderSize) fontSize=\(fontSize) contentInsets=\(contentInsets) ctPathRect=\(contentPathRect) maxAnnotationAdvance=\(maxInlineAnnotationAdvance ?? 0) attrLen=\(attrStr.length)", verbose: true)
             debugAttributedPrefix(attrStr, label: "computeLayout.attrPrefix", limit: 24)

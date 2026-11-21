@@ -424,6 +424,7 @@ final class FixedPageWebtoonViewController: UIViewController, FixedPageModeReade
             index: indexPath.item,
             targetWidth: targetWidth.value,
             cropBorders: fixedPageReaderConfiguration.cropBorders,
+            horizontalEdgeCrop: fixedPageReaderConfiguration.horizontalEdgeCrop,
             isLiveTextEnabled: fixedPageReaderConfiguration.isLiveTextEnabled
         ) { [weak self] index, page, ratio in
             self?.pageImageDidLoad(index: index, page: page, ratio: ratio)

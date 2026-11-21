@@ -297,26 +297,13 @@ private struct FloatingSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     }
 }
 
-/// iOS 26 has the real thing — `glassEffect`, the same material the system
-/// toolbars are made of, so a panel and the toolbar above it match without either
-/// being hand-painted. Older systems have no glass; `.regularMaterial` is the
-/// closest they offer.
-///
-/// The `#if compiler` guard mirrors `RSSFeedSearchBar`: the iOS 26 API only exists
-/// in the Xcode 26 SDK, and the project still has to compile on older toolchains.
+/// The same backdrop/rim renderer is used on iOS17 and newer. Availability of
+/// Apple's Liquid Glass never decides whether this app's glass effect is visible.
 private struct FrostedGlassBackground<SurfaceShape: Shape>: ViewModifier {
     let shape: SurfaceShape
 
     func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: shape)
-        } else {
-            content.background(.regularMaterial, in: shape)
-        }
-        #else
-        content.background(.regularMaterial, in: shape)
-        #endif
+        content.background { ReadccLegacyGlassSurface(shape: shape) }
     }
 }
 

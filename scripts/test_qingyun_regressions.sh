@@ -39,7 +39,29 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc32 ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc33 ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/VideoSeekTests'
+    -only-testing:'yuedu appTests/VideoTransportTests'
+    -only-testing:'yuedu appTests/VideoTimelineBarTests'
+    -only-testing:'yuedu appTests/VideoHeroActionLayoutTests'
+    -only-testing:'yuedu appTests/ReaderCompactTailTests'
+    -only-testing:'yuedu appTests/ReaderTextAlignmentTests'
+    -only-testing:'yuedu appTests/PlainTextParagraphFormattingTests'
+    -only-testing:'yuedu appTests/BottomJustifyPaginationTests'
+    -only-testing:'yuedu appTests/MangaEdgeCropTests'
+    -only-testing:'yuedu appTests/FixedPagePDFCropTests'
+    -only-testing:'yuedu appTests/FixedPageZoomableScrollViewTests'
+    -only-testing:'yuedu appTests/SourcePickerManagementTests'
+    -only-testing:'yuedu appTests/DiscoverySourcePinsTests'
+    -only-testing:'yuedu appTests/SourceDiscoverySelectionTests'
+    -only-testing:'yuedu appTests/ReaderTOCEdgeNavigationTests'
+    -only-testing:'yuedu appTests/ReadccGlassDesignTests'
+    -only-testing:'yuedu appTests/ReadccLegacyGlassTests'
+    -only-testing:'yuedu appTests/FloatingRootTabBarTests'
+    -only-testing:'yuedu appTests/RootTabCustomizationTests'
+  )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc32 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/ReaderTextAlignmentTests'
     -only-testing:'yuedu appTests/PlainTextParagraphFormattingTests'

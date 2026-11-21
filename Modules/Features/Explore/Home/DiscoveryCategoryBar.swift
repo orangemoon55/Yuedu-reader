@@ -51,67 +51,11 @@ struct DiscoverySearchSourcePicker: View {
     let selectedURL: String?
     let choose: (BookSource) -> Void
     let close: () -> Void
-    @State private var query = ""
-    // Reuse the old picker UUID preferences, not the book-source content/sync order.
-    @State private var pins = DiscoverySourcePins()
-
-    private var results: [BookSource] {
-        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return pins.orderedBookSources(sources.filter {
-            term.isEmpty || $0.bookSourceName.localizedStandardContains(term)
-                || $0.bookSourceUrl.localizedStandardContains(term)
-        })
-    }
-
     var body: some View {
         AdaptiveSheetContainer(maxWidth: DSLayout.readableCompactWidth) {
             NavigationStack {
-                List {
-                    Section {
-                        ForEach(results) { source in
-                            let selected = source.bookSourceUrl == selectedURL
-                            Button { choose(source) } label: {
-                                HStack {
-                                    if pins.isPinned(source.id) {
-                                        Image(systemName: "pin.fill")
-                                            .foregroundStyle(DSColor.accent)
-                                            .accessibilityHidden(true)
-                                    }
-                                    Text(BookSourceDisplayName.title(source.bookSourceName))
-                                    Spacer()
-                                    if selected {
-                                        Image(systemName: "checkmark").accessibilityHidden(true)
-                                    }
-                                }
-                                .foregroundStyle(DSColor.textPrimary)
-                            }
-                            .accessibilityAddTraits(selected ? [.isSelected] : [])
-                            .accessibilityIdentifier("discovery.source.choose.\(source.bookSourceUrl)")
-                            .accessibilityValue(pins.isPinned(source.id) ? localized("已置頂") : "")
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    pins.togglePin(source.id, availableIDs: Set(sources.map(\.id)))
-                                } label: {
-                                    Label(localized(pins.isPinned(source.id) ? "取消置頂" : "置頂"),
-                                          systemImage: pins.isPinned(source.id) ? "pin.slash" : "pin")
-                                }
-                                .tint(DSColor.accent)
-                            }
-                        }
-                    }
-                    .interfaceSectionSurface()
-                }
-                .navigationTitle(localized("來源配置"))
-                .navigationBarTitleDisplayMode(.inline)
-                .themedAppSurface(for: .explore)
-                .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                            prompt: localized("搜尋來源配置名稱或網址"))
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(localized("關閉"), action: close)
-                            .accessibilityIdentifier("discovery.source.close")
-                    }
-                }
+                DiscoverySourcePickerList(sources: sources, selectedURL: selectedURL,
+                                          choose: choose, close: close)
             }
         }
     }

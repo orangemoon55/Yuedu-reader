@@ -28,6 +28,7 @@ final class FixedPagePageViewController: UIViewController {
     }
 
     let imageView = UIImageView()
+    private let edgeCropMask = CAShapeLayer()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let retryButton = UIButton(type: .system)
     private(set) var loadTask: Task<Void, Never>?
@@ -62,6 +63,9 @@ final class FixedPagePageViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        // The image view can extend beyond this page while only its two side margins
+        // are clipped away; the decoded source image stays untouched.
+        view.clipsToBounds = true
 
         imageView.contentMode = .scaleAspectFit
         view.addSubview(imageView)
@@ -116,15 +120,28 @@ final class FixedPagePageViewController: UIViewController {
         guard let image = imageView.image, image.size.width > 0, image.size.height > 0 else { return }
         let bounds = view.bounds
         guard bounds.width > 0, bounds.height > 0 else { return }
-        let scale = min(bounds.width / image.size.width, bounds.height / image.size.height)
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let originX: CGFloat
+        let alignment: FixedPageEdgeCrop.ContentAlignment
         switch spineSide {
-        case .none: originX = (bounds.width - size.width) / 2
-        case .left: originX = 0
-        case .right: originX = bounds.width - size.width
+        case .none: alignment = .centered
+        case .left: alignment = .leading
+        case .right: alignment = .trailing
         }
-        imageView.frame = CGRect(origin: CGPoint(x: originX, y: (bounds.height - size.height) / 2), size: size)
+        imageView.frame = fixedPageReaderConfiguration.horizontalEdgeCrop.imageFrame(
+            imageSize: image.size,
+            viewportSize: bounds.size,
+            alignment: alignment
+        ) ?? .zero
+        let crop = fixedPageReaderConfiguration.horizontalEdgeCrop
+        if crop == .zero {
+            imageView.layer.mask = nil
+        } else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            edgeCropMask.frame = imageView.bounds
+            edgeCropMask.path = CGPath(rect: crop.visibleRect(in: imageView.bounds), transform: nil)
+            imageView.layer.mask = edgeCropMask
+            CATransaction.commit()
+        }
     }
 
     private func load() {

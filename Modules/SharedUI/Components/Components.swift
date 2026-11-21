@@ -302,8 +302,8 @@ struct DSCapsuleLabel: View {
         .frame(minWidth: minWidth, maxWidth: fillsWidth ? .infinity : nil, minHeight: DSLayout.capsuleControlHeight)
         .background {
             if isSelected {
-                // Navigation and chips share one quiet, adaptive selection wash.
-                Capsule(style: .continuous).fill(selectionFill)
+                // Only the material changes; the chip's label/frame stays intact.
+                ReadccGlassSelection(shape: Capsule(style: .continuous), tint: DSColor.accent)
             } else if onCard {
                 // A card already owns its surface: never stack another glass layer.
                 Capsule(style: .continuous).fill(DSColor.neutralControlFill)
@@ -327,7 +327,7 @@ struct DSChip: View {
         Button(action: action) {
             DSCapsuleLabel(title: title, isSelected: isSelected, minWidth: minWidth)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ReadccGlassPressStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

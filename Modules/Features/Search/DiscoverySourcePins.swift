@@ -34,6 +34,13 @@ final class DiscoverySourcePins {
         defaults.set(pinnedIDs.map(\.uuidString), forKey: Self.preferenceKey)
     }
 
+    /// Explicit source deletion removes only that UUID; filtering never calls this.
+    func removePin(_ id: UUID) {
+        guard pinnedIDs.contains(id) else { return }
+        pinnedIDs.removeAll { $0 == id }
+        defaults.set(pinnedIDs.map(\.uuidString), forKey: Self.preferenceKey)
+    }
+
     /// Newest pins first; unpinned rows retain the supplied order. Missing IDs
     /// are ignored, so deletion/reimport never pins an unrelated row. Keep hidden pins
     /// across filtering or temporary disabling; names and URLs are never persisted here.

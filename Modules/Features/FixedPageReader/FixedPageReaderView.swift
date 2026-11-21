@@ -452,6 +452,16 @@ private struct FixedPageReaderRepresentable: UIViewControllerRepresentable {
     }
 }
 
+enum MangaEdgeCropSide: String, Identifiable, Equatable {
+    case left
+    case right
+    var id: String { rawValue }
+    var localizedTitle: String { localized(self == .left ? "左側" : "右側") }
+    var cropValueKeyPath: KeyPath<FixedPageEdgeCrop, CGFloat> {
+        self == .left ? \.left : \.right
+    }
+}
+
 // MARK: - Controls overlay
 
 struct FixedPageReaderControlsOverlay: View {
@@ -463,6 +473,8 @@ struct FixedPageReaderControlsOverlay: View {
     var onOfflineCache: (() -> Void)? = nil
     var offlineCacheEnabled = false
     @State private var showSettings = false
+    @State private var cropEditorSide: MangaEdgeCropSide?
+    @State private var pendingEdgeCropSide: MangaEdgeCropSide?
     @State private var pendingTouchZoneEditor = false
     /// iOS 17: the paywall a locked setting asked for, presented once settings is gone.
     @State private var pendingPaywall: PremiumFeature?
@@ -470,8 +482,39 @@ struct FixedPageReaderControlsOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Color.clear
-                .allowsHitTesting(false)
+            ZStack {
+                Color.clear.allowsHitTesting(false)
+                if state.isManga {
+                    HStack(spacing: 0) {
+                        edgeCropHandle(for: .left)
+                        Spacer(minLength: 0)
+                        edgeCropHandle(for: .right)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                if let side = cropEditorSide {
+                    Color.black.opacity(0.28)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { cropEditorSide = nil }
+                        .accessibilityHidden(true)
+                    MangaEdgeCropEditorPanel(
+                        side: side,
+                        crop: state.fixedPageReaderConfiguration.horizontalEdgeCrop,
+                        onCancel: { cropEditorSide = nil },
+                        onApply: { crop in
+                            var configuration = state.fixedPageReaderConfiguration
+                            configuration.horizontalEdgeCrop = crop
+                            state.onSetConfiguration?(configuration)
+                            cropEditorSide = nil
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: side == .left ? .leading : .trailing)
+                    .padding(.horizontal, DSSpacing.sm)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(2)
+                }
+            }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: onClose) {
@@ -568,6 +611,30 @@ struct FixedPageReaderControlsOverlay: View {
             PaywallView(highlightedFeature: feature)
                 .environmentObject(SubscriptionStore.shared)
         }
+    }
+
+    private func edgeCropHandle(for side: MangaEdgeCropSide) -> some View {
+        let value = state.fixedPageReaderConfiguration.horizontalEdgeCrop[keyPath: side.cropValueKeyPath]
+        return Button {
+            cropEditorSide = side
+        } label: {
+            Image(systemName: "crop")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 38)
+                .readccGlassSurface(cornerRadius: 9, selected: value > 0, onDark: true)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(.white.opacity(0.36), lineWidth: 0.5)
+                }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .accessibilityLabel(localized("\(side.localizedTitle)邊緣裁切精調"))
+        .accessibilityValue(value.formatted(.percent.precision(.fractionLength(0))))
+        .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).open")
     }
 
     private var isRTL: Bool {
@@ -790,6 +857,7 @@ struct FixedPageReaderSettingsView: View {
     private func selectMode(_ mode: FixedPageReadingMode) {
         var updated = FixedPageReaderConfiguration.recommendedDefault(for: mode)
         updated.cropBorders = configuration.cropBorders
+        updated.horizontalEdgeCrop = configuration.horizontalEdgeCrop
         updated.isLiveTextEnabled = configuration.isLiveTextEnabled
         updated.pageSpreadLayout = configuration.pageSpreadLayout
         updated.pageOffset = configuration.pageOffset
@@ -994,4 +1062,66 @@ struct FixedPageChapterListView: View {
     state.followsMangaDefault = true
     return FixedPageReaderSettingsView(state: state, onClose: {}, onOpenTouchZoneEditor: {})
         .environmentObject(SubscriptionStore.shared)
+}
+
+struct MangaEdgeCropEditorPanel: View {
+    let side: MangaEdgeCropSide
+    let crop: FixedPageEdgeCrop
+    let onCancel: () -> Void
+    let onApply: (FixedPageEdgeCrop) -> Void
+    @State private var value: CGFloat
+
+    init(
+        side: MangaEdgeCropSide,
+        crop: FixedPageEdgeCrop,
+        onCancel: @escaping () -> Void,
+        onApply: @escaping (FixedPageEdgeCrop) -> Void
+    ) {
+        self.side = side
+        self.crop = crop
+        self.onCancel = onCancel
+        self.onApply = onApply
+        _value = State(initialValue: crop[keyPath: side.cropValueKeyPath])
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DSSpacing.md) {
+            HStack {
+                Label(localized("\(side.localizedTitle)裁切精調"), systemImage: "crop")
+                    .font(DSFont.subheadline.weight(.semibold))
+                Spacer(minLength: DSSpacing.sm)
+                Text(value.formatted(.percent.precision(.fractionLength(0))))
+                    .font(DSFont.caption.monospacedDigit())
+                    .foregroundStyle(DSColor.textSecondary)
+                    .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).value")
+            }
+
+            Slider(value: $value, in: 0...FixedPageEdgeCrop.maximumPerSide, step: 0.01)
+                .accessibilityLabel(localized("裁切\(side.localizedTitle)邊緣"))
+                .accessibilityValue(value.formatted(.percent.precision(.fractionLength(0))))
+                .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).slider")
+
+            HStack(spacing: DSSpacing.sm) {
+                Button(localized("重置")) { value = 0 }
+                    .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).reset")
+                Spacer(minLength: DSSpacing.sm)
+                Button(localized("取消"), action: onCancel)
+                    .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).cancel")
+                Button(localized("完成")) {
+                    let updated = FixedPageEdgeCrop(
+                        left: side == .left ? value : crop.left,
+                        right: side == .right ? value : crop.right
+                    )
+                    onApply(updated)
+                }
+                .fontWeight(.semibold)
+                .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).apply")
+            }
+        }
+        .padding(DSSpacing.lg)
+        .frame(width: 260)
+        .readccGlassSurface(cornerRadius: 22, onDark: true)
+        .environment(\.colorScheme, .dark)
+        .accessibilityElement(children: .contain)
+    }
 }
