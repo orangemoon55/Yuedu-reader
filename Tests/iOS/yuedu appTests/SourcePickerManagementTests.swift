@@ -23,6 +23,18 @@ struct SourcePickerManagementTests {
         #expect(rows.map(\.id) == [b.id, a.id, c.id])
     }
 
+    @Test("Opening locates the current Search selection regardless of pinned order")
+    func initialSelection() {
+        let a = source(1), b = source(2), c = source(3)
+        let rows = [c, a, b]
+        #expect(SourcePickerActions.initialSelectionID(in: rows, selectedURL: b.bookSourceUrl) == b.id)
+        #expect(SourcePickerActions.initialSelectionID(in: rows, selectedURL: c.bookSourceUrl) == c.id)
+        #expect(SourcePickerActions.initialSelectionID(in: [a], selectedURL: b.bookSourceUrl) == nil)
+        #expect(SourcePickerActions.initialSelectionID(in: [], selectedURL: b.bookSourceUrl) == nil)
+        #expect(SourcePickerActions.initialSelectionID(in: rows, selectedURL: nil) == nil)
+        #expect(rows.map(\.id) == [c.id, a.id, b.id])
+    }
+
     @Test("Swipe deletion calls real source storage, persists and removes its pin")
     func persistedDeletion() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Readcc33-Delete-\(UUID())")

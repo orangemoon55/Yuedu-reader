@@ -50,6 +50,7 @@ on:
           - readcc30
           - readcc32
           - readcc33
+          - readcc35
 
 permissions:
   contents: read

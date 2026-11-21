@@ -6,23 +6,42 @@ struct DiscoverySourcePickerList: View {
     let selectedURL: String?
     let choose: (BookSource) -> Void
     let close: () -> Void
-    @ObservedObject private var store = BookSourceStore.shared
-    @State private var pins = DiscoverySourcePins()
+    @ObservedObject private var store: BookSourceStore
+    @State private var pins: DiscoverySourcePins
     @State private var query = ""
     @State private var viewport = CGRect.zero
     @State private var edgeFrames: [ReaderTOCEdge: CGRect] = [:]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var results: [BookSource] {
-        // Re-resolve every supplied UUID against the real store, so a removed row
-        // cannot reappear from a stale parent or an old search snapshot.
-        let live = Dictionary(store.sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    init(sources: [BookSource], selectedURL: String?,
+         choose: @escaping (BookSource) -> Void, close: @escaping () -> Void,
+         store: BookSourceStore = .shared, pins: DiscoverySourcePins? = nil) {
+        self.sources = sources
+        self.selectedURL = selectedURL
+        self.choose = choose
+        self.close = close
+        _store = ObservedObject(wrappedValue: store)
+        _pins = State(initialValue: pins ?? DiscoverySourcePins())
+    }
+
+    @State private var displayedSources: [BookSource] = []
+    @State private var didLocateSelection = false
+
+    private func rebuildRows(from snapshot: [BookSource]) {
+        // Publisher payloads are current even during @Published's willSet callback.
+        // Filtering runs on data/query/pin changes, never for a scroll-frame preference.
+        let allowed = Set(sources.map(\.id))
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let matching = sources.compactMap { live[$0.id] }.filter {
-            term.isEmpty || $0.bookSourceName.localizedStandardContains(term)
-                || $0.bookSourceUrl.localizedStandardContains(term)
-        }
-        return pins.orderedBookSources(matching)
+        displayedSources = pins.orderedBookSources(snapshot.filter {
+            allowed.contains($0.id) && (term.isEmpty
+                || $0.bookSourceName.localizedStandardContains(term)
+                || $0.bookSourceUrl.localizedStandardContains(term))
+        })
+    }
+
+    private var initialLocationTarget: UUID? {
+        guard !didLocateSelection else { return nil }
+        return SourcePickerActions.initialSelectionID(in: displayedSources, selectedURL: selectedURL)
     }
 
     private var isAtLatest: Bool {
@@ -31,7 +50,7 @@ struct DiscoverySourcePickerList: View {
     }
 
     var body: some View {
-        let rows = results
+        let rows = displayedSources
         ScrollViewReader { proxy in
             List {
                 Section {
@@ -43,6 +62,22 @@ struct DiscoverySourcePickerList: View {
                     }
                 }
                 .interfaceSectionSurface()
+            }
+            .listStyle(.plain)
+            .listSectionSpacing(0)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .environment(\.defaultMinListRowHeight, 44)
+            .onAppear { rebuildRows(from: store.sources) }
+            .onReceive(store.sourcesPublisher) { rebuildRows(from: $0) }
+            .onChange(of: sources.map(\.id)) { _, _ in rebuildRows(from: store.sources) }
+            .onChange(of: query) { _, _ in rebuildRows(from: store.sources) }
+            .onChange(of: pins.pinnedIDs) { _, _ in rebuildRows(from: store.sources) }
+            .task(id: initialLocationTarget) {
+                guard let target = initialLocationTarget else { return }
+                await Task.yield()
+                guard !Task.isCancelled, !didLocateSelection else { return }
+                proxy.scrollTo(target, anchor: .center)
+                didLocateSelection = true
             }
             .background {
                 GeometryReader { geometry in
@@ -102,12 +137,14 @@ struct DiscoverySourcePickerList: View {
                         .accessibilityHidden(true)
                 }
                 Text(BookSourceDisplayName.title(source.bookSourceName))
+                    .lineLimit(2)
                 Spacer()
                 if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
             }
             .foregroundStyle(DSColor.textPrimary)
-            .frame(minHeight: DSLayout.minimumTapTarget)
+            .contentShape(Rectangle())
         }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .accessibilityIdentifier("discovery.source.choose.\(source.bookSourceUrl)")
         .accessibilityValue(pins.isPinned(source.id) ? localized("已置頂") : "")
@@ -140,6 +177,11 @@ private struct SourcePickerViewportKey: PreferenceKey {
 
 @MainActor
 enum SourcePickerActions {
+    static func initialSelectionID(in sources: [BookSource], selectedURL: String?) -> UUID? {
+        guard let selectedURL else { return nil }
+        return sources.first { $0.bookSourceUrl == selectedURL }?.id
+    }
+
     static func edgeID(in sources: [BookSource], toTop: Bool) -> UUID? {
         toTop ? sources.first?.id : sources.last?.id
     }

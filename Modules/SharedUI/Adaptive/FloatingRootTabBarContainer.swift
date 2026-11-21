@@ -1,5 +1,18 @@
 import SwiftUI
 
+private struct FloatingRootScrollBottomInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// UIKit result lists do not inherit SwiftUI contentMargins automatically.
+    /// Only content insets consume this value; no navigation viewport is shortened.
+    var floatingRootScrollBottomInset: CGFloat {
+        get { self[FloatingRootScrollBottomInsetKey.self] }
+        set { self[FloatingRootScrollBottomInsetKey.self] = newValue }
+    }
+}
+
 /// The capsule is an overlay on a full-size navigation surface. Only its transparent
 /// scroll-safe region is reserved: rows can pass behind it, and the last row can still
 /// be scrolled clear. Never allocate a VStack slot or shorten a navigation viewport.
@@ -17,6 +30,7 @@ struct FloatingRootTabBarContainer<Bar: View>: ViewModifier {
             // full-size navigation viewport. Transparent gaps keep live content.
             .contentMargins(.bottom, isPresented ? barHeight : 0, for: .scrollContent)
             .contentMargins(.bottom, isPresented ? barHeight : 0, for: .scrollIndicators)
+            .environment(\.floatingRootScrollBottomInset, isPresented ? barHeight : 0)
             .overlay(alignment: .bottom) {
                 if isPresented {
                     bar()

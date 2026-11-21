@@ -72,6 +72,7 @@ struct IOS17SearchResultTable: UIViewControllerRepresentable {
     let onSelect: (UUID) -> Void
     /// A work of the tab root's list, by its row's id.
     var onSelectWork: (UUID) -> Void = { _ in }
+    @Environment(\.floatingRootScrollBottomInset) private var floatingBottomInset
 
     func makeUIViewController(context _: Context) -> IOS17SearchResultTableViewController {
         IOS17SearchResultTableViewController()
@@ -81,6 +82,7 @@ struct IOS17SearchResultTable: UIViewControllerRepresentable {
         _ viewController: IOS17SearchResultTableViewController,
         context _: Context
     ) {
+        viewController.setFloatingBottomInset(floatingBottomInset)
         viewController.update(
             content: content,
             onSelect: onSelect,
@@ -122,6 +124,41 @@ final class IOS17SearchResultTableViewController: UITableViewController {
     private var onSelect: (UUID) -> Void = { _ in }
     private var onSelectWork: (UUID) -> Void = { _ in }
     private var dataSource: UITableViewDiffableDataSource<Section, Item>!
+    private var floatingBottomInset: CGFloat = 0
+
+    /// Add scroll room, not a fixed spacer row. UIKit still owns its safe-area and
+    /// keyboard adjustment, and unchanged results never reload for an inset update.
+    func setFloatingBottomInset(_ height: CGFloat) {
+        let finite = height.isFinite ? max(0, height) : 0
+        guard abs(finite - floatingBottomInset) > 0.5 else { return }
+        floatingBottomInset = finite
+        if isViewLoaded { applyFloatingBottomInset() }
+    }
+
+    private func applyFloatingBottomInset() {
+        guard isViewLoaded else { return }
+        var content = tableView.contentInset
+        var indicators = tableView.verticalScrollIndicatorInsets
+        let bottom = floatingBottomInset > 0 ? floatingBottomInset + 8 : 0
+        if abs(content.bottom - bottom) > 0.5 {
+            content.bottom = bottom
+            tableView.contentInset = content
+        }
+        if abs(indicators.bottom - floatingBottomInset) > 0.5 {
+            indicators.bottom = floatingBottomInset
+            tableView.verticalScrollIndicatorInsets = indicators
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyFloatingBottomInset()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        applyFloatingBottomInset()
+    }
 
     init() {
         super.init(style: .plain)
