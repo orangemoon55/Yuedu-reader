@@ -18,9 +18,15 @@ final class ReaderSettingsEntryUITests: XCTestCase {
     }
 
     private func element(_ id: String, in app: XCUIApplication) -> XCUIElement {
-        // SwiftUI accessibilityElement may wrap a Button in an Other element.
-        // Match its stable identity and still tap it; do not assume UIKit type.
-        app.descendants(matching: .any).matching(identifier: id).firstMatch
+        // The current floating bar exposes its ancestor identifier on child buttons;
+        // prefer the stable identifier, then the actual localized button label.
+        if id == "rootTab.bookshelf" {
+            return app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", id, "书架")).firstMatch
+        }
+        if id == "rootTab.settings" {
+            return app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", id, "设置")).firstMatch
+        }
+        return app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
 
     @MainActor

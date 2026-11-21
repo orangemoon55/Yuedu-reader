@@ -40,10 +40,19 @@ struct NavigationGlassCapsule: View {
         // Normalize dark imported accents before making the wash; do not turn
         // deep theme colors into muddy gray. Bound chroma to avoid a solid neon pill.
         let high = max(ar, max(ag, ab)), low = min(ar, min(ag, ab))
-        let saturation = min(0.80, max(0.55, (high - low) / high))
+        let isBlueAccent = ab > ag && ag > ar && ab - ar > 0.15
+        let saturation = min(dark && isBlueAccent ? 0.90 : 0.80,
+                             max(0.55, (high - low) / high))
         let amount: CGFloat = dark ? 1 : (increased ? 0.38 : 0.28)
         func channel(_ value: CGFloat) -> CGFloat {
-            1 - saturation * (1 - (value - low) / (high - low)) * amount
+            var position = (value - low) / (high - low)
+            // UIKit's high-contrast system blue contains more green. Merely dimming
+            // that mix to 7:1 can darken its blue channel too far. Keep a clear blue
+            // hue in dark mode before applying the same luminance/contrast bounds.
+            if dark && isBlueAccent && value == ag {
+                position = min(0.52, position)
+            }
+            return 1 - saturation * (1 - position) * amount
         }
         let r = channel(ar), g = channel(ag), b = channel(ab)
 
