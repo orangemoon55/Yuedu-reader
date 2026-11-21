@@ -633,7 +633,7 @@ struct FixedPageReaderControlsOverlay: View {
         .buttonStyle(.plain)
         .frame(width: 44, height: 44)
         .accessibilityLabel(localized("\(side.localizedTitle)邊緣裁切精調"))
-        .accessibilityValue(value.formatted(.percent.precision(.fractionLength(0))))
+        .accessibilityValue(Double(value).formatted(.percent.precision(.fractionLength(0))))
         .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).open")
     }
 
@@ -1090,7 +1090,7 @@ struct MangaEdgeCropEditorPanel: View {
                 Label(localized("\(side.localizedTitle)裁切精調"), systemImage: "crop")
                     .font(DSFont.subheadline.weight(.semibold))
                 Spacer(minLength: DSSpacing.sm)
-                Text(value.formatted(.percent.precision(.fractionLength(0))))
+                Text(Double(value).formatted(.percent.precision(.fractionLength(0))))
                     .font(DSFont.caption.monospacedDigit())
                     .foregroundStyle(DSColor.textSecondary)
                     .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).value")
@@ -1098,7 +1098,7 @@ struct MangaEdgeCropEditorPanel: View {
 
             Slider(value: $value, in: 0...FixedPageEdgeCrop.maximumPerSide, step: 0.01)
                 .accessibilityLabel(localized("裁切\(side.localizedTitle)邊緣"))
-                .accessibilityValue(value.formatted(.percent.precision(.fractionLength(0))))
+                .accessibilityValue(Double(value).formatted(.percent.precision(.fractionLength(0))))
                 .accessibilityIdentifier("manga.edgeCrop.\(side.rawValue).slider")
 
             HStack(spacing: DSSpacing.sm) {
