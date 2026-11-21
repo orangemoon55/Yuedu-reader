@@ -18,6 +18,8 @@ enum DownloadActivityCommandApplier {
     /// Starts reacting to requests posted while the app is running, and drains anything left
     /// from before. Idempotent.
     static func start(store: BookStore, manager: any OfflineDownloadManaging) {
+        // Launch cleanup must not depend on a download making further progress.
+        DownloadLiveActivityController.shared.end()
         observedStore = store
         observedManager = manager
 
@@ -46,6 +48,8 @@ enum DownloadActivityCommandApplier {
 
     /// Drains using whatever `start` last registered. The Darwin callback's only entry point.
     static func drainObserved() async {
+        // The scene already calls this on every foreground entry, even with no commands.
+        await DownloadLiveActivityController.shared.cleanupExistingActivities()
         guard let store = observedStore, let manager = observedManager else { return }
         await drain(store: store, manager: manager)
     }

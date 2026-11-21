@@ -378,9 +378,10 @@ struct VideoPlayerView: View {
         default:
             Button(action: { controller.togglePlayPause(); touched() }) {
                 Image(systemName: playSymbol(controller.phase))
-                    .font(DSFont.largeTitle)
-                    .frame(width: DSLayout.videoCenterControlSide, height: DSLayout.videoCenterControlSide)
-                    .readccGlassSurface(cornerRadius: DSLayout.videoCenterControlSide / 2, onDark: true)
+                    .font(.system(size: VideoTransportLayout.primaryGlyphSize))
+                    .frame(width: VideoTransportLayout.primaryVisibleSide, height: VideoTransportLayout.primaryVisibleSide)
+                    .readccGlassSurface(cornerRadius: VideoTransportLayout.primaryVisibleSide / 2, onDark: true)
+                    .frame(width: VideoTransportLayout.primaryHitSide, height: VideoTransportLayout.primaryHitSide)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -421,6 +422,15 @@ struct VideoPlayerView: View {
 
 // MARK: - Transport button
 
+enum VideoTransportLayout {
+    static let skipVisibleSide: CGFloat = 40
+    static let skipHitSide: CGFloat = 52
+    static let skipGlyphSize: CGFloat = 20
+    static let primaryVisibleSide: CGFloat = 48
+    static let primaryHitSide: CGFloat = 56
+    static let primaryGlyphSize: CGFloat = 26
+}
+
 /// A local, testable transport button. Episode selection remains in the top bar and its sheet.
 struct VideoSkipButton: View {
     enum Direction: Equatable {
@@ -439,12 +449,15 @@ struct VideoSkipButton: View {
     var body: some View {
         Button { onSkip(direction.seconds) } label: {
             Image(systemName: direction.symbol)
-                .font(DSFont.title2)
-                .frame(width: DSLayout.videoCenterControlSide, height: DSLayout.videoCenterControlSide)
-                .readccGlassSurface(cornerRadius: DSLayout.videoCenterControlSide / 2, onDark: true)
+                .font(.system(size: VideoTransportLayout.skipGlyphSize, weight: .semibold))
+                .frame(width: VideoTransportLayout.skipVisibleSide, height: VideoTransportLayout.skipVisibleSide)
+                .readccGlassSurface(cornerRadius: VideoTransportLayout.skipVisibleSide / 2, onDark: true)
+                .frame(width: VideoTransportLayout.skipHitSide, height: VideoTransportLayout.skipHitSide)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(direction.label)
         .accessibilityIdentifier(direction.identifier)
     }

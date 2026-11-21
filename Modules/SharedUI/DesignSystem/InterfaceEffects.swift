@@ -117,6 +117,8 @@ private struct InterfaceSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     let fill: Color
     /// Content-layer cards pass 分組卡片; only those explicitly gated surfaces use it.
     let glassAllowed: Bool
+    /// Scrolling rows/cards share the visual wash but never allocate a live backdrop per row.
+    var isScrollingContent = false
     /// Explicit environment override used by navigation controls in deterministic hosts.
     var reduceTransparencyOverride: Bool? = nil
 
@@ -149,7 +151,20 @@ private struct InterfaceSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if usesFrostedGlass {
+        if usesFrostedGlass && isScrollingContent {
+            // List owns clipping and reuse. Painting a translucent material wash is
+            // cheap; a live blur + clip + shadow per row forces backdrop recomposition
+            // for every scroll frame, even when SwiftUI does not re-run body.
+            content.background {
+                shape.fill(fill.opacity(0.76))
+                if let cardLayer {
+                    AppearanceCardArtwork(layer: cardLayer, paintOpacity: paintOpacity)
+                        .clipShape(shape)
+                } else {
+                    shape.fill(fill.opacity(paintOpacity))
+                }
+            }
+        } else if usesFrostedGlass {
             // Card artwork is the card's *paint*, not what the card is made of. It used
             // to replace the whole surface, so a pack carrying a plain white card
             // background (山风 - 春水漾) left 分組卡片 and every floating control opaque
@@ -250,7 +265,8 @@ private struct InterfaceCardSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
             InterfaceSurfaceModifier(
                 shape: shape,
                 fill: fill,
-                glassAllowed: settings.interfaceGlassCards
+                glassAllowed: settings.interfaceGlassCards,
+                isScrollingContent: true
             )
         )
     }
@@ -276,7 +292,8 @@ private struct InterfaceSectionSurfaceModifier: ViewModifier {
                 InterfaceSurfaceModifier(
                     shape: Rectangle(),
                     fill: fill,
-                    glassAllowed: settings.interfaceGlassCards
+                    glassAllowed: settings.interfaceGlassCards,
+                isScrollingContent: true
                 )
             )
         )

@@ -303,7 +303,8 @@ struct DSCapsuleLabel: View {
         .background {
             if isSelected {
                 // Only the material changes; the chip's label/frame stays intact.
-                ReadccGlassSelection(shape: Capsule(style: .continuous), tint: DSColor.accent)
+                ReadccGlassSelection(shape: Capsule(style: .continuous), tint: DSColor.accent,
+                                     samplesBackdrop: !onCard)
             } else if onCard {
                 // A card already owns its surface: never stack another glass layer.
                 Capsule(style: .continuous).fill(DSColor.neutralControlFill)

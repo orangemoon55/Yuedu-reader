@@ -36,7 +36,6 @@ struct DiscoverySourceCategoryPage: View {
 
             content
         }
-        .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
         // SearchCategoryHome owns the single navigation title above the field and chips.
         .task(id: prepareKey) {
             model.prepare(configuration: configuration, page: page, sources: sources)

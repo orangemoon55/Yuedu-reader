@@ -136,7 +136,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
         }
         state.onReload = { [weak self] in
             guard let self else { return }
-            self.loadChapter(at: self.chapterIndex, startPage: self.currentChapterPage)
+            self.loadChapter(at: self.chapterIndex, startPage: self.currentChapterPage, priority: .jump)
         }
 
         installReader()
@@ -315,7 +315,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
 
     // MARK: Chapter loading
 
-    private func loadChapter(at index: Int, startPage: Int) {
+    private func loadChapter(at index: Int, startPage: Int, priority: ChapterFetchPriority = .immediate) {
         guard !hasExited, !sourceChangeSuspended, chapters.indices.contains(index) else { return }
         chapterIndex = index
         chapterLoadTask?.cancel()
@@ -343,7 +343,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
             guard let self, !self.hasExited else { return }
             do {
                 let package = try await self.chapterFetcher.fetchChapter(
-                    book: self.book, chapterIndex: index, priority: .immediate, store: self.store)
+                    book: self.book, chapterIndex: index, priority: priority, store: self.store)
                 guard self.loadToken == token, !Task.isCancelled else { return }
                 let localDir = MangaChapterParser.chapterDirectory(bookId: self.book.id, chapterIndex: index)
                 let pages = MangaChapterParser.pages(

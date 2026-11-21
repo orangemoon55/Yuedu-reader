@@ -14,13 +14,12 @@ struct ReadccGlassPalette: Equatable {
     let edgeWidth: CGFloat
 
     static func resolve(dark: Bool, increasedContrast: Bool) -> Self {
-        Self(lightRim: increasedContrast ? 0.88 : (dark ? 0.58 : 0.80),
-             darkRim: increasedContrast ? 0.46 : (dark ? 0.32 : 0.13),
-             wash: dark ? 0.08 : 0.10,
-             selectedWash: increasedContrast ? 1 : (dark ? 0.32 : 0.27),
-             sheen: dark ? 0.07 : 0.19,
-             shadow: dark ? 0.20 : 0.075,
-             edgeWidth: increasedContrast ? 1 : 0.65)
+        Self(lightRim: 0, darkRim: 0,
+             wash: dark ? 0.08 : 0.28,
+             selectedWash: increasedContrast ? 1 : (dark ? 0.24 : 0.18),
+             sheen: dark ? 0.035 : 0.10,
+             shadow: dark ? 0.08 : 0.035,
+             edgeWidth: 0)
     }
 }
 
@@ -44,7 +43,7 @@ private struct ReadccBackdropBlur: UIViewRepresentable {
     }
 
     private var effect: UIBlurEffect {
-        UIBlurEffect(style: dark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
+        UIBlurEffect(style: dark ? .systemUltraThinMaterialDark : .systemThinMaterialLight)
     }
 }
 
@@ -78,13 +77,6 @@ struct ReadccLegacyGlassSurface<SurfaceShape: Shape>: View {
                             .init(color: .white.opacity(palette.sheen * 0.32), location: 1)],
                     startPoint: .topLeading, endPoint: .bottomTrailing))
             }
-            .overlay {
-                shape.stroke(LinearGradient(
-                    colors: [.white.opacity(palette.lightRim), .white.opacity(0.10),
-                             .black.opacity(palette.darkRim), .white.opacity(palette.lightRim * 0.66)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing),
-                    lineWidth: palette.edgeWidth * 2)
-            }
             .clipShape(shape)
             .shadow(color: .black.opacity(palette.shadow), radius: 8, x: 0, y: 2)
             .allowsHitTesting(false)
@@ -98,6 +90,8 @@ struct ReadccGlassSelection<SurfaceShape: Shape>: View {
     let shape: SurfaceShape
     let tint: Color
     var reduceTransparencyOverride: Bool? = nil
+    /// Selected controls already on a glass rail reuse its live backdrop.
+    var samplesBackdrop = true
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorSchemeContrast) private var contrast
@@ -113,8 +107,16 @@ struct ReadccGlassSelection<SurfaceShape: Shape>: View {
             shape.fill(color)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-        } else {
+        } else if samplesBackdrop {
             ReadccLegacyGlassSurface(shape: shape, selectedTint: color)
+        } else {
+            shape.fill(color.opacity(scheme == .dark ? 0.24 : 0.18))
+                .overlay {
+                    shape.fill(LinearGradient(colors: [.white.opacity(0.08), .clear],
+                                              startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }

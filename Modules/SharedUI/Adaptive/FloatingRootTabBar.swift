@@ -124,7 +124,7 @@ struct FloatingRootTabBar: View {
                 if selection == tab {
                     ReadccGlassSelection(
                         shape: RoundedRectangle(cornerRadius: min(24, height / 2), style: .continuous),
-                        tint: tint, reduceTransparencyOverride: reduceTransparency
+                        tint: tint, reduceTransparencyOverride: reduceTransparency, samplesBackdrop: false
                     )
                     .matchedGeometryEffect(id: "selection-glass", in: selectionGlass)
                 }
@@ -133,10 +133,10 @@ struct FloatingRootTabBar: View {
             .padding(.vertical, FloatingRootTabBarLayout.surfacePadding + FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
         }
-        .buttonStyle(ReadccGlassPressStyle())
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(localized(tab.titleKey))
-        .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
+        .accessibilityAddTraits(selection == tab ? [.isButton, .isSelected] : [.isButton])
         .accessibilityIdentifier("rootTab.\(tab.rawValue)")
     }
 
@@ -146,7 +146,7 @@ struct FloatingRootTabBar: View {
                 surface
                 if selection == .search {
                     ReadccGlassSelection(shape: Circle(), tint: tint,
-                        reduceTransparencyOverride: reduceTransparency).padding(5)
+                        reduceTransparencyOverride: reduceTransparency, samplesBackdrop: false).padding(5)
                         .matchedGeometryEffect(id: "selection-glass", in: selectionGlass)
                 }
                 // The original bitmap sits above, never inside, the selection wash.
@@ -157,10 +157,10 @@ struct FloatingRootTabBar: View {
             .padding(FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
         }
-        .buttonStyle(ReadccGlassPressStyle())
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(localized(RootTabItem.search.titleKey))
-        .accessibilityAddTraits(selection == .search ? [.isSelected] : [])
+        .accessibilityAddTraits(selection == .search ? [.isButton, .isSelected] : [.isButton])
         .accessibilityIdentifier("rootTab.search")
     }
 

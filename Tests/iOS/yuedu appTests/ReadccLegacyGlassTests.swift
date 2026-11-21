@@ -12,9 +12,9 @@ final class ReadccLegacyGlassTests: XCTestCase {
                 for value in [p.lightRim, p.darkRim, p.wash, p.selectedWash, p.sheen, p.shadow] {
                     XCTAssertTrue(value.isFinite && (0...1).contains(value))
                 }
-                XCTAssertGreaterThan(p.lightRim, p.darkRim)
-                XCTAssertGreaterThan(p.edgeWidth, 0)
-                XCTAssertLessThanOrEqual(p.edgeWidth, 1)
+                XCTAssertEqual(p.lightRim, 0)
+                XCTAssertEqual(p.darkRim, 0)
+                XCTAssertEqual(p.edgeWidth, 0, "A complete glass surface must not have a dark drawn border")
                 XCTAssertEqual(p.selectedWash == 1, high)
             }
         }
@@ -89,6 +89,52 @@ final class ReadccLegacyGlassTests: XCTestCase {
         }
     }
 
+    func testScrollingCardsUseNoPerRowLiveBackdropsAndStayScrollable() async throws {
+        let settings = GlobalSettings.shared
+        let oldGlass = settings.interfaceFrostedGlass
+        let oldCards = settings.interfaceGlassCards
+        let oldTransparency = settings.interfaceGlassTransparency
+        settings.interfaceFrostedGlass = true
+        settings.interfaceGlassCards = true
+        settings.interfaceGlassTransparency = 1
+        defer {
+            settings.interfaceFrostedGlass = oldGlass
+            settings.interfaceGlassCards = oldCards
+            settings.interfaceGlassTransparency = oldTransparency
+        }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let oldWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let host = UIHostingController(rootView: ScrollSurfaceHarness())
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; oldWindow?.makeKey() }
+        for _ in 0..<8 {
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(20))
+            host.view.layoutIfNeeded()
+        }
+        let scroll = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UIScrollView }.first {
+            $0.contentSize.height > $0.bounds.height + 200
+        })
+        XCTAssertTrue(descendants(host.view).compactMap { $0 as? UIVisualEffectView }.isEmpty,
+                      "Scrolling content must not mount one live blur per card")
+        let maximum = max(0, scroll.contentSize.height - scroll.bounds.height)
+        let started = ProcessInfo.processInfo.systemUptime
+        for step in 0..<30 {
+            scroll.setContentOffset(CGPoint(x: 0, y: maximum * CGFloat(step) / 29), animated: false)
+            host.view.layoutIfNeeded()
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        XCTAssertGreaterThan(scroll.contentOffset.y, 0)
+        XCTAssertTrue(descendants(host.view).compactMap { $0 as? UIVisualEffectView }.isEmpty)
+        let note = XCTAttachment(string: "native host: 30 offset/layout steps, \(elapsed)s; content height \(scroll.contentSize.height). This is NOT device FPS or a touch hitch trace.")
+        note.name = "Readcc33-scroll-surface-cost"
+        note.lifetime = .keepAlways
+        add(note)
+    }
+
     private func descendants(_ view: UIView) -> [UIView] {
         [view] + view.subviews.flatMap { descendants($0) }
     }
@@ -117,6 +163,20 @@ private struct GlassMaterialHarness: View {
                 FloatingRootTabBar(tabs: [.bookshelf, .explore, .settings, .search],
                                    selection: .constant(.explore))
             }.padding(.vertical, 56)
+        }
+    }
+}
+
+private struct ScrollSurfaceHarness: View {
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(0..<100, id: \.self) { index in
+                    Text("Synthetic setting \(index)")
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .interfaceCardSurface(in: RoundedRectangle(cornerRadius: 14))
+                }
+            }.padding(16)
         }
     }
 }

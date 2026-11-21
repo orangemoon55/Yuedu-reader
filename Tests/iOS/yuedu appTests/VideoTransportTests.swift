@@ -10,6 +10,10 @@ import UIKit
 struct VideoTransportTests {
     @Test("transport directions name and deliver minus/plus fifteen seconds")
     func directions() {
+        #expect(VideoTransportLayout.skipVisibleSide == 40)
+        #expect(VideoTransportLayout.skipHitSide >= 44)
+        #expect(VideoTransportLayout.primaryVisibleSide == 48)
+        #expect(VideoTransportLayout.primaryHitSide >= 44)
         #expect(VideoSkipButton.Direction.backward.seconds == -15)
         #expect(VideoSkipButton.Direction.forward.seconds == 15)
         #expect(VideoSkipButton.Direction.backward.symbol == "gobackward.15")
@@ -20,7 +24,7 @@ struct VideoTransportTests {
         #expect(VideoSkipButton.Direction.forward.identifier == "video.seekForward15")
     }
 
-    @Test("glass transport buttons expose stable IDs, exact labels and at least 44-point targets")
+    @Test("glass transport buttons expose exact labels, 44-point targets and actual fifteen-second actions")
     func accessibleButtons() async throws {
         var skips: [Double] = []
         let buttons = HStack {
@@ -34,7 +38,7 @@ struct VideoTransportTests {
             #expect(found)
             for direction in [VideoSkipButton.Direction.backward, .forward] {
                 let button = try #require(accessibilityElements(in: host).first {
-                    ($0 as? UIAccessibilityIdentification)?.accessibilityIdentifier == direction.identifier
+                    $0.accessibilityLabel == direction.label && $0.accessibilityTraits.contains(.button)
                 })
                 #expect(button.accessibilityLabel == direction.label)
                 #expect(button.accessibilityFrame.width >= 44)

@@ -17,6 +17,11 @@ import UIKit
 enum DownloadActivityDebugHarness {
 
     static func startIfRequested() {
+        // Debug launch arguments must not bypass the download-only publication policy.
+        guard DownloadLiveActivityController.shouldPublish(nil) else {
+            DownloadLiveActivityController.shared.end()
+            return
+        }
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-debugDownloadActivity") else { return }
         let paused = arguments.contains("-debugDownloadActivityPaused")

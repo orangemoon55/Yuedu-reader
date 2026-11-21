@@ -1,81 +1,6 @@
 import CoreGraphics
 import Foundation
 
-/// Horizontal crop amounts for a manga page. Values are proportions of the source
-/// image (not points), so they stay stable across zoom, orientation and display size.
-struct FixedPageEdgeCrop: Equatable, Codable {
-    static let maximumPerSide: CGFloat = 0.20
-    static let zero = FixedPageEdgeCrop()
-
-    enum ContentAlignment {
-        case centered
-        /// Keep the visible content against the right edge (the left page of a spread).
-        case trailing
-        /// Keep the visible content against the left edge (the right page of a spread).
-        case leading
-    }
-
-    let left: CGFloat
-    let right: CGFloat
-
-    init(left: CGFloat = 0, right: CGFloat = 0) {
-        self.left = Self.clamped(left)
-        self.right = Self.clamped(right)
-    }
-
-    var retainedWidthFraction: CGFloat { max(0.6, 1 - left - right) }
-
-    /// Full uncropped image frame for a clipped viewport. The retained image content
-    /// fits the page; the discarded strips sit outside the clipped page bounds.
-    func imageFrame(imageSize: CGSize, viewportSize: CGSize, alignment: ContentAlignment = .centered) -> CGRect? {
-        guard imageSize.width > 0, imageSize.height > 0,
-              viewportSize.width > 0, viewportSize.height > 0 else { return nil }
-        let scale = min(
-            viewportSize.width / (imageSize.width * retainedWidthFraction),
-            viewportSize.height / imageSize.height
-        )
-        let fullSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        let contentWidth = fullSize.width * retainedWidthFraction
-        let contentX: CGFloat
-        switch alignment {
-        case .centered: contentX = (viewportSize.width - contentWidth) / 2
-        case .trailing: contentX = viewportSize.width - contentWidth
-        case .leading: contentX = 0
-        }
-        return CGRect(
-            x: contentX - left * fullSize.width,
-            y: (viewportSize.height - fullSize.height) / 2,
-            width: fullSize.width,
-            height: fullSize.height
-        )
-    }
-
-    /// The precise visible source region in the laid-out image's own coordinates.
-    /// A fit-page image may have side letterboxing, so clipping the page alone is
-    /// insufficient: discarded source strips must also be masked inside the image.
-    func visibleRect(in imageBounds: CGRect) -> CGRect {
-        CGRect(x: imageBounds.minX + left * imageBounds.width,
-               y: imageBounds.minY,
-               width: imageBounds.width * retainedWidthFraction,
-               height: imageBounds.height)
-    }
-
-    private static func clamped(_ value: CGFloat) -> CGFloat {
-        guard value.isFinite else { return 0 }
-        return min(maximumPerSide, max(0, value))
-    }
-
-    private enum CodingKeys: String, CodingKey { case left, right }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            left: try container.decodeIfPresent(CGFloat.self, forKey: .left) ?? 0,
-            right: try container.decodeIfPresent(CGFloat.self, forKey: .right) ?? 0
-        )
-    }
-}
-
 struct FixedPageReaderConfiguration: Equatable, Codable {
     enum Layout: String, Codable {
         case paged
@@ -118,7 +43,6 @@ struct FixedPageReaderConfiguration: Equatable, Codable {
     var pageOffset: Bool
     var splitWideImages: Bool
     var cropBorders: Bool
-    var horizontalEdgeCrop: FixedPageEdgeCrop
     var pillarbox: Bool
     var pillarboxAmount: CGFloat
     var autoScrollSpeed: Int
@@ -136,7 +60,6 @@ struct FixedPageReaderConfiguration: Equatable, Codable {
         pageOffset: Bool = false,
         splitWideImages: Bool = false,
         cropBorders: Bool = false,
-        horizontalEdgeCrop: FixedPageEdgeCrop = .zero,
         pillarbox: Bool = false,
         pillarboxAmount: CGFloat = 0.75,
         autoScrollSpeed: Int = 3,
@@ -153,7 +76,6 @@ struct FixedPageReaderConfiguration: Equatable, Codable {
         self.pageOffset = pageOffset
         self.splitWideImages = splitWideImages
         self.cropBorders = cropBorders
-        self.horizontalEdgeCrop = horizontalEdgeCrop
         self.pillarbox = pillarbox
         self.pillarboxAmount = pillarboxAmount
         self.autoScrollSpeed = autoScrollSpeed
@@ -173,7 +95,6 @@ struct FixedPageReaderConfiguration: Equatable, Codable {
         pageOffset = try container.decodeIfPresent(Bool.self, forKey: .pageOffset) ?? false
         splitWideImages = try container.decodeIfPresent(Bool.self, forKey: .splitWideImages) ?? false
         cropBorders = try container.decodeIfPresent(Bool.self, forKey: .cropBorders) ?? false
-        horizontalEdgeCrop = try container.decodeIfPresent(FixedPageEdgeCrop.self, forKey: .horizontalEdgeCrop) ?? .zero
         pillarbox = try container.decodeIfPresent(Bool.self, forKey: .pillarbox) ?? false
         pillarboxAmount = try container.decodeIfPresent(CGFloat.self, forKey: .pillarboxAmount) ?? 0.75
         autoScrollSpeed = try container.decodeIfPresent(Int.self, forKey: .autoScrollSpeed) ?? 3

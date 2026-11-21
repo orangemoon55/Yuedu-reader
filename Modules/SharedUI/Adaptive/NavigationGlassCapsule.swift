@@ -96,13 +96,6 @@ struct NavigationGlassCapsule: View {
                 in: Capsule(style: .continuous),
                 reduceTransparencyOverride: reduceTransparencyOverride
             )
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(
-                        Color.primary.opacity(contrast == .increased ? 0.42 : (colorScheme == .dark ? 0.20 : 0.24)),
-                        lineWidth: contrast == .increased ? 1.5 : 0.75
-                    )
-            }
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
