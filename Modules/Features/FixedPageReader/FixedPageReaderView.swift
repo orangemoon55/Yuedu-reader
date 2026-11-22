@@ -102,7 +102,7 @@ struct FixedPageReaderView: View {
 
     private var readerContent: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            (state.isManga ? DSColor.groupedBackground : Color.black).ignoresSafeArea()
 
             if let book = store.readingBook(id: bookId) {
                 FixedPageReaderRepresentable(
