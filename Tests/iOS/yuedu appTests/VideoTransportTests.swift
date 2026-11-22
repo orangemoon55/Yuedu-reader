@@ -10,7 +10,7 @@ import UIKit
 struct VideoTransportTests {
     @Test("transport directions name and deliver minus/plus fifteen seconds")
     func directions() {
-        #expect(VideoTransportLayout.skipVisibleSide == 40)
+        #expect(VideoTransportLayout.skipVisibleSide == 46)
         #expect(VideoTransportLayout.skipHitSide >= 44)
         #expect(VideoTransportLayout.primaryVisibleSide == 48)
         #expect(VideoTransportLayout.primaryHitSide >= 44)
