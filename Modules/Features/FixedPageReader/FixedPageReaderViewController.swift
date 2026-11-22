@@ -120,7 +120,7 @@ final class FixedPageReaderViewController: UIViewController, FixedPageReaderCont
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = .systemGroupedBackground
 
         state.onPrepareForExit = { [weak self] in self?.prepareForExit() }
         state.onSetSourceChangeSuspended = { [weak self] in self?.setSourceChangeSuspended($0) }

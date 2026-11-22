@@ -74,7 +74,9 @@ struct DiscoverySourcePickerList: View {
             .onChange(of: pins.pinnedIDs) { _, _ in rebuildRows(from: store.sources) }
             .task(id: initialLocationTarget) {
                 guard let target = initialLocationTarget else { return }
-                await Task.yield()
+                for _ in 0..<5 {
+                    await Task.yield()
+                }
                 guard !Task.isCancelled, !didLocateSelection else { return }
                 proxy.scrollTo(target, anchor: .center)
                 didLocateSelection = true
