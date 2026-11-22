@@ -49,24 +49,53 @@ struct DiscoverySourcePickerList: View {
                                           verticalColumns: false)
     }
 
+    private var edgeActionTitle: String {
+        localized(isAtLatest ? "回頂部" : "去底部")
+    }
+
     var body: some View {
         let rows = displayedSources
         ScrollViewReader { proxy in
-            List {
-                Section {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, source in
-                        row(source)
-                            .id(source.id)
-                            .reportTOCEdges(index: index, first: rows.isEmpty ? nil : 0,
-                                           latest: rows.isEmpty ? nil : rows.count - 1)
+            VStack(spacing: 0) {
+                // Fixed, non-scrolling search bar pinned strictly at the top
+                HStack(spacing: DSSpacing.sm) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(DSColor.textSecondary)
+                    TextField(localized("搜尋來源配置名稱或網址"), text: $query)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    if !query.isEmpty {
+                        Button { query = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(DSColor.textSecondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .interfaceSectionSurface()
+                .padding(.horizontal, DSSpacing.md)
+                .padding(.vertical, DSSpacing.sm)
+                .background(DSColor.neutralControlFill, in: RoundedRectangle(cornerRadius: DSRadius.md, style: .continuous))
+                .padding(.horizontal, DSSpacing.md)
+                .padding(.top, DSSpacing.xs)
+                .padding(.bottom, DSSpacing.sm)
+                .background(DSColor.groupedBackground)
+
+                List {
+                    Section {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, source in
+                            row(source)
+                                .id(source.id)
+                                .reportTOCEdges(index: index, first: rows.isEmpty ? nil : 0,
+                                               latest: rows.isEmpty ? nil : rows.count - 1)
+                        }
+                    }
+                    .interfaceSectionSurface()
+                }
+                .listStyle(.plain)
+                .listSectionSpacing(0)
+                .contentMargins(.top, 0, for: .scrollContent)
+                .environment(\.defaultMinListRowHeight, 44)
             }
-            .listStyle(.plain)
-            .listSectionSpacing(0)
-            .contentMargins(.top, 0, for: .scrollContent)
-            .environment(\.defaultMinListRowHeight, 44)
             .onAppear { rebuildRows(from: store.sources) }
             .onReceive(store.sourcesPublisher) { rebuildRows(from: $0) }
             .onChange(of: sources.map(\.id)) { _, _ in rebuildRows(from: store.sources) }
@@ -74,7 +103,9 @@ struct DiscoverySourcePickerList: View {
             .onChange(of: pins.pinnedIDs) { _, _ in rebuildRows(from: store.sources) }
             .task(id: initialLocationTarget) {
                 guard let target = initialLocationTarget else { return }
-                await Task.yield()
+                for _ in 0..<5 {
+                    await Task.yield()
+                }
                 guard !Task.isCancelled, !didLocateSelection else { return }
                 proxy.scrollTo(target, anchor: .center)
                 didLocateSelection = true
@@ -91,10 +122,6 @@ struct DiscoverySourcePickerList: View {
             .navigationTitle(localized("來源配置"))
             .navigationBarTitleDisplayMode(.inline)
             .themedAppSurface(for: .explore)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: localized("搜尋來源配置名稱或網址"))
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
             .scrollDismissesKeyboard(.interactively)
             .overlay {
                 if rows.isEmpty {
@@ -118,7 +145,7 @@ struct DiscoverySourcePickerList: View {
                             proxy.scrollTo(target, anchor: toTop ? .top : .bottom)
                         }
                     } label: {
-                        Text(localized(isAtLatest ? "回頂部" : "去底部"))
+                        Text(edgeActionTitle)
                     }
                     .disabled(rows.isEmpty)
                     .accessibilityIdentifier("discovery.source.edge")

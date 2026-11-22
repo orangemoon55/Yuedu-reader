@@ -102,7 +102,16 @@ struct FixedPageReaderView: View {
 
     private var readerContent: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            if state.isManga {
+                Color(uiColor: .systemBackground)
+                    .overlay {
+                        ReadccLegacyGlassSurface(shape: Rectangle())
+                            .opacity(0.65)
+                    }
+                    .ignoresSafeArea()
+            } else {
+                Color.black.ignoresSafeArea()
+            }
 
             if let book = store.readingBook(id: bookId) {
                 FixedPageReaderRepresentable(

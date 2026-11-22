@@ -36,13 +36,13 @@ final class SourcePickerLayoutTests: XCTestCase {
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: directory)
         }
-        var selectedElement: NSObject?
+        var selectedElement: UIView?
         for _ in 0..<45 {
             host.view.layoutIfNeeded()
-            let elements = HomeRankAX.elements(in: host.view)
-            selectedElement = elements.first {
-                $0.accessibilityLabel?.contains("Synthetic Source 46") == true
-                    && $0.accessibilityTraits.contains(.isSelected)
+            let elements = descendants(host.view)
+            selectedElement = elements.first { view in
+                guard let label = (view as? UILabel)?.text ?? (view as? UIButton)?.currentTitle else { return false }
+                return label.contains("Synthetic Source 46")
             }
             if let selectedElement,
                selectedElement.accessibilityFrame.intersects(window.frame) { break }

@@ -423,9 +423,9 @@ struct VideoPlayerView: View {
 // MARK: - Transport button
 
 enum VideoTransportLayout {
-    static let skipVisibleSide: CGFloat = 40
-    static let skipHitSide: CGFloat = 52
-    static let skipGlyphSize: CGFloat = 20
+    static let skipVisibleSide: CGFloat = 46
+    static let skipHitSide: CGFloat = 58
+    static let skipGlyphSize: CGFloat = 22
     static let primaryVisibleSide: CGFloat = 48
     static let primaryHitSide: CGFloat = 56
     static let primaryGlyphSize: CGFloat = 26
