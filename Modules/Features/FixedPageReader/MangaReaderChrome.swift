@@ -1,16 +1,6 @@
 import SwiftUI
 
 /// Blank canvas gutters, not image trimming. The decoder and image contents are unchanged.
-enum MangaCanvasLayout {
-    static let sideMargin: CGFloat = 8
-    static func horizontalInset(isManga: Bool) -> CGFloat { isManga ? sideMargin : 0 }
-}
-
-extension View {
-    func mangaCanvasMargins(isManga: Bool) -> some View {
-        padding(.horizontal, MangaCanvasLayout.horizontalInset(isManga: isManga))
-    }
-}
 
 /// Only the manga top row is rearranged. Six unchanged 44pt button hit targets fit
 /// a 320pt screen; the chapter title is the only compressible item. Root tabs are unrelated.
@@ -26,7 +16,7 @@ struct MangaReaderTopBar: View {
     var onOfflineCache: (() -> Void)? = nil
     var onChangeSource: (() -> Void)? = nil
     var offlineCacheEnabled = true
-    @Bindable private var settings = GlobalSettings.shared
+    @ObservedObject private var settings = GlobalSettings.shared
 
     var body: some View {
         HStack(spacing: 0) {
