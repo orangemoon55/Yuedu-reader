@@ -102,7 +102,7 @@ final class CatVodRuntime: ObservableObject {
             let readyPath = readyURL.path
             let thread = Thread {
                 let arguments = ["node", hostPath, readyPath]
-                let pointers = arguments.map { strdup($0) }
+                var pointers = arguments.map { strdup($0) }
                 let status = pointers.withUnsafeMutableBufferPointer { buffer in
                     nodeStart.call(Int32(buffer.count), buffer.baseAddress)
                 }
