@@ -11,6 +11,7 @@ struct DiscoverySourcePickerList: View {
     @State private var query = ""
     @State private var viewport = CGRect.zero
     @State private var edgeFrames: [ReaderTOCEdge: CGRect] = [:]
+    @State private var latestFrame: CGRect?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(sources: [BookSource], selectedURL: String?,
@@ -45,7 +46,7 @@ struct DiscoverySourcePickerList: View {
     }
 
     private var isAtLatest: Bool {
-        ReaderTOCEdgeVisibility.isAtLatest(row: edgeFrames[.latest], viewport: viewport,
+        ReaderTOCEdgeVisibility.isAtLatest(row: latestFrame, viewport: viewport,
                                           verticalColumns: false)
     }
 
@@ -77,16 +78,19 @@ struct DiscoverySourcePickerList: View {
                 .background(DSColor.neutralControlFill, in: RoundedRectangle(cornerRadius: DSRadius.md, style: .continuous))
                 .padding(.horizontal, DSSpacing.md)
                 .padding(.top, DSSpacing.xs)
-                .padding(.bottom, DSSpacing.sm)
+                .padding(.bottom, DSSpacing.xs)
                 .background(DSColor.groupedBackground)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("discovery.source.searchHeader")
 
                 List {
                     Section {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, source in
                             row(source)
                                 .id(source.id)
-                                .reportTOCEdges(index: index, first: rows.isEmpty ? nil : 0,
-                                               latest: rows.isEmpty ? nil : rows.count - 1)
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                    if index == rows.count - 1 { latestFrame = frame }
+                                }
                         }
                     }
                     .interfaceSectionSurface()
@@ -95,6 +99,10 @@ struct DiscoverySourcePickerList: View {
                 .listSectionSpacing(0)
                 .contentMargins(.top, 0, for: .scrollContent)
                 .environment(\.defaultMinListRowHeight, 44)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { viewport = $0 }
+                .accessibilityIdentifier("discovery.source.list")
             }
             .onAppear { rebuildRows(from: store.sources) }
             .onReceive(store.sourcesPublisher) { rebuildRows(from: $0) }
@@ -110,15 +118,7 @@ struct DiscoverySourcePickerList: View {
                 proxy.scrollTo(target, anchor: .center)
                 didLocateSelection = true
             }
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(key: SourcePickerViewportKey.self,
-                                           value: geometry.frame(in: .global))
-                }
-            }
-            .onPreferenceChange(SourcePickerViewportKey.self) { viewport = $0 }
-            .onPreferenceChange(ReaderTOCEdgeFramesKey.self) { edgeFrames = $0 }
-            .onChange(of: rows.map(\.id)) { _, _ in edgeFrames = [:] }
+            .onChange(of: rows.map(\.id)) { _, _ in latestFrame = nil }
             .navigationTitle(localized("來源配置"))
             .navigationBarTitleDisplayMode(.inline)
             .themedAppSurface(for: .explore)

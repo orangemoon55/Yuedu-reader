@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MangaCanvasLayout {
-    static let sideMargin: CGFloat = 4
+    static let sideMargin: CGFloat = 0
     static func horizontalInset(isManga: Bool) -> CGFloat { isManga ? sideMargin : 0 }
 }
 

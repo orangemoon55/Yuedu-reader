@@ -207,6 +207,8 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == toc-pins ]]; then
     -only-testing:'yuedu appTests/ReaderTOCEdgeRenderingTests'
     -only-testing:'yuedu appTests/ChapterListOrderTests'
     -only-testing:'yuedu appTests/DiscoverySourcePinsTests'
+    -only-testing:'yuedu appTests/SourcePickerManagementTests'
+    -only-testing:'yuedu appTests/SourcePickerLayoutTests'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ui-polish ]]; then
   TEST_SELECTION=(
