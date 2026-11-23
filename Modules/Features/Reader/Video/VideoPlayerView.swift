@@ -423,12 +423,12 @@ struct VideoPlayerView: View {
 // MARK: - Transport button
 
 enum VideoTransportLayout {
-    static let skipVisibleSide: CGFloat = 64
+    static let skipVisibleSide: CGFloat = 54
     static let skipHitSide: CGFloat = 72
-    static let skipGlyphSize: CGFloat = 30
-    static let primaryVisibleSide: CGFloat = 68
+    static let skipGlyphSize: CGFloat = 26
+    static let primaryVisibleSide: CGFloat = 54
     static let primaryHitSide: CGFloat = 76
-    static let primaryGlyphSize: CGFloat = 34
+    static let primaryGlyphSize: CGFloat = 28
 }
 
 /// A local, testable transport button. Episode selection remains in the top bar and its sheet.
