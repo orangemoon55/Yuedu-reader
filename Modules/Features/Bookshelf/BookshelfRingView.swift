@@ -162,6 +162,7 @@ struct BookshelfRingView: View {
         BookshelfBookContextMenu(
             book: book, isFattened: isFattened(book.id),
             onOpen: { performContextAction(book, .open) },
+            onShowDetail: { performContextAction(book, .showDetail) },
             onSearchCover: { performContextAction(book, .searchCover) },
             onToggleFatten: { performContextAction(book, .toggleFatten) },
             onDelete: { performContextAction(book, .delete) }
@@ -296,6 +297,7 @@ private struct BookshelfRingCoverTile: View {
             BookshelfBookContextMenu(
                 book: book, isFattened: isFattened,
                 onOpen: { onContextAction(.open) },
+                onShowDetail: { onContextAction(.showDetail) },
                 onSearchCover: { onContextAction(.searchCover) },
                 onToggleFatten: { onContextAction(.toggleFatten) },
                 onDelete: { onContextAction(.delete) }
