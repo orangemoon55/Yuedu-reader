@@ -21,6 +21,7 @@ struct RuleModuleManagerView: View {
     @ObservedObject var library: RuleModuleLibrary
     @ObservedObject var repositories: RuleModuleRepositoryModel
     @ObservedObject private var availability = PublicLibraryAvailability.shared
+    @ObservedObject private var md5Library = Md5SourceLibrary.shared
     @Environment(\.ruleModuleAddFlow) private var addFlow
     @AppStorage(ReaderChapterCommentDecorator.enabledKey) private var showsModuleComments = true
     /// Once per visit: back from a repository's page, the indexes are not read again.
@@ -72,6 +73,17 @@ struct RuleModuleManagerView: View {
                                         count: library.imported.count + library.failures.count)
                 }
                 .accessibilityIdentifier("modules.imported")
+
+                // MD5 源 (CatVod JS bundles) share 模組's page but never its JSON list: their own
+                // store, their own checksum, their own Node run (maintainer, 2026-11-23).
+                NavigationLink {
+                    Md5SourceManagerView(library: md5Library)
+                } label: {
+                    RuleModuleOriginRow(title: localized("MD5 源"), systemImage: "curlybraces",
+                                        subtitle: localized("CatVod JS 打包檔，與 JSON 模組分開"), origin: localized("匯入"),
+                                        count: md5Library.isLoaded ? md5Library.sources.count : nil)
+                }
+                .accessibilityIdentifier("modules.md5Sources")
             } footer: {
                 Text(localized("第三方模組由作者自行維護，閱讀不審核其內容。加入前請確認來源可信；有問題的模組可以在「回饋與改進」回報。"))
                     .dsSectionFooter()
@@ -105,6 +117,7 @@ struct RuleModuleManagerView: View {
             Text(repositories.message ?? "")
         }
         .task {
+            md5Library.loadIfNeeded()
             guard !hasLoaded else { return }
             hasLoaded = true
             await library.loadIfNeeded()

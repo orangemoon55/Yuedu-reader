@@ -40,6 +40,8 @@ finish() {
 trap finish EXIT
 printf '%s\n' '开始准备Readcc身份、用户指定read图标及保留的本地配置。' >&3
 python3 scripts/prepare_trollstore_test.py prepare
+# MD5 源 (CatVod JS) 的 Node 运行时：CI 下载开源 nodejs-mobile，打包阶段放进 Frameworks。
+bash scripts/fetch_node_mobile.sh
 # 防止 Xcode 子进程或 Build Settings 输出继承原始 secret。
 unset GOOGLE_SERVICE_INFO_BASE64
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
@@ -74,5 +76,16 @@ xcodebuild "${ARGS[@]}" -showBuildSettings -json >"$PRIVATE/settings.json"
 python3 scripts/prepare_trollstore_test.py locate "$PRIVATE/settings.json" "$PRIVATE/app-path.txt"
 printf '%s\n' '正在进行完整 iOS 真机 Debug 配置编译（Swift -Osize / C -Os），编译错误将立即终止。' >&3
 xcodebuild "${ARGS[@]}" build
+NODE_FRAMEWORK="$ROOT/Vendor/NodeMobile.xcframework/ios-arm64/NodeMobile.framework"
+APP_PATH="$(cat "$PRIVATE/app-path.txt")"
+if [[ -d "$NODE_FRAMEWORK" && -d "$APP_PATH" ]]; then
+  mkdir -p "$APP_PATH/Frameworks"
+  rm -rf "$APP_PATH/Frameworks/NodeMobile.framework"
+  cp -R "$NODE_FRAMEWORK" "$APP_PATH/Frameworks/"
+  printf 'NodeMobile.framework 已放入 Frameworks（%s 字节）。\n' \
+    "$(stat -f%z "$APP_PATH/Frameworks/NodeMobile.framework/NodeMobile")" >&3
+else
+  printf '%s\n' '警告：NodeMobile.framework 缺失，MD5 源将报告无 Node 运行时。' >&3
+fi
 printf '%s\n' '编译命令成功，开始复核 Mach-O、最低系统版本和嵌套签名。' >&3
 python3 scripts/prepare_trollstore_test.py package "$PRIVATE/settings.json" "$PRIVATE/app-path.txt" "$OUT/readcc.ipa"
