@@ -122,7 +122,10 @@ struct DiscoverySourceControls<Catalog: View>: View {
         let refreshBooks = pendingBookRefresh
         pendingBookRefresh = false
         let visible = discover.items.filter { !$0.isFetchable || discover.isCategoryShown($0) }
-        onReload(values, visible, discover.exploreError, refreshBooks)
+        // Preserve the source's explanatory labels/API failure when there are no
+        // navigable categories; otherwise the source page loses its only diagnosis.
+        let notice = visible.contains(where: \.isFetchable) ? nil : discover.sourceNotice
+        onReload(values, visible, discover.exploreError ?? notice, refreshBooks)
     }
 
     private func reloadAfterSourceChange(_ notification: Notification) {
