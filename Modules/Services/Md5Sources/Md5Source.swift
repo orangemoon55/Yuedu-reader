@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Combine
 
 /// One imported MD5 source: a CatVod-style JS bundle plus the checksum its `.js.md5` companion
 /// publishes. It is NOT a rule module (JSON): the two are listed apart in 模組, and nothing here

@@ -20,6 +20,9 @@ let active = null;
 const writeLog = (line) => {
   try { fs.appendFileSync(path.join(path.dirname(readyPath), 'host.log'), String(line) + '\n'); } catch (e) {}
 };
+const hostProcess = process;
+hostProcess.exit = (code) => { writeLog('bundle requested exit ' + code); throw new Error('process.exit denied'); };
+
 process.on('uncaughtException', (error) => writeLog('uncaught: ' + (error && error.stack || error)));
 process.on('unhandledRejection', (error) => writeLog('rejected: ' + (error && error.stack || error)));
 
