@@ -680,7 +680,7 @@ final class DiscoverViewModel: ObservableObject {
         return DiscoverKindsCache.key(
             sourceUrl: source.bookSourceUrl,
             exploreUrl: source.exploreUrl,
-            variableJSON: fingerprint + "|loginRevision=" + String(
+            variableJSON: (fingerprint ?? "") + "|loginRevision=" + String(
                 LoginManager.shared.loginInfoRevision(sourceUrl: source.bookSourceUrl))
         )
     }
