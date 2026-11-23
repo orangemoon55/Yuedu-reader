@@ -16,7 +16,6 @@ struct SourceDiscoveryRoot: View {
             } else if let source = selection.selectedSource {
                 ExploreSourcePage(
                     source: source,
-                    layoutOverride: .magazine,
                     rankedSectionsFirst: true,
                     onSearch: {
                         navigation?.path.append(ExploreNavigationRoute.searchInSource(sourceURL: source.bookSourceUrl))
@@ -57,80 +56,17 @@ private struct DiscoverySourcePicker: View {
     let selectedURL: String?
     let choose: (DiscoverableBookSource) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
-    @State private var matches: [DiscoverableBookSource]
-
-    private struct SearchInput: Equatable {
-        let query: String
-        let sources: [DiscoverableBookSource]
-    }
-
-    init(
-        sources: [DiscoverableBookSource], selectedURL: String?,
-        choose: @escaping (DiscoverableBookSource) -> Void
-    ) {
-        self.sources = sources
-        self.selectedURL = selectedURL
-        self.choose = choose
-        _matches = State(initialValue: sources)
-    }
 
     var body: some View {
         NavigationStack {
-            List(matches) { source in
-                Button { choose(source) } label: {
-                    HStack(spacing: DSSpacing.md) {
-                        Text(source.displayName)
-                            .foregroundStyle(DSColor.textPrimary)
-                            .lineLimit(2)
-                        Spacer()
-                        if source.url == selectedURL {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(DSColor.accent)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .frame(minHeight: DSLayout.minimumTapTarget)
-                }
-                .accessibilityAddTraits(source.url == selectedURL ? .isSelected : [])
-            }
-            .searchable(
-                text: $query,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: localized("搜尋來源配置名稱或網址")
+            DiscoverySourcePickerList(
+                sources: sources.compactMap { BookSourceStore.shared.source(id: $0.id) },
+                selectedURL: selectedURL,
+                choose: { source in
+                    choose(DiscoverableBookSource(id: source.id, name: source.bookSourceName,
+                                                  url: source.bookSourceUrl))
+                }, close: { dismiss() }
             )
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .scrollDismissesKeyboard(.interactively)
-            .overlay {
-                if matches.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    ContentUnavailableView.search(text: query)
-                }
-            }
-            .task(id: SearchInput(query: query, sources: sources)) {
-                let snapshot = sources
-                let search = query
-                let work = Task.detached(priority: .userInitiated) {
-                    DiscoverySourceSearch.matching(snapshot, query: search)
-                }
-                let result = await withTaskCancellationHandler {
-                    await work.value
-                } onCancel: {
-                    work.cancel()
-                }
-                guard !Task.isCancelled else { return }
-                matches = result
-            }
-            .navigationTitle(localized("切換來源配置"))
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark").accessibilityHidden(true)
-                    }
-                    .accessibilityLabel(localized("關閉"))
-                }
-            }
         }
     }
 }

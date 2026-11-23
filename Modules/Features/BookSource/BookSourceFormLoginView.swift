@@ -6,8 +6,8 @@ import JavaScriptCore
 // Handles book sources whose `loginUi` JSON defines form fields (text/password/select/button).
 // After the user fills in credentials and taps "Confirm", the loginUrl JS is executed
 // with those credentials stored via LoginManager — mirroring Legado's SourceLoginDialog.
-// Fields are laid out as a wrapping 12-column grid (LoginFormGrid) so each row's `style`
-// decides its width, like Legado's login dialog.
+// Fields are laid out in a wrapping 12-column grid so their source `style` decides
+// their width and row span, like Legado's login dialog.
 
 struct BookSourceFormLoginView: View {
     /// The library's current copy, not the one the page opened with: a source can update
@@ -22,10 +22,9 @@ struct BookSourceFormLoginView: View {
         self.onDismiss = onDismiss
     }
 
-    @MainActor private static weak var currentToastAlert: UIAlertController?
-
     private let gs = GlobalSettings.shared
-    @State private var fields: [LoginField] = []
+    @State private var form = LoginFormRows(fields: [])
+    private var fields: [LoginField] { form.fields }
     @State private var fieldLabels: [String: String] = [:]
     @State private var values: [String: String] = [:]
     // Dynamic loginUi is evaluated asynchronously. Start in the same loading state
@@ -61,7 +60,7 @@ struct BookSourceFormLoginView: View {
                         ProgressView()
                     }
                     LoginFormGrid(
-                        fields: fields,
+                        form: form,
                         values: $values,
                         labels: fieldLabels,
                         onValueChange: { field, _ in
@@ -103,7 +102,7 @@ struct BookSourceFormLoginView: View {
                     }
                     .accessibilityLabel(localized("取消"))
                 }
-                if !fields.contains(where: { $0.type == .button }) {
+                if !form.hasButtons {
                     ToolbarItem(placement: .topBarTrailing) {
                         if isLoading {
                             ProgressView()
@@ -265,7 +264,7 @@ struct BookSourceFormLoginView: View {
                 let parsed = LoginManager.shared.parseLoginUiResult(evaluation.json)
                 let stored = LoginManager.shared.getLoginInfo(sourceUrl: src.bookSourceUrl)
                 await MainActor.run {
-                    self.fields = parsed ?? []
+                    self.form = LoginFormRows(fields: parsed ?? [])
                     self.fieldLabels = evaluation.labels
                     self.values = Self.initialValues(for: parsed ?? [], stored: stored)
                     self.isLoading = false
@@ -280,7 +279,7 @@ struct BookSourceFormLoginView: View {
             return
         }
 
-        fields = LoginManager.shared.parseLoginUi(source.loginUi)
+        form = LoginFormRows(fields: LoginManager.shared.parseLoginUi(source.loginUi))
         fieldLabels = fields.literalViewNames
         values = Self.initialValues(
             for: fields,
@@ -551,7 +550,7 @@ struct BookSourceFormLoginView: View {
     }
 
     private func handleButton(field: LoginField) {
-        AppLogger.parse("⟐ menuButton", context: ["name": field.name, "action": field.action ?? "nil"])
+        AppLogger.parse("⟐ menuButton", context: ["type": field.type.rawValue])
         guard let action = field.action, !action.isEmpty else { return }
         // If it's a URL, open in browser; if JS, run it
         if action.hasPrefix("http://") || action.hasPrefix("https://") {
@@ -726,7 +725,7 @@ struct BookSourceFormLoginView: View {
                         "names": parsed.prefix(8).map { $0.name }.joined(separator: "|")
                     ])
                     Task { @MainActor in
-                        self.fields = parsed
+                        self.form = LoginFormRows(fields: parsed)
                         self.fieldLabels = evaluation.labels
                         self.values = Self.initialValues(
                             for: parsed,
@@ -740,26 +739,10 @@ struct BookSourceFormLoginView: View {
                     "baseUrl": source.bookSourceUrl
                 ]
                 SourceAPIErrorLog.shared.clear(for: source.bookSourceUrl)
-                if source.bookSourceName.contains("书山聚合") {
-                    let before = engine.evaluate("java.get('yunpara')") ?? "<nil>"
-                    NSLog(
-                        "❖SHUSHAN TRACE❖ stage=menu.before action=%@ yunpara=%@ jsError=%@",
-                        action,
-                        before.isEmpty ? "<empty>" : before,
-                        engine.lastError ?? "none"
-                    )
-                }
                 _ = engine.evaluate(combined, bindings: bindings)
-                if source.bookSourceName.contains("书山聚合") {
-                    let actionError = engine.lastError
-                    let after = engine.evaluate("java.get('yunpara')") ?? "<nil>"
-                    NSLog(
-                        "❖SHUSHAN TRACE❖ stage=menu.after action=%@ yunpara=%@ actionError=%@",
-                        action,
-                        after.isEmpty ? "<empty>" : after,
-                        actionError ?? "none"
-                    )
-                }
+                // Label evaluation clears lastError; preserve the action's failure first.
+                let actionError = engine.lastError
+
 
                 // Legado refreshes the menu's labels after an action (`upUiData`); a source's
                 // dynamic viewNames (e.g. 起点's 段评 state) can change because of it. Resolve
@@ -785,7 +768,7 @@ struct BookSourceFormLoginView: View {
                 // itself stayed silent — its own toast is the better message when it has one.
                 guard !spoke.fired else { return }
                 let report: MenuActionAlert?
-                if let jsError = engine.lastError {
+                if let jsError = actionError {
                     report = MenuActionAlert(title: localized("來源配置腳本錯誤"), detail: jsError)
                 } else if let failure = SourceAPIErrorLog.shared.last(for: source.bookSourceUrl) {
                     report = MenuActionAlert(
@@ -795,7 +778,7 @@ struct BookSourceFormLoginView: View {
                 }
                 guard let report else { return }
                 AppLogger.parse("⟐ menuButton silent", context: [
-                    "title": report.title, "detail": report.detail
+                    "title": report.title
                 ])
                 Task { @MainActor in self.menuAlert = report }
             }
@@ -806,7 +789,12 @@ struct BookSourceFormLoginView: View {
     /// A reference box: the JS runs on the engine's own thread and sets this
     /// through escaping handlers, then `runButtonJS` reads it once JS has finished.
     private final class MenuActionSpokeFlag: @unchecked Sendable {
-        var fired = false
+        private let lock = NSLock()
+        private var stored = false
+        var fired: Bool {
+            get { lock.lock(); defer { lock.unlock() }; return stored }
+            set { lock.lock(); stored = newValue; lock.unlock() }
+        }
     }
 
     nonisolated private static func configureLegadoRuntime(_ engine: JSCoreEngine, source: BookSource) {
@@ -985,70 +973,40 @@ struct BookSourceFormLoginView: View {
 
     @MainActor
     static func presentToastAlert(message: String) {
-        let showNewAlert = {
-            guard let presenter = topViewControllerForToast() else { return }
-            showToastAlert(message: message, from: presenter)
-        }
-
-        if let currentToastAlert, currentToastAlert.presentingViewController != nil {
-            currentToastAlert.dismiss(animated: false) {
-                Task { @MainActor in
-                    self.currentToastAlert = nil
-                    showNewAlert()
-                }
-            }
-        } else {
-            currentToastAlert = nil
-            showNewAlert()
-        }
+        guard let presenter = topViewControllerForToast() else { return }
+        showToastAlert(message: message, from: presenter)
     }
 
-    /// Takes down the toast alert, if one is up, before `completion` runs — so a sheet a
-    /// script asks for right after toasting has a presenter that is not already busy.
+    /// No modal dismissal/completion race: source toasts never own a presentation.
     @MainActor
     static func dismissToastAlert(then completion: @escaping @MainActor () -> Void) {
-        guard let currentToastAlert, currentToastAlert.presentingViewController != nil else {
-            completion()
-            return
-        }
-        currentToastAlert.dismiss(animated: true) {
-            Task { @MainActor in
-                self.currentToastAlert = nil
-                completion()
-            }
-        }
+        SourceToastPresenter.hide()
+        completion()
     }
 
     @MainActor
     private static func showToastAlert(message: String, from presenter: UIViewController) {
-        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-        currentToastAlert = alert
-        presenter.present(alert, animated: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            if alert.presentingViewController != nil {
-                alert.dismiss(animated: true)
-            }
-            if currentToastAlert === alert {
-                currentToastAlert = nil
-            }
-        }
+        guard let window = presenter.viewIfLoaded?.window else { return }
+        SourceToastPresenter.show(message: message, in: window)
     }
 
     @MainActor
     private static func topViewControllerForToast() -> UIViewController? {
         guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene }).first,
-              let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let root = scene.windows.first(where: { $0.isKeyWindow && !$0.isHidden })?.rootViewController
         else { return nil }
         var top = root
         while let presented = top.presentedViewController {
-            if presented is UIAlertController {
-                break
-            }
+            guard !presented.isBeingDismissed, !presented.isBeingPresented else { return nil }
             top = presented
         }
+        guard !top.isBeingDismissed, !top.isBeingPresented,
+              top.viewIfLoaded?.window != nil else { return nil }
         return top
     }
+
 }
 
 // MARK: - Preview

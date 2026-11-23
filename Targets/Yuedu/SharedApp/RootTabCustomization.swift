@@ -15,12 +15,11 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var id: String { rawValue }
 
-    /// The four bottom entries for the personal reader. The library enum value stays
-    /// decodable for older preferences and themes, but is no longer offered as a tab.
+    /// Search has its own floating circle beside the main tabs (and a sidebar entry).
     static let tabs: [RootTabItem] = [.explore, .bookshelf, .settings, .search]
 
-    /// No later-added tab should be automatically restored from older saved preferences.
-    static let addedLater: [RootTabItem] = []
+    /// Restore search for older three-tab preferences; an explicit hidden marker wins.
+    static let addedLater: [RootTabItem] = [.search]
 
     /// What a saved list holds for a tab in `addedLater` the reader hid.
     var hiddenMarker: String { "-" + rawValue }
@@ -28,7 +27,7 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
     var titleKey: String {
         switch self {
         case .bookshelf: return "書架"
-        case .explore: return "探索"
+        case .explore: return "底部發現"
         case .library: return "資源庫"
         case .rss: return "RSS 訂閱"
         case .settings: return "設定"
@@ -264,7 +263,7 @@ enum RootTabIconRenderer {
     }
 
     static func sanitizedIconSize(_ value: CGFloat) -> CGFloat {
-        min(max(value, 22), 36)
+        min(max(value, 20), 36)
     }
 }
 

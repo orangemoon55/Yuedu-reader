@@ -31,4 +31,22 @@ struct FixedPageChapterListItemTests {
 
         #expect(items.map(\.title) == [String(format: localized("第 %d 章"), 1)])
     }
+
+    @Test("manga TOC first/latest uses the novel edge rule without reversing or selecting chapters")
+    func firstLatestUsesSharedNovelRule() {
+        let items = [
+            FixedPageChapterListItem(id: UUID(), index: 4, title: "第一卷"),
+            FixedPageChapterListItem(id: UUID(), index: 12, title: "第1話"),
+            FixedPageChapterListItem(id: UUID(), index: 85, title: "第2話"),
+            FixedPageChapterListItem(id: UUID(), index: 105, title: "第二卷")
+        ]
+        let before = items
+        #expect(ReaderTOCEdge.first.target(in: items, index: \.index, title: \.title) == 12)
+        #expect(ReaderTOCEdge.latest.target(in: items, index: \.index, title: \.title) == 85)
+        #expect(items == before)
+        let empty: [FixedPageChapterListItem] = []
+        #expect(ReaderTOCEdge.latest.target(in: empty, index: \.index, title: \.title) == nil)
+        #expect(ReaderTOCEdge.first.target(in: [items[0]], index: \.index, title: \.title) == 4)
+    }
+
 }

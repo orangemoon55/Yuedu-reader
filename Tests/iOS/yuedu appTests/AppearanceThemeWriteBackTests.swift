@@ -318,10 +318,13 @@ struct AppearanceThemeWriteBackTests {
         settings.appearanceThemeID = a.id
         #expect(settings.visibleRootTabs == [.explore, .bookshelf, .settings, .search])
         settings.rootTabVisibleIDs = [RootTabItem.bookshelf.rawValue]
-        // 設定 is re-added by the sanitizer, and that sanitized value is what the theme
-        // records. Legacy 資源庫 ids and hidden markers cannot restore the removed tab.
+        // 設定 and the later-added 搜索 are restored, but removed 資源庫 stays absent.
         let stored = settings.customAppearanceThemes.first { $0.id == a.id }?.extras?.visibleTabIDs
-        #expect(stored == [RootTabItem.bookshelf.rawValue, RootTabItem.settings.rawValue])
+        #expect(stored == [RootTabItem.bookshelf.rawValue, RootTabItem.settings.rawValue, RootTabItem.search.rawValue])
+
+        settings.setRootTab(.search, visible: false)
+        let hidden = settings.customAppearanceThemes.first { $0.id == a.id }?.extras?.visibleTabIDs
+        #expect(hidden == [RootTabItem.bookshelf.rawValue, RootTabItem.settings.rawValue, RootTabItem.search.hiddenMarker])
 
         settings.appearanceThemeID = b.id
         #expect(settings.visibleRootTabs.count == RootTabItem.tabs.count)

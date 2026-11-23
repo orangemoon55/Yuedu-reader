@@ -184,6 +184,12 @@ struct RuleModuleManifestSections: View {
             if let lookup = module.lookup {
                 entryRow(title: localized("以 ISBN 查詢"), description: lookup.description)
             }
+            if module.comments != nil {
+                entryRow(title: localized("正文評論"), description: localized("提供段評、熱評、本章說與作者說；不提供正文，也不替換閱讀來源。"))
+            }
+            if module.javascript == true {
+                entryRow(title: localized("這個模組會執行 JavaScript"), description: localized("腳本只能運算；所有請求仍受 hosts 限制。"))
+            }
         } header: {
             Text(localized("清單")).foregroundStyle(DSColor.textSecondary)
         }

@@ -85,6 +85,7 @@ enum ReaderTheme: String, CaseIterable {
 
     private static let userDefaultsKey = "yd_reader_theme"
     private static let lastLightThemeKey = "lastLightTheme"
+    private static let lastDarkThemeKey = "lastDarkTheme"
     private static let weChatAccent = UIColor(red: 56 / 255, green: 151 / 255, blue: 241 / 255, alpha: 1)
     private static let weChatDayBackground = UIColor(red: 244 / 255, green: 245 / 255, blue: 247 / 255, alpha: 1)
     private static let weChatNightBackground = UIColor.black
@@ -106,10 +107,12 @@ enum ReaderTheme: String, CaseIterable {
     }
 
     var localizedTitle: String { localized(titleKey) }
+    var isDark: Bool { self == .night }
 
     static func loadPersisted() -> ReaderTheme {
+        ReaderThemeStorageMigration.migrateDefaults(.standard)
         let raw = UserDefaults.standard.string(forKey: userDefaultsKey) ?? ""
-        return ReaderTheme(rawValue: raw) ?? .white
+        return ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)) ?? .white
     }
 
     /// Whether the reader has ever been given a background: none is stored until one is.
@@ -121,14 +124,19 @@ enum ReaderTheme: String, CaseIterable {
     /// while the reader sits on 黑色.
     static var lastLightTheme: ReaderTheme {
         let raw = UserDefaults.standard.string(forKey: lastLightThemeKey) ?? ""
-        return ReaderTheme(rawValue: raw) ?? .white
+        guard let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)), !theme.isDark else { return .white }
+        return theme
+    }
+
+    static var lastDarkTheme: ReaderTheme {
+        let raw = UserDefaults.standard.string(forKey: lastDarkThemeKey) ?? ""
+        guard let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(raw)), theme.isDark else { return .night }
+        return theme
     }
 
     func persist() {
         UserDefaults.standard.set(rawValue, forKey: Self.userDefaultsKey)
-        if self != .night {
-            UserDefaults.standard.set(rawValue, forKey: Self.lastLightThemeKey)
-        }
+        UserDefaults.standard.set(rawValue, forKey: isDark ? Self.lastDarkThemeKey : Self.lastLightThemeKey)
     }
 
     var backgroundColor: Color {
@@ -159,7 +167,7 @@ enum ReaderTheme: String, CaseIterable {
     /// (`GlobalSettings.readerBackgroundResolution`), not by this.
     private var activeAppearancePreset: AppearanceThemePreset? {
         guard let preset = AppearanceThemePreset.activeReaderTheme else { return nil }
-        guard (self == .night) == preset.isDarkAppearancePalette else { return nil }
+        guard isDark == preset.isDarkAppearancePalette else { return nil }
         return preset
     }
 
@@ -188,7 +196,8 @@ enum ReaderTheme: String, CaseIterable {
     /// the bound appearance palette → the background's built-in text color.
     @MainActor
     var uiTextColor: UIColor {
-        if let preset = activeAppearancePreset, preset.readerBackgroundID != nil {
+        if let preset = activeAppearancePreset,
+           preset.readerBackgroundID != nil {
             return preset.text
         }
         if let rgbHex = GlobalSettings.shared.readerTextColorOverride(for: self) {
@@ -287,7 +296,7 @@ enum ReaderBoundTheme: Hashable, Identifiable {
     }
 
     init(storageValue: String) {
-        if let theme = ReaderTheme(rawValue: storageValue) {
+        if let theme = ReaderTheme(rawValue: ReaderThemeStorageMigration.normalize(storageValue)) {
             self = .reading(theme)
         } else if storageValue.hasPrefix(Self.customStoragePrefix),
                   let id = UUID(uuidString: String(storageValue.dropFirst(Self.customStoragePrefix.count))) {
@@ -520,6 +529,129 @@ struct ReaderKeepsScreenAwakeSyncRecord: Codable, Equatable, Sendable {
     var modifiedAt: Date?
 }
 
+/// Retires build 11's forced built-in before GlobalSettings reads any preferences.
+/// Legacy backups remain available for an explicit rollback; no reading or theme
+/// store is decoded and re-encoded here. Only selection and artwork may be written.
+enum QingyunNightCopperRetirementMigration {
+    static let retiredThemeID = "night_copper"
+    static let completedKey = "qy_night_copper_retirement_v1_completed"
+    static let previousAppearanceKey = "qy_night_copper_build11_previous_appearance"
+    static let artworkBaselineKey = "qy_night_copper_artwork_baseline"
+    static let selectionKeys = [
+        "yd_appearance_theme_id", "yd_appearance_dark_theme_id",
+        "yd_appearance_separate_dark_theme", "yd_appearance_follows_system",
+        "yd_appearance_pinned_color_scheme", "yd_appearance_on_screen",
+    ]
+
+    /// True only when the appearance on screen was retired. That launch must not
+    /// replay a former pack's entire extras/reading snapshot over the user's settings.
+    @discardableResult
+    static func runIfNeeded(defaults: UserDefaults) -> Bool {
+        guard !defaults.bool(forKey: completedKey) else { return false }
+        let fallbackID = GlobalSettings.defaultAppearanceThemeID
+        let customThemes = defaults.data(forKey: GlobalSettings.customAppearanceThemesKey)
+            .flatMap { try? JSONDecoder().decode([AppearanceCustomTheme].self, from: $0) } ?? []
+        let customIDs = Set(customThemes.map(\.id))
+        let availableIDs = Set(AppearanceThemePreset.allDefaultPresets.map(\.id)).union(customIDs)
+        // An imported theme may use the same identifier. It is user-owned, not
+        // the removed built-in, and must remain selectable with its full JSON intact.
+        guard !customIDs.contains(retiredThemeID) else {
+            defaults.set(true, forKey: completedKey)
+            return false
+        }
+        let lightID = defaults.string(forKey: selectionKeys[0]) ?? fallbackID
+        let darkID = defaults.string(forKey: selectionKeys[1]) ?? fallbackID
+        let usesDarkSlot = defaults.bool(forKey: selectionKeys[2])
+            && defaults.string(forKey: selectionKeys[5]) == "dark"
+        let wasRetiredOnScreen = (usesDarkSlot ? darkID : lightID) == retiredThemeID
+        let hasNewerSelection = selectionKeys.prefix(2).contains { key in
+            guard let id = defaults.string(forKey: key) else { return false }
+            return id != retiredThemeID && availableIDs.contains(id)
+        }
+        let restoresPreviousAppearance = wasRetiredOnScreen && !hasNewerSelection
+
+        if restoresPreviousAppearance {
+            if let previous = defaults.dictionary(forKey: previousAppearanceKey),
+               isValidSelectionBackup(previous) {
+                for key in selectionKeys {
+                    if let value = previous[key] {
+                        defaults.set(value, forKey: key)
+                    } else {
+                        // Absence is significant: retain the ordinary app default.
+                        defaults.removeObject(forKey: key)
+                    }
+                }
+                for key in selectionKeys.prefix(2) {
+                    if let id = defaults.string(forKey: key), !availableIDs.contains(id) {
+                        defaults.set(fallbackID, forKey: key)
+                    }
+                }
+            } else {
+                // No usable backup: classic following System, never a dangling ID
+                // paired with build 11's forced-dark flags.
+                for key in selectionKeys { defaults.removeObject(forKey: key) }
+                defaults.set(fallbackID, forKey: selectionKeys[0])
+                defaults.set(fallbackID, forKey: selectionKeys[1])
+            }
+            restoreArtwork(defaults: defaults)
+        } else {
+            // A newer choice wins. Only retire an unused slot still naming the
+            // removed preset; do not replay old flags, artwork, fonts or extras.
+            for key in selectionKeys.prefix(2) where defaults.string(forKey: key) == retiredThemeID {
+                defaults.set(fallbackID, forKey: key)
+            }
+        }
+        defaults.set(true, forKey: completedKey)
+        return restoresPreviousAppearance
+    }
+
+    private static func isValidSelectionBackup(_ previous: [String: Any]) -> Bool {
+        for key in selectionKeys.prefix(2) {
+            if let value = previous[key], !(value is String) { return false }
+        }
+        for key in selectionKeys[2...3] {
+            if let value = previous[key], !(value is Bool) { return false }
+        }
+        for key in selectionKeys[4...5] {
+            if let value = previous[key] {
+                guard let value = value as? String, ["light", "dark"].contains(value) else { return false }
+            }
+        }
+        return true
+    }
+
+    private static func restoreArtwork(defaults: UserDefaults) {
+        guard let data = defaults.data(forKey: artworkBaselineKey),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        // Decode each layer independently. A damaged card must not prevent a valid
+        // page layer from returning; unrelated fields in the backup are never applied.
+        var hasValidPages = false
+        if let pages = raw["pageBackgrounds"] as? [String: Any],
+           let data = try? JSONSerialization.data(withJSONObject: pages),
+           (try? JSONDecoder().decode([String: AppearancePageBackgroundConfig].self, from: data)) != nil {
+            defaults.set(data, forKey: "yd_appearance_page_backgrounds")
+            hasValidPages = true
+        }
+        if let card = raw["cardBackground"], !(card is NSNull) {
+            if let card = card as? [String: Any],
+               let data = try? JSONSerialization.data(withJSONObject: card),
+               (try? JSONDecoder().decode(AppearanceCardBackground.self, from: data)) != nil {
+                defaults.set(data, forKey: "yd_appearance_card_background")
+            }
+        } else if hasValidPages {
+            // The old encoder omitted a nil card; valid pages identify that snapshot.
+            defaults.removeObject(forKey: "yd_appearance_card_background")
+        }
+    }
+
+    /// Read-only references prevent cleanup from deleting artwork in the retained
+    /// rollback backup. This is never applied as an active theme's extras.
+    static func retainedArtwork(defaults: UserDefaults) -> AppearanceThemeExtras? {
+        guard let data = defaults.data(forKey: artworkBaselineKey) else { return nil }
+        return try? JSONDecoder().decode(AppearanceThemeExtras.self, from: data)
+    }
+}
+
 // MARK: - Global Settings
 
 /// Every global setting. `@Observable` (it was an `ObservableObject` with 156 `@Published`
@@ -531,6 +663,24 @@ struct ReaderKeepsScreenAwakeSyncRecord: Codable, Equatable, Sendable {
 /// `typographyRevision` (the global font and Bold Text, which `GlobalAppTypography` draws from
 /// statics) and `readerBackgroundPicturesRevision` (pictures that arrive after the setting
 /// naming them). Themes reach views through the `appThemes` environment value.
+/// One-time upgrade for the app-wide glass preference. An absent cards key means the
+/// user never chose; a stored `false` is an explicit opt-out and must remain so.
+enum InterfaceGlassDefaultsMigration {
+    static let currentVersion = 1
+    static let versionKey = "yd_interface_glass_defaults_migration_version"
+    static let cardsKey = "yd_interface_glass_list_sections"
+
+    @discardableResult
+    static func runIfNeeded(defaults: UserDefaults) -> Bool {
+        guard defaults.integer(forKey: versionKey) < currentVersion else { return false }
+        if defaults.object(forKey: cardsKey) == nil {
+            defaults.set(true, forKey: cardsKey)
+        }
+        defaults.set(currentVersion, forKey: versionKey)
+        return true
+    }
+}
+
 @MainActor
 @Observable
 class GlobalSettings {
@@ -663,11 +813,10 @@ class GlobalSettings {
     /// before 界面效果 existed, and 透明度 100% reproduces that look exactly.
     static let defaultInterfaceFrostedGlass = true
     static let defaultInterfaceGlassTransparency: Double = 1.0
-    /// Off by default. Apple's HIG puts Liquid Glass in the functional layer
-    /// (controls, navigation, transient UI) and keeps it out of the content layer,
-    /// which is where a settings list's cards live — so this stays opt-in, and off
-    /// reproduces the original opaque cards exactly.
-    static let defaultInterfaceGlassCards = false
+    /// Glass is on by default for content cards as well as functional chrome. Existing
+    /// users are handled by `InterfaceGlassDefaultsMigration`: a missing key is the old
+    /// untouched default, while a stored value is an explicit choice and is retained.
+    static let defaultInterfaceGlassCards = true
     nonisolated static let commentBubbleScaleRange: ClosedRange<Double> = 0.5...2.0
     nonisolated static let commentBubbleTextScaleRange: ClosedRange<Double> = 0.2...0.8
     static let defaultCommentBubbleScale = 1.0
@@ -828,10 +977,15 @@ class GlobalSettings {
             recordReadingSettingEdit { $0.bottomJustify = readerBottomJustify }
         }
     }
-    /// 套用書本間距: whether an EPUB's own stylesheet spacing (line height, paragraph
-    /// margins) wins over 行距／段距. On by default, so a book keeps the look its
-    /// publisher set until the reader turns it off. Global, not part of a theme: it is
-    /// about the book's format, not the reader's look. Part of `ReaderRenderSettings`.
+    /// Default paragraph alignment; independent from bottom justification.
+    /// Keep the existing justified appearance until the user changes it.
+    var readerTextAlignment: ReaderTextAlignment {
+        didSet {
+            UserDefaults.standard.set(readerTextAlignment.rawValue, forKey: "yd_reader_text_alignment")
+            recordReadingSettingEdit { $0.textAlignment = readerTextAlignment.rawValue }
+        }
+    }
+    /// The EPUB's own stylesheet spacing wins while this setting is on.
     var readerUsesBookSpacing: Bool {
         didSet {
             UserDefaults.standard.set(readerUsesBookSpacing, forKey: "yd_reader_uses_book_spacing")
@@ -2120,6 +2274,9 @@ class GlobalSettings {
     }
 
     private init() {
+        InterfaceGlassDefaultsMigration.runIfNeeded(defaults: .standard)
+        ReaderThemeStorageMigration.migrateDefaults(.standard)
+        let retiredNightCopper = QingyunNightCopperRetirementMigration.runIfNeeded(defaults: .standard)
         UserDefaults.standard.removeObject(forKey: "yd_app_lang")
         // Before anything below reads the stores it rewrites.
         ReaderBackgroundMigration.runIfNeeded()
@@ -2179,6 +2336,7 @@ class GlobalSettings {
         pageMarginBottom = (UserDefaults.standard.object(forKey: "yd_page_margin_bottom") as? Double)
             ?? loadedPageMarginV
         readerBottomJustify = (UserDefaults.standard.object(forKey: "yd_reader_bottom_justify") as? Bool) ?? true
+        readerTextAlignment = ReaderTextAlignment(rawValue: UserDefaults.standard.string(forKey: "yd_reader_text_alignment") ?? "") ?? .justified
         readerUsesBookSpacing = (UserDefaults.standard.object(forKey: "yd_reader_uses_book_spacing") as? Bool) ?? true
         readerTextColorOverrides =
             (UserDefaults.standard.dictionary(forKey: Self.readerTextColorOverridesKey) as? [String: Int])?
@@ -2667,11 +2825,12 @@ class GlobalSettings {
         // The revision the asset store already has is read by `loadInitialReaderStyleAssetRevision`,
         // which the app calls at launch on the main actor.
 
-        // Establishes "a custom theme is selected ⟹ a baseline exists". The selection
-        // `didSet` cannot do it, because it never fires for a theme restored from
-        // disk — so a theme saved before write-back existed would take the user's
-        // first edit with no captured original to hand back on the way out.
-        synchronizeAppearanceThemeExtras()
+        // An ordinary launch establishes a custom theme's baseline. Retirement has
+        // already restored just selection/artwork before the reads above: replaying
+        // the whole old pack here would also replace fonts, tabs and reading layout.
+        if !retiredNightCopper {
+            synchronizeAppearanceThemeExtras()
+        }
         publishSnapshot()
     }
 
@@ -3188,7 +3347,7 @@ class GlobalSettings {
             return selected
         }
         return appearancePreset(id: Self.defaultAppearanceThemeID, isProActive: isProActive)
-            ?? AppearanceThemePreset.freeSolidPresets[0]
+            ?? AppearanceThemePreset.classic
     }
 
     /// The theme the app wears for `colorScheme`, or nil for 默認 as it ships (no tint,
@@ -3364,7 +3523,8 @@ class GlobalSettings {
     private var appearanceExtrasFileReferences: [AppearanceThemeExtras] {
         customAppearanceThemes.compactMap(\.extras)
             + customAppearanceThemes.compactMap(\.originalExtras)
-            + [appearanceExtrasBaseline].compactMap { $0 }
+            + [appearanceExtrasBaseline,
+               QingyunNightCopperRetirementMigration.retainedArtwork(defaults: .standard)].compactMap { $0 }
     }
 
     private func isDefaultCoverFileReferenced(_ fileName: String) -> Bool {

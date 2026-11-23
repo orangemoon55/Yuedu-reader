@@ -16,12 +16,13 @@ import SwiftUI
 
 struct HomeSectionPage: View {
     let sectionID: UUID
+    var goBack: (() -> Void)? = nil
     @ObservedObject private var pageStore = HomePageStore.shared
     @EnvironmentObject private var store: BookStore
 
     var body: some View {
         if let section = pageStore.page?.sections.first(where: { $0.id == sectionID }) {
-            HomeSectionFormHost(section: section, store: store)
+            HomeSectionFormHost(section: section, store: store, goBack: goBack)
         } else {
             // Deleted, here or from its long press: the page empties as it pops.
             Color.clear.themedAppSurface(for: .explore)
@@ -36,13 +37,15 @@ struct HomeSectionPage: View {
 /// (5d-5), as the search page did (`Technotes/iOS17SearchWatchdogPostmortem.md`, guardrail 12).
 private struct HomeSectionFormHost: View {
     @StateObject private var editor: HomeSectionEditor
+    let goBack: (() -> Void)?
 
-    init(section: HomeSection, store: BookStore) {
+    init(section: HomeSection, store: BookStore, goBack: (() -> Void)?) {
+        self.goBack = goBack
         _editor = StateObject(wrappedValue: HomeSectionEditor(section: section, preview: .preview(shelf: store)))
     }
 
     var body: some View {
-        HomeSectionForm(editor: editor, isInSheet: false)
+        HomeSectionForm(editor: editor, isInSheet: false, goBack: goBack)
     }
 }
 
@@ -70,16 +73,25 @@ struct HomeNewSectionSheet: View {
     }
 }
 
+/// Each pushed screen carries its own editor, so the first destination evaluation
+/// cannot produce an empty form by looking up a separate, optional state value.
+private struct HomeNewSectionRoute: Hashable {
+    let id: UUID
+    let editor: HomeSectionEditor
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 private struct HomeNewSectionFlow: View {
     let store: BookStore
     let added: (UUID) -> Void
     let close: () -> Void
-    @State private var editor: HomeSectionEditor?
-    @State private var showsForm = false
+    @State private var path: [HomeNewSectionRoute] = []
     @ObservedObject private var availability = PublicLibraryAvailability.shared
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             // Every layout, whatever the sources: a layout of lists draws any source's lists.
             HomeLayoutGallery(choices: HomeLayoutStyle.allCases, sample: .standard,
                               identifierPrefix: "homeNewSection.layout") { style in
@@ -87,8 +99,7 @@ private struct HomeNewSectionFlow: View {
                 // Gutenberg's lists, chosen already where they are offered; 清單 can still
                 // change them, to any source's.
                 if style.drawsLists, availability.isAvailable { editor.choose(.gutenbergLists) }
-                self.editor = editor
-                showsForm = true
+                path = [HomeNewSectionRoute(id: editor.draft.id, editor: editor)]
             }
             .navigationTitle(localized("新增欄目"))
             .toolbarTitleDisplayMode(.inline)
@@ -99,12 +110,31 @@ private struct HomeNewSectionFlow: View {
                     }
                 }
             }
-            .navigationDestination(isPresented: $showsForm) {
-                if let editor {
-                    HomeSectionForm(editor: editor, isInSheet: true, added: { added(editor.draft.id) })
-                }
+            .navigationDestination(for: HomeNewSectionRoute.self) { route in
+                HomeSectionForm(editor: route.editor, isInSheet: true, goBack: { path = [] }, added: {
+                    // The new-section navigator owns its exit. Pop before closing the
+                    // cover so an old form cannot remain under the Explore toolbar.
+                    path = []
+                    added(route.id)
+                    close()
+                })
             }
         }
+    }
+}
+
+/// Isolated leaf: no dismiss environment is read by a form that owns nested navigation.
+struct HomeSectionBackButton: View {
+    var goBack: (() -> Void)?
+    @Environment(\.presentationMode) private var presentation
+
+    var body: some View {
+        Button {
+            if let goBack { goBack() } else { presentation.wrappedValue.dismiss() }
+        } label: {
+            Label(localized("返回"), systemImage: "chevron.left")
+        }
+        .accessibilityIdentifier("homeSection.back")
     }
 }
 
@@ -162,8 +192,8 @@ struct HomeSectionForm: View {
     let isInSheet: Bool
     /// 新增 put the section on the home.
     var added: () -> Void = {}
+    var goBack: (() -> Void)?
 
-    @ObservedObject private var preview: HomeModel
     @ObservedObject private var aggregation = AggregationSettingsStore.shared
     @ObservedObject private var sources = BookSourceStore.shared
     @ObservedObject private var connections = RemoteLibraryConnectionStore.shared
@@ -176,12 +206,13 @@ struct HomeSectionForm: View {
     /// (`Technotes/iOS17SearchWatchdogPostmortem.md`, guardrail 12).
     @State private var push: HomeSectionFormPush?
 
-    init(editor: HomeSectionEditor, isInSheet: Bool, modules: RuleModuleLibrary? = nil, added: @escaping () -> Void = {}) {
+    init(editor: HomeSectionEditor, isInSheet: Bool, modules: RuleModuleLibrary? = nil,
+         goBack: (() -> Void)? = nil, added: @escaping () -> Void = {}) {
+        self.goBack = goBack
         self.editor = editor
         self.isInSheet = isInSheet
         self.modules = modules ?? .shared
         self.added = added
-        preview = editor.preview
     }
 
     private var draft: HomeSectionEditor.Draft { editor.draft }
@@ -214,18 +245,16 @@ struct HomeSectionForm: View {
         Form {
             if let page = editor.previewPage {
                 Section {
-                    previewContent
+                    HomeSectionPreviewPane(model: editor.preview, page: page,
+                                           hiddenFromLatest: editor.hiddenFromLatest,
+                                           languages: aggregation.readingLanguages,
+                                           active: push == nil && presentedPicker == nil)
                         .listRowInsets(EdgeInsets(top: DSSpacing.md, leading: 0, bottom: DSSpacing.md, trailing: 0))
                 } header: {
                     Text(localized("預覽"))
                 }
                 .interfaceSectionSurface()
-                // Again when 顯示在最新 changes: the preview loads 最新 without those libraries.
-                .task(id: [AnyHashable(page), AnyHashable(editor.hiddenFromLatest)]) {
-                    await preview.sync(with: page, hiddenFromLatest: editor.hiddenFromLatest)
-                    // The reader's own tap: the page loads whatever its source's policy.
-                    for row in preview.rows { preview.load(row.id) }
-                }
+
             }
             Section {
                 LabeledContent(localized("標題")) {
@@ -269,14 +298,23 @@ struct HomeSectionForm: View {
         }
         .navigationTitle(editor.isNew ? localized("新增欄目") : title)
         .toolbarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
         .themedAppSurface(for: .explore)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                HomeSectionBackButton(goBack: goBack)
+            }
+            ToolbarItem(placement: .principal) {
+                Text(editor.isNew ? localized("新增欄目") : title)
+                    .font(DSFont.headline).lineLimit(1)
+            }
             if editor.isNew {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         if editor.add() { added() }
                     } label: {
-                        Label(localized("動作：新增"), systemImage: "checkmark")
+                        Text(localized("儲存"))
                     }
                     .disabled(draft.binding == nil)
                     .accessibilityIdentifier("homeSection.add")
@@ -313,10 +351,20 @@ struct HomeSectionForm: View {
                     }
                 case .filters(let url):
                     if let source = sources.sources.first(where: { $0.bookSourceUrl == url }) {
-                        HomeCategoryChoices(source: source, filterValues: editor.filterValues(forSourceURL: url),
-                                            current: draft.binding) { choice in
-                            editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
-                            push = nil
+                        if draft.layout.style == .coverIntroCard {
+                            HomeRankCategories(source: source, current: draft.binding,
+                                               filterValues: editor.filterValues(forSourceURL: url)) { choice, source in
+                                var section = draft.section ?? HomeSection(layout: .coverIntroCard, binding: choice.binding)
+                                section.configureRotatingRank(choice, source: source)
+                                editor.choose(section.binding, parameters: section.parameters, itemTitle: choice.itemTitle)
+                                push = nil
+                            }
+                        } else {
+                            HomeCategoryChoices(source: source, filterValues: editor.filterValues(forSourceURL: url),
+                                                current: draft.binding) { choice in
+                                editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
+                                push = nil
+                            }
                         }
                     }
                 case .listCard(let index):
@@ -609,11 +657,18 @@ struct HomeSectionForm: View {
     private func picker(_ mode: HomeSectionPickerMode, isPushed: Bool) -> some View {
         switch mode {
         case .choose:
-            HomeContentSourcePicker(current: draft.binding, parameters: draft.parameters, isPushed: isPushed) { choice in
-                editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
-                closePicker()
-            } cancel: {
-                closePicker()
+            if draft.layout.style == .coverIntroCard {
+                HomeRankPicker(current: draft.binding, pushed: isPushed) { choice, source in
+                    var section = draft.section ?? HomeSection(layout: .coverIntroCard, binding: choice.binding)
+                    section.configureRotatingRank(choice, source: source)
+                    editor.choose(section.binding, parameters: section.parameters, itemTitle: choice.itemTitle)
+                    closePicker()
+                } cancel: { closePicker() }
+            } else {
+                HomeContentSourcePicker(current: draft.binding, parameters: draft.parameters, isPushed: isPushed) { choice in
+                    editor.choose(choice.binding, parameters: choice.parameters, itemTitle: choice.itemTitle)
+                    closePicker()
+                } cancel: { closePicker() }
             }
         case .addLists:
             HomeContentSourcePicker(current: nil, isPushed: isPushed, title: localized("加入清單")) { choice in
@@ -635,34 +690,6 @@ struct HomeSectionForm: View {
         draft.binding.flatMap { modules.entry(of: $0) }
     }
 
-    // MARK: Preview
-
-    @ViewBuilder
-    private var previewContent: some View {
-        if draft.binding == .aiRecommendations {
-            // The stored list, as the home draws it; the preview never asks the AI service.
-            AIRecommendationRow(section: HomeSection(layout: draft.layout, binding: .aiRecommendations),
-                                title: localized("AI 推薦"), canGenerate: false, open: { _, _ in })
-        } else if !preview.isReady {
-            ProgressView().frame(maxWidth: .infinity)
-        } else if let group = preview.groups(in: nil, languages: aggregation.readingLanguages).first,
-                  !group.isSettledEmpty {
-            HomeRowView(group: group, content: content(of: group),
-                        load: { for row in group.rows { preview.load(row.id) } },
-                        request: { for row in group.rows { if case .failed = row.state { preview.request(row.id) } } },
-                        open: { _, _ in }, openLocation: { _ in })
-        } else {
-            Text(localized("此目錄沒有內容"))
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private func content(of group: HomeSectionGroup) -> HomeRowContent? {
-        guard case .loaded(let entries) = group.state else { return nil }
-        return HomeRowContent(entries: entries, store: store, withLists: group.section.layout.style == .chart)
-    }
 }
 
 // MARK: - A card of a layout of lists

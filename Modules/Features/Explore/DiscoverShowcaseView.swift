@@ -64,9 +64,10 @@ struct DiscoverShowcaseView: View {
                 }
             }
             .padding(.vertical, DSSpacing.lg)
-            .padding(.bottom, 120)
+        .padding(.bottom, 120)
         }
         .softScrollEdges()
+        .accessibilityIdentifier("discovery.magazine.layout")
         .scrollDismissesKeyboard(.immediately)
         .refreshable { discover.reload(forceRefresh: true) }
     }
@@ -123,10 +124,15 @@ private struct DiscoverEmptyState: View {
 /// The source's own controls above its categories, in one scrolling row: each filter
 /// it emits (线路、类型、频道、平台) as a menu of its options, then the categories that
 /// open a web page. legado-E draws the same `select` kinds inline on its explore page.
-private struct DiscoverControlsRow: View {
+struct DiscoverControlsRow: View {
     @ObservedObject var discover: DiscoverViewModel
     let pageItems: [DiscoverCardItem]
     let onOpenPage: (String) -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var controlsHeight: CGFloat = DSLayout.minimumTapTarget
+
+    private var viewportHeight: CGFloat {
+        max(DSLayout.minimumTapTarget, controlsHeight) + DSSpacing.xs * 2
+    }
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -139,15 +145,24 @@ private struct DiscoverControlsRow: View {
                         if let url = item.actionURL { onOpenPage(url) }
                     } label: {
                         DSCapsuleLabel(title: item.title, trailingSystemImage: "arrow.up.right")
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint(localized("在瀏覽器中開啟"))
                 }
             }
             .padding(.horizontal, DSSpacing.lg)
-            .padding(.vertical, DSSpacing.xs)
+            .frame(height: viewportHeight)
         }
+        // The floating tab bar reserves its height as a scroll-content margin for
+        // vertical lists. This horizontal scroller must not inherit that reservation:
+        // it displaces the filter chips upward into the category bar on iPhone.
+        .contentMargins(.vertical, 0, for: .scrollContent)
+        .contentMargins(.vertical, 0, for: .scrollIndicators)
+        .frame(height: viewportHeight)
+        .clipped()
         .scrollIndicators(.hidden)
+        .accessibilityIdentifier("discovery.source.filters")
     }
 
     /// Each filter reads 「線路：<chosen line>」, its name and its value together; one
@@ -171,11 +186,13 @@ private struct DiscoverControlsRow: View {
                 trailingSystemImage: "chevron.down",
                 isSelected: isActive
             )
+            .fixedSize(horizontal: true, vertical: false)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(value)
+        .accessibilityIdentifier("discovery.source.filter.\(filter.paramKey)")
     }
 
     static func filterTitle(_ title: String) -> String {
@@ -558,7 +575,7 @@ struct DiscoverCover: View {
 /// A chart or 查看全部 row: cover, the rank in plain bold numerals when the category
 /// is a ranking (Apple Books' charts colour none of them), title and author, and the
 /// description where there is room for it.
-private struct DiscoverBookRow: View {
+struct DiscoverBookRow: View {
     let rank: Int?
     let display: DiscoverBookDisplay
     let section: DiscoverShowcaseSection
@@ -825,6 +842,7 @@ struct DiscoverListLayoutView: View {
                 .refreshable { discover.reload(forceRefresh: true) }
             }
         }
+        .accessibilityIdentifier("discovery.list.layout")
     }
 
     private var categoryChips: some View {

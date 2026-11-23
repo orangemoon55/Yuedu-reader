@@ -1002,6 +1002,22 @@ struct BookInfoPackage: Codable {
 
 typealias RenderPackage = BookPackage
 
+/// Default alignment for paragraphs that don't declare their own CSS alignment.
+/// Bottom alignment is an independent paged-line-spacing option.
+enum ReaderTextAlignment: String, Codable, CaseIterable, Identifiable, Sendable {
+    case natural
+    case justified
+
+    var id: String { rawValue }
+
+    var nsTextAlignment: NSTextAlignment {
+        switch self {
+        case .natural: return .natural
+        case .justified: return .justified
+        }
+    }
+}
+
 struct ReaderRenderSettings: Equatable {
     let theme: String
     var textColor: UIColor
@@ -1055,6 +1071,8 @@ struct ReaderRenderSettings: Equatable {
     /// 底部對齊: spread each filled page's leftover space over its lines so the last line
     /// sits on the content bottom. Paged surface only; the scroll surface always carries false.
     var bottomJustify: Bool = false
+    /// Paragraph default for the reader. Explicit EPUB/online CSS alignment still wins.
+    var textAlignment: ReaderTextAlignment = .justified
     /// 套用書本間距: an EPUB's stylesheet line height and paragraph margins win over the
     /// reader's 行距／段距 (on), or are dropped so the reader's apply everywhere (off).
     /// Read by the EPUB builder alone; baked into paragraph styles, so a change re-runs layout.

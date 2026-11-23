@@ -716,6 +716,8 @@ enum DSLayout {
     /// card, its 40×60 cover inset 10 on every side and 10 from the text. Scaled with Dynamic Type.
     static let homeCompactReadingCardCoverWidth: CGFloat = 40
     static let homeContinueCardWidth: CGFloat = 278
+    static let homeCoverIntroMinimumHeight: CGFloat = 264
+    static let homeCoverIntroMaximumHeight: CGFloat = 620
     static let homeContinueCardInset: CGFloat = 10
     /// Its kind line's colour: the cover's hue at most this saturated, at this brightness.
     static let homeContinueTintSaturation: CGFloat = 0.55
@@ -950,6 +952,12 @@ enum DSLayout {
     static let readerQuickPanelTopMenuWidth: CGFloat = 120
     /// Height of a landscape reading-background preview button.
     static let readerQuickPanelReadingBackgroundTileHeight: CGFloat = 82
+    /// Small landscape samples leave their names outside the artwork.
+    static let readerQuickPanelBackgroundSampleHeight: CGFloat = 48
+    static let readerQuickPanelBackgroundLastLineWidth: CGFloat = 28
+    static let readerQuickPanelBackgroundLineHeight: CGFloat = 2
+    static let readerQuickPanelToolRowHeight: CGFloat = 48
+    static let readerQuickPanelToolIconWidth: CGFloat = 22
     /// Width of one background tile in the quick panel's scrolling row. Sized so a
     /// compact phone shows four and a half of them — enough that the fifth is
     /// visibly cut off, which is what tells the reader the row scrolls.

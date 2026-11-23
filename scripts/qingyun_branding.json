@@ -1,0 +1,50 @@
+{
+  "name": "Readcc",
+  "packageName": "readcc",
+  "shape": "陶瓷R · 明印 · read粗斜体",
+  "palette": "纯白",
+  "bundleID": "com.local.readcc",
+  "iconSHA256": "ebbf2ae0b867014d14ba25bb22f6590b7c313dffa4dfc17ccead8d900c696d17",
+  "sourceSHA256": "ebbf2ae0b867014d14ba25bb22f6590b7c313dffa4dfc17ccead8d900c696d17",
+  "sourceSession": "86E451FF-1F84-413B-8312-1433157570ED",
+  "assetSHA256": {
+    "YueduAppIcon.imageset/YueduAppIcon@2x.png": "a6216fd4f0d851a3bf4e2bb421111a2d4c2d6033b5086fc4bda7ab9c1f6033ff",
+    "YueduAppIcon.imageset/YueduAppIcon@3x.png": "9dba5cbe4a1c8070e94cf776814a7db71694b9295ae859bcb34a46ab0ee5c457",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@2x.png": "a6216fd4f0d851a3bf4e2bb421111a2d4c2d6033b5086fc4bda7ab9c1f6033ff",
+    "YueduAppIcon.imageset/YueduAppIcon-dark@3x.png": "9dba5cbe4a1c8070e94cf776814a7db71694b9295ae859bcb34a46ab0ee5c457",
+    "YueduLogo.imageset/YueduLogo.png": "ebbf2ae0b867014d14ba25bb22f6590b7c313dffa4dfc17ccead8d900c696d17"
+  },
+  "sourceOriginalSHA256": "980cccea2c1c19f932618040221cb6e3fd4f442f4b711318c005cea93c7f72cb",
+  "sourceVariant": "white-background-optical-size-read",
+  "sourceTransformation": {
+    "background": "#FFFFFF",
+    "foregroundScale": 1.25,
+    "wordmarkColor": "#283B36",
+    "render": "Build23 original artwork unchanged except new read vector wordmark",
+    "edgeRollSigma": [
+      4.2,
+      2.2
+    ],
+    "edgeGlintSigma": [
+      0.7,
+      0.42
+    ],
+    "farCastShadowSigma": [
+      17,
+      11
+    ],
+    "nearCastShadowSigma": [
+      5.7,
+      3.8
+    ],
+    "jointSoftSigma": 0.48,
+    "sourceGeometryChanged": false,
+    "wordmarkInkBounds": [
+      379,
+      874,
+      645,
+      957
+    ],
+    "wordmarkFont": "Noto Serif Bold Italic, vector contours"
+  }
+}

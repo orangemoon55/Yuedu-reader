@@ -12,6 +12,8 @@ enum OfficialRuleModules {
     /// this order.
     static let ids = ["bangumi", "anilist", "openbd", "openlibrary", "narou", "trends", "rakuten-books"]
     static let reservedIDs = Set(ids)
+    /// IPA storefront order: fiction, comics, then Open Library's nonfiction categories.
+    static let storeOrder = ["trends", "bangumi", "openlibrary"]
     /// Open Library, which replaced the app's own Open Library search and fill (OL3).
     nonisolated static let openLibraryID = "openlibrary"
 

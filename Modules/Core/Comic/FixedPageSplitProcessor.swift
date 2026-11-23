@@ -15,20 +15,27 @@ enum FixedPageSplitProcessor {
         return (image.size.width / image.size.height) >= 1.15
     }
 
-    /// Crops the requested sub-page half from a wide image.
+    /// Crops the requested visual left or right half, retaining an odd last column on the right.
     static func cropHalf(from image: UIImage, side: FixedPage.SubPageSide) -> UIImage {
         guard let cgImage = image.cgImage else { return image }
-        let totalW = CGFloat(cgImage.width)
-        let totalH = CGFloat(cgImage.height)
-        let halfW = floor(totalW / 2)
-
-        let cropRect: CGRect
-        switch side {
-        case .left:
-            cropRect = CGRect(x: 0, y: 0, width: halfW, height: totalH)
-        case .right:
-            cropRect = CGRect(x: halfW, y: 0, width: totalW - halfW, height: totalH)
+        // The bitmap may carry EXIF orientation rather than being physically rotated.
+        // Pick the raw axis and direction that correspond to increasing display X.
+        let alongRows: Bool
+        let forward: Bool
+        switch image.imageOrientation {
+        case .up, .downMirrored: (alongRows, forward) = (false, true)
+        case .down, .upMirrored: (alongRows, forward) = (false, false)
+        case .left, .leftMirrored: (alongRows, forward) = (true, true)
+        case .right, .rightMirrored: (alongRows, forward) = (true, false)
+        @unknown default: return image
         }
+        let count = alongRows ? cgImage.height : cgImage.width
+        guard count > 1 else { return image }
+        let length = side == .left ? count / 2 : count - count / 2
+        let start = (side == .left) == forward ? 0 : count - length
+        let cropRect = alongRows
+            ? CGRect(x: 0, y: start, width: cgImage.width, height: length)
+            : CGRect(x: start, y: 0, width: length, height: cgImage.height)
 
         guard let croppedCG = cgImage.cropping(to: cropRect) else { return image }
         return UIImage(cgImage: croppedCG, scale: image.scale, orientation: image.imageOrientation)

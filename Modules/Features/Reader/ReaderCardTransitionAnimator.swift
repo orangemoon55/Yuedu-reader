@@ -17,6 +17,9 @@ final class ReaderCardTransitionAnimator: NSObject, UIViewControllerAnimatedTran
 
     private let operation: Operation
     private let source: ReaderTransitionSource
+    /// Freeze the fallback for this transaction so UIKit's duration and the
+    /// rendered timeline agree even if shelf geometry changes during layout.
+    private let usesCloseCrossfade: Bool
     private let completion: (Bool) -> Void
     /// Awaited before the opening animation starts driving, so the reader's
     /// first-page work (CSS, embedded fonts, CoreText pagination) runs with the
@@ -71,6 +74,7 @@ final class ReaderCardTransitionAnimator: NSObject, UIViewControllerAnimatedTran
     ) {
         self.operation = operation
         self.source = source
+        self.usesCloseCrossfade = operation == .pop && !source.canAnimateCardClose
         self.contentReadyGate = contentReadyGate
         self.completion = completion
         self.coverContentSize = source.snapshot?.size
@@ -80,7 +84,7 @@ final class ReaderCardTransitionAnimator: NSObject, UIViewControllerAnimatedTran
     func transitionDuration(
         using transitionContext: UIViewControllerContextTransitioning?
     ) -> TimeInterval {
-        UIAccessibility.isReduceMotionEnabled
+        UIAccessibility.isReduceMotionEnabled || usesCloseCrossfade
             ? DSAnimation.readerBookReducedMotionDuration
             : DSAnimation.readerBookTransitionDuration
     }
@@ -143,7 +147,9 @@ final class ReaderCardTransitionAnimator: NSObject, UIViewControllerAnimatedTran
             return animator
         }
 
-        let reduceMotion = UIAccessibility.isReduceMotionEnabled
+        // Reuse the reversible reduced-motion path for a source-less close:
+        // the page fades in place instead of exposing a blank folding cover.
+        let reduceMotion = UIAccessibility.isReduceMotionEnabled || usesCloseCrossfade
         let fullFrame = resolvedFullFrame(
             container: container,
             transitionContext: transitionContext,

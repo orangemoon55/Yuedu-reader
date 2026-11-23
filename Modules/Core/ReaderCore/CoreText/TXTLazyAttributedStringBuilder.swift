@@ -104,7 +104,7 @@ struct TXTLazyAttributedStringBuilder: AttributedStringBuilding {
         )
 
         let bodyParaStyle = NSMutableParagraphStyle()
-        bodyParaStyle.alignment = .justified // full justification: both margins align, CJK + Latin alike
+        bodyParaStyle.alignment = settings.textAlignment.nsTextAlignment
         bodyParaStyle.hyphenationFactor = ReaderHyphenation.factor // break long Latin words instead of gapping the line
         bodyParaStyle.lineBreakMode = .byWordWrapping
         bodyParaStyle.minimumLineHeight = bodyTargetLineHeight
@@ -197,6 +197,7 @@ struct TXTLazyAttributedStringBuilder: AttributedStringBuilding {
     }
 
     var appliesReplaceRules: Bool { true }
+    var decorationRenderWidth: CGFloat? { renderSize.value.width }
 
     func localChapterText(at index: Int, applyingReplaceRules: Bool) async -> AILocalChapterText {
         .extracted(plainText(at: index, applyingReplaceRules: applyingReplaceRules))

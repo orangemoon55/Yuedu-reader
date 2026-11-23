@@ -21,6 +21,10 @@ struct RuleListFields: Sendable {
     var series: String = ""
     var seriesCovers: String = ""
     var contentKind: String = ""
+    /// The record's own site id (module format 3.0.1).
+    var id: String = ""
+    /// Selects nested records, read with the same fields once (never recursively).
+    var volumes: String = ""
 }
 
 /// One list item as its rules read it.
@@ -43,7 +47,10 @@ struct RuleListItem: Codable, Equatable, Sendable {
     var isbn: String? = nil
     var series: String? = nil
     var seriesCovers: [String]? = nil
+    var volumes: [RuleListItem]? = nil
     var contentKind: String? = nil
+    /// The site id passed to a module's comments and reviews requests.
+    var id: String? = nil
     /// What the item's rules put (`@put`, `java.put`) on top of the list's own puts: Legado's
     /// `SearchBook.variable`, which travels with the book into its detail, TOC and content.
     /// Nil when nothing was put, or when the caller gave no item scope.
@@ -83,7 +90,8 @@ enum RuleListMapping {
         onMissingLink: ((_ name: String) -> Void)? = nil,
         itemScope: (() -> RuleDataInterface)? = nil,
         itemBook: (() -> LegadoBookBridge)? = nil,
-        onSelected: ((_ count: Int) -> Void)? = nil
+        onSelected: ((_ count: Int) -> Void)? = nil,
+        preservesMissingLink: Bool = false
     ) -> [RuleListItem] {
         guard !listRule.isEmpty else {
             onSelected?(0)
@@ -119,7 +127,9 @@ enum RuleListMapping {
             let coverUrl = engine.getOptionalURL(ruleStr: fields.coverUrl)
             book?.coverUrl = coverUrl
             let bookUrl: String
-            if let onMissingLink, !fields.bookUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if preservesMissingLink {
+                bookUrl = engine.getOptionalURL(ruleStr: fields.bookUrl)
+            } else if let onMissingLink, !fields.bookUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 bookUrl = engine.getOptionalURL(ruleStr: fields.bookUrl)
                 guard !bookUrl.isEmpty else {
                     onMissingLink(name)
@@ -146,8 +156,18 @@ enum RuleListMapping {
                 series: value(engine, fields.series),
                 seriesCovers: values(engine, fields.seriesCovers),
                 contentKind: value(engine, fields.contentKind),
+                id: value(engine, fields.id),
                 runtimeVariables: scope.flatMap { $0.variableMap.isEmpty ? nil : $0.variableMap }
             ))
+            if !fields.volumes.isEmpty {
+                var nested = fields
+                nested.volumes = ""
+                // Select records, not serialized strings passed through the title rule.
+                // Read after the parent's fields, as recursion changes the engine's content.
+                items[items.count - 1].volumes = Self.items(
+                    engine: engine, content: element, baseURL: baseURL,
+                    listRule: fields.volumes, fields: nested, preservesMissingLink: true)
+            }
         }
         return items
     }

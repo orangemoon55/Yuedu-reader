@@ -81,6 +81,7 @@ struct HomeSectionCards: View {
                 switch style {
                 case .readingCard: readingCards
                 case .compactReadingCard: compactReadingCards
+                case .coverIntroCard: coverIntroCards
                 case .row: rail(coverWidth: rowCoverWidth)
                 case .multiRow: multiRow
                 // 編輯首頁 draws every section sideways (`homeDrawsSideways`): the grid's covers in
@@ -246,6 +247,12 @@ struct HomeSectionCards: View {
         }
         .modifier(HomeSidewaysScroll())
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { heroWidth = $0 }
+    }
+
+    // MARK: 封面簡介大卡
+
+    private var coverIntroCards: some View {
+        HomeRankCarousel(cards: cards, open: open)
     }
 
     // MARK: 大型閱讀卡片

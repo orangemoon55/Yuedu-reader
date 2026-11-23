@@ -854,6 +854,41 @@ final class HomeEditorUITests: XCTestCase {
         XCTAssertTrue(renamed.waitForNonExistence(timeout: 5), app.debugDescription)
     }
 
+    /// A single first tap must show the full form, not just a native back button.
+    @MainActor
+    func testFirstTemplateTapShowsNewSectionForm() throws {
+        try writeBookSource()
+        let app = launchExplore(officialModules: true)
+        let edit = app.buttons["home.edit"].firstMatch
+        for _ in 0..<8 where !edit.isHittable { app.swipeUp() }
+        edit.tap()
+        let add = app.buttons["homeEditor.addSection"].firstMatch
+        for _ in 0..<8 where !add.isHittable { app.swipeUp() }
+        add.tap()
+
+        let layouts = [("coverIntroCard", "封面簡介大卡"), ("compactReadingCard", "精簡閱讀卡片")]
+        for (index, choice) in layouts.enumerated() {
+            let (style, expected) = choice
+            let template = app.buttons["homeNewSection.layout.\(style)"].firstMatch
+            for _ in 0..<5 where !template.exists || !template.isHittable {
+                if index == 0 { app.swipeUp() } else { app.swipeDown() }
+            }
+            XCTAssertTrue(template.isHittable, app.debugDescription)
+            template.tap()
+
+            XCTAssertTrue(app.textFields["homeSection.title"].firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(app.textFields["homeSection.subtitle"].firstMatch.exists, app.debugDescription)
+            let layout = app.buttons["homeSection.layout"].firstMatch
+            XCTAssertEqual(layout.value as? String, expected, app.debugDescription)
+            XCTAssertTrue(app.buttons["homeSection.source"].firstMatch.exists, app.debugDescription)
+            let save = app.buttons["homeSection.add"].firstMatch
+            XCTAssertTrue(save.exists, app.debugDescription)
+            XCTAssertFalse(save.isEnabled, "There is no data source yet")
+            app.buttons["homeSection.back"].firstMatch.tap()
+            XCTAssertTrue(save.waitForNonExistence(timeout: 5), app.debugDescription)
+        }
+    }
+
     /// #51/#7 (iOS 26.4): as 資料來源's sheet came up, 新增欄目's form under it went back to the
     /// layouts, and the sheet went with it: no section could be added. The official modules on,
     /// as the reader had them. Fails on the iOS 26.4.1 simulator with the cover on the home's

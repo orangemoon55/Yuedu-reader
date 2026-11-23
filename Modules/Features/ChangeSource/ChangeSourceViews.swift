@@ -11,12 +11,15 @@ struct ChangeSourceResultsSection: View {
     var pendingOriginID: UUID?
     /// One switch at a time: a second tap would cancel the first.
     var isSwitching = false
+    var requiredKind: OnlineBookContentKind? = nil
     let onSelect: (BookOrigin) -> Void
 
     @State private var pendingDeletion: BookOrigin?
 
     var body: some View {
-        let shown = search.displayedOrigins
+        let shown = search.displayedOrigins.filter {
+            requiredKind == nil || $0.inferredContentKind() == requiredKind
+        }
         Section {
             if !shown.isEmpty {
                 ForEach(shown) { origin in

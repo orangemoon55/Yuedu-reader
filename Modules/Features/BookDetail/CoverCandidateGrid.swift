@@ -32,6 +32,7 @@ struct CoverCandidateGrid: View {
     /// What to suggest when nothing was found — the two screens offer different
     /// next steps.
     let emptyHint: String
+    var searchProgress: String? = nil
     let onSelect: (CoverCandidate) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -64,19 +65,18 @@ struct CoverCandidateGrid: View {
 
     @ViewBuilder
     private var statusFooter: some View {
-        if isSearching {
+        if isSearching || searchProgress != nil {
             HStack(spacing: DSSpacing.sm) {
-                ProgressView()
-                Text(
-                    candidates.isEmpty
-                        ? localized("正在搜尋封面…")
-                        : localized("正在搜尋更多封面…")
-                )
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
+                if isSearching { ProgressView() }
+                Text(searchProgress ?? (candidates.isEmpty
+                    ? localized("正在搜尋封面…")
+                    : localized("正在搜尋更多封面…")))
+                    .font(DSFont.footnote)
+                    .foregroundStyle(DSColor.textSecondary)
             }
             .frame(maxWidth: .infinity)
-        } else if candidates.isEmpty && hasSearched {
+        }
+        if !isSearching && candidates.isEmpty && hasSearched {
             VStack(spacing: DSSpacing.sm) {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(DSFont.fixed(size: 36))
@@ -97,19 +97,14 @@ struct CoverCandidateGrid: View {
     }
 
     private func coverCell(_ candidate: CoverCandidate) -> some View {
-        let source = candidate.sourceId.flatMap { id in
-            BookSourceStore.shared.source(id: id)
-        }
-
-        return Button {
+        Button {
             onSelect(candidate)
         } label: {
             VStack(spacing: DSSpacing.xs) {
                 BookCoverImage(
                     coverURL: candidate.coverUrl,
                     title: bookTitle,
-                    sourceBaseURL: source?.bookSourceUrl,
-                    sourceHeaders: source?.parsedHeaders ?? [:]
+                    sourceID: candidate.sourceId
                 )
                 .aspectRatio(2.0 / 3.0, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: DSRadius.md, style: .continuous))

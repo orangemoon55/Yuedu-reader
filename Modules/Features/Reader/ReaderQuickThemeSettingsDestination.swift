@@ -18,10 +18,7 @@ struct ReaderQuickThemeSettingsDestination: View {
     var body: some View {
         Group {
             switch route {
-            case .chapterTitleStyle:
-                ChapterTitleStyleSettingsView(onOpenImporter: { onSelectRoute(.styleImporter(.chapterTitleStyle)) })
-                    .toolbar(.visible, for: .navigationBar)
-            case .settings, .display, .spacing, .headerFooter, .decoration, .commentBubble:
+            case .settings, .display, .spacing, .headerFooter, .decoration, .chapterTitleStyle, .commentBubble:
                 ReaderSettingsView(
                     fontSize: fontSize,
                     theme: theme,

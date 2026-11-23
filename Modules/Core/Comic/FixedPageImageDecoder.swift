@@ -26,7 +26,9 @@ final class FixedPageImageDecoder: Equatable, Sendable {
     /// under a raw image's key or another source's, and an edited rule is a new key — the
     /// same identity `BookSourceSession.session(for:)` keys its bridge on.
     var cacheKeyPrefix: String {
-        "imageDecode|\(source.bookSourceUrl)#\(source.lastUpdateTime)|"
+        // Prior engines cached a valid scrambled image when a rule caught an unsupported
+        // Android bitmap API and returned its input. Never reuse that processed variant.
+        "imageDecode.bitmap-v1|\(source.bookSourceUrl)#\(source.lastUpdateTime)|"
     }
 
     /// Runs the rule over `data` through the source's one shared bridge, on its host

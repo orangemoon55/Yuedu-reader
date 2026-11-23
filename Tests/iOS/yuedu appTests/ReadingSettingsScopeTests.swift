@@ -457,6 +457,64 @@ struct ReadingSettingsScopeTests {
         #expect(settings.paragraphSpacingMultiplier == 0.9)
     }
 
+    @Test("paragraph alignment persists and follows its own theme/global scope")
+    func paragraphAlignmentHasAnIndependentScope() throws {
+        let settings = GlobalSettings.shared
+        let fixture = Fixture(settings)
+        let defaults = UserDefaults.standard
+        let preferenceKey = "yd_reader_text_alignment"
+        let oldPreference = defaults.object(forKey: preferenceKey)
+        let bottomKey = "yd_reader_bottom_justify"
+        let oldBottom = defaults.object(forKey: bottomKey)
+        defer {
+            fixture.restore()
+            if let oldPreference { defaults.set(oldPreference, forKey: preferenceKey) }
+            else { defaults.removeObject(forKey: preferenceKey) }
+            if let oldBottom { defaults.set(oldBottom, forKey: bottomKey) }
+            else { defaults.removeObject(forKey: bottomKey) }
+        }
+        fixture.reset()
+        settings.readerTextAlignment = .justified
+        settings.readerBottomJustify = false
+        fixture.forgetEdits()
+
+        var reading = AppearanceThemeReadingSettings()
+        reading.textAlignment = ReaderTextAlignment.natural.rawValue
+        reading.bottomJustify = true
+        let pack = Self.theme("Alignment fixture", reading: reading)
+        settings.customAppearanceThemes.append(pack)
+        settings.appearanceThemeID = pack.id
+        #expect(settings.readerTextAlignment == .natural)
+        #expect(settings.readerBottomJustify)
+        #expect(defaults.string(forKey: preferenceKey) == "natural")
+        #expect(settings.currentReadingSettingsSnapshot().textAlignment == "natural")
+
+        settings.setReadingSettingsScope(.global, for: .textAlignment)
+        #expect(settings.readerTextAlignment == .justified)
+        #expect(settings.readerBottomJustify)
+        #expect(Self.ownReading(of: pack.id)?.textAlignment == "natural")
+        settings.readerTextAlignment = .natural
+        #expect(settings.globalReadingSettings.textAlignment == "natural")
+        #expect(settings.readerBottomJustify)
+        settings.readerBottomJustify = false
+        #expect(settings.readerTextAlignment == .natural)
+        #expect(Self.ownReading(of: pack.id)?.bottomJustify == false)
+        settings.appearanceThemeID = defaultID
+        #expect(settings.readerTextAlignment == .natural)
+        settings.readerTextAlignment = .justified
+        settings.appearanceThemeID = pack.id
+        #expect(settings.readerTextAlignment == .justified)
+        #expect(!settings.readerBottomJustify)
+        settings.setReadingSettingsScope(.theme, for: .textAlignment)
+        #expect(settings.readerTextAlignment == .natural)
+        #expect(!settings.readerBottomJustify)
+        #expect(settings.globalReadingSettings.textAlignment == "justified")
+        settings.readerTextAlignment = .justified
+        #expect(Self.ownReading(of: pack.id)?.textAlignment == "justified")
+        #expect(defaults.string(forKey: preferenceKey) == "justified")
+        #expect(!settings.readerBottomJustify)
+    }
+
     // MARK: - Helpers
 
     private static func ownReading(of themeID: String) -> AppearanceThemeReadingSettings? {

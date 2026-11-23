@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 /// between, or a group opened from its folder on 全部.
 private enum ShelfPage: Hashable {
     case all
+    case completeList
     case group(String)
     case folder(String)
 
@@ -18,7 +19,10 @@ private enum ShelfPage: Hashable {
 
     /// One of the pages the shelf swipes between, not a folder's page pushed over it.
     var isOnPager: Bool {
-        if case .folder = self { false } else { true }
+        switch self {
+        case .folder, .completeList: false
+        default: true
+        }
     }
 }
 
@@ -198,11 +202,11 @@ private enum BookshelfImportPresentationRoute: Hashable {
     case calibreWireless
 }
 
-private extension View {
+extension View {
     /// Same frames, at the same moments, as the `GeometryReader` + preference it replaces —
     /// in window coordinates, empty ones ignored — written to `box` instead of to state.
     /// What the cover draws goes to `box` too, so a tap lifts exactly that.
-    func reportBookshelfCoverFrame(into box: BookshelfCoverFrameBox, onChange: ((CGRect) -> Void)?) -> some View {
+    func reportBookshelfCoverFrame(into box: BookshelfCoverFrameBox, onChange: ((CGRect) -> Void)?, onImage: ((UIImage) -> Void)? = nil) -> some View {
         onGeometryChange(for: CGRect.self) { proxy in
             proxy.frame(in: .global)
         } action: { frame in
@@ -211,7 +215,10 @@ private extension View {
             onChange?(frame)
         }
         .environment(\.bookshelfDrawnCoverObserver) { [weak box] drawn in box?.drawnCover = drawn }
-        .environment(\.coverImageObserver) { [weak box] image in box?.catalogImage = image }
+        .environment(\.coverImageObserver) { [weak box] image in
+            box?.catalogImage = image
+            onImage?(image)
+        }
     }
 }
 
@@ -269,7 +276,6 @@ struct HomeView: View {
     @State private var showAIPaywall = false
     @ObservedObject private var subscription = SubscriptionStore.shared
     @AppStorage("bookLayoutIsGrid") private var isGridMode = false
-    @AppStorage("bookshelfRingMode") private var isRingMode = false
     @AppStorage("bookshelfFattenedBookIDs") private var fattenedBookIDsData = Data()
     @AppStorage(BookSortOrder.storageKey) private var sortOrder = BookSortOrder.manual.rawValue
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -284,6 +290,8 @@ struct HomeView: View {
         switch action {
         case .open:
             openBook(book, from: activePage, tapped: nil)
+        case .showDetail:
+            showWorkDetail(for: book)
         case .searchCover:
             searchingCoverForBook = book
         case .toggleFatten:
@@ -536,7 +544,7 @@ struct HomeView: View {
     /// The page the shelf's buttons act on: a group opened from its folder, otherwise the
     /// page in view on the shelf.
     private var activePage: ShelfPage {
-        openedFolder.map(ShelfPage.folder) ?? ShelfPage(pagerGroup: selectedGroup)
+        return openedFolder.map(ShelfPage.folder) ?? ShelfPage(pagerGroup: selectedGroup)
     }
 
     /// The books 選取 can take on that page: on 全部, the ones outside a folder.
@@ -561,6 +569,8 @@ struct HomeView: View {
 
     private func computeEntries(onPage page: ShelfPage) -> [ShelfEntry] {
         switch page {
+        case .completeList:
+            return sortedBooks(inGroup: nil).filter(\.isInBookshelf).map(ShelfEntry.book)
         case .group(let group), .folder(let group):
             return sortedBooks(inGroup: group).map(ShelfEntry.book)
         case .all:
@@ -632,15 +642,6 @@ struct HomeView: View {
                         EmptyLibraryView(showAdd: $showAddSheet)
                             .rootTabTitleScrollAnchor()
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
-                    } else if isRingMode, editMode != .active {
-                        BookshelfRingView(
-                            books: sortedBooks(inGroup: nil),
-                            colorScheme: colorScheme,
-                            isFattened: { isFattenedBookIDs.contains($0) },
-                            onOpen: { book in openBook(book, from: .all, tapped: nil) },
-                            onContextAction: { book, action in performBookContextAction(book, action) }
-                        )
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                     } else {
                         groupedShelf(pages: shelfPages)
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
@@ -944,21 +945,12 @@ struct HomeView: View {
 
             Divider()
 
-            Picker("", selection: $isRingMode) {
-                Label(localized("圓環書架"), systemImage: "circle.hexagongrid").tag(true)
-                Label(localized("傳統書架"), systemImage: "books.vertical").tag(false)
+            Picker("", selection: $isGridMode) {
+                Label(localized("列表"), systemImage: "list.bullet").tag(false)
+                Label(localized("格狀"), systemImage: "square.grid.2x2").tag(true)
             }
             .pickerStyle(.inline)
             .labelsHidden()
-
-            if !isRingMode {
-                Picker("", selection: $isGridMode) {
-                    Label(localized("列表"), systemImage: "list.bullet").tag(false)
-                    Label(localized("格狀"), systemImage: "square.grid.2x2").tag(true)
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            }
 
             Divider()
 
@@ -2030,6 +2022,7 @@ struct BookRow: View {
                         book: book,
                         isFattened: isFattened,
                         onOpen: openBook,
+                        onShowDetail: { onContextAction?(.showDetail) },
                         onSearchCover: { onContextAction?(.searchCover) },
                         onToggleFatten: { onContextAction?(.toggleFatten) },
                         onDelete: onDelete
@@ -2366,6 +2359,7 @@ struct BookGridCell: View {
                 book: book,
                 isFattened: isFattened,
                 onOpen: { activate() },
+                onShowDetail: { onContextAction?(.showDetail) },
                 onSearchCover: { onContextAction?(.searchCover) },
                 onToggleFatten: { onContextAction?(.toggleFatten) },
                 onDelete: onDelete

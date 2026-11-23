@@ -10,7 +10,7 @@ struct CommentStylePreviewContext {
 
     static func current(isNight: Bool) -> CommentStylePreviewContext {
         let persisted = ReaderTheme.loadPersisted()
-        let theme: ReaderTheme = isNight ? .night : (persisted == .night ? .white : persisted)
+        let theme: ReaderTheme = isNight ? ReaderTheme.lastDarkTheme : (persisted.isDark ? .white : persisted)
         return CommentStylePreviewContext(
             theme: theme,
             reader: ReviewCardRaster.Reader(

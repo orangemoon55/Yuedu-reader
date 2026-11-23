@@ -791,6 +791,7 @@
 
 /* Explore tab */
 "探索" = "Explore";
+"底部發現" = "Discover";
 "搜尋來源配置名稱或網址" = "Source Name or URL";
 "來源配置發現" = "Discover";
 "網頁瀏覽" = "Web";
@@ -3089,6 +3090,14 @@
 "服務名稱" = "Service Name";
 
 "未附書中引用" = "No Book Citations";
+"去底部" = "Go to Latest Chapter";
+"回頂部" = "Back to First Chapter";
+"目前在讀" = "Currently Reading";
+"尚未開始" = "Not Started";
+"暫無章節資訊" = "Chapter Information Unavailable";
+"翻開一頁，讓心慢下來。" = "Open a page and slow down.";
+"打開書籍詳情頁" = "Open Book Details";
+"更多書籍" = "More Books";
 "捲到最新" = "Scroll to Latest";
 "建立中…" = "Building…";
 "人物關係圖" = "Relationship Map";
@@ -4515,4 +4524,62 @@
 "圓環書架" = "Ring Bookshelf";
 "傳統書架" = "Classic Bookshelf";
 "更多設定" = "More Settings";
+"書架抽籤" = "Shelf Draw";
+"抽籤中" = "Drawing";
+"正在旋轉" = "The wheel is spinning";
+"隨機推薦一本書" = "Randomly recommend a book";
+"抽籤提示語" = "Tap the center icon to draw a book";
+"再抽一次" = "Draw again";
 "版本資訊與政策協議" = "Version Information and Policies";
+"已完成 %1$d / %2$d 個書源 · %3$d 張封面" = "%1$d / %2$d sources complete · %3$d covers";
+"請先安裝並啟用支援搜索的書源，或從相簿選一張圖片。" = "Install and enable sources that support search, or choose a photo.";
+"可以從相簿選一張圖片，或更換書源後重試。" = "Choose a photo or try other book sources.";
+
+"夜銅" = "Night Copper";
+"在正文顯示模組的評論" = "Show module comments in reading text";
+"重新打開書籍後套用，原書源的評論不受影響。" = "Applies when you reopen the book. Source comments are unchanged.";
+"這個模組需要模組引擎 %1$@ 以上的版本，目前引擎是 %2$@。" = "This module requires engine %1$@ or later; the current engine is %2$@.";
+"模組引擎不識別欄位 %@，無法安全匯入。" = "Unknown module field %@; import was stopped.";
+"目前的模組引擎尚未支援 %@，請勿刪除欄位繞過檢查。" = "The module engine does not support %@ yet. Do not remove the field to bypass validation.";
+
+"選擇榜單來源" = "Choose Ranking Source";
+"選擇排行榜" = "Choose Ranking";
+"搜尋來源配置" = "Search sources";
+"沒有可用的排行榜書源" = "No ranking sources available";
+"這個書源沒有可用的排行榜" = "This source offers no available rankings";
+"搜尋排行榜名稱" = "Search ranking names";
+"同作者其他作品" = "More by this author";
+"同題材推薦" = "Similar genres";
+"關聯作品" = "Related works";
+"載入關聯作品…" = "Loading related works…";
+"暫無同作者或同題材作品" = "No related works available";
+"上一本" = "Previous book";
+"下一本" = "Next book";
+
+/* Discover five-category book list */
+"所有類型" = "All Types";
+"分類 %d" = "Category %d";
+"更換分類" = "Change Category";
+"設定五個分類" = "Configure Five Categories";
+"選擇來源配置與分類" = "Choose Source and Category";
+"來源配置已停用或移除" = "Source Disabled or Removed";
+"尚未設定分類" = "No Categories Configured";
+"選擇已啟用書源的真實欄目，設定上方五個分類。" = "Choose real categories from enabled book sources for the five shortcuts above.";
+
+/* Readcc22: sources and glass */
+"效果套用於浮動控制項與界面卡片；閱讀正文及圖片內容不套用玻璃。" = "Glass applies to controls and interface cards, not reading text or images.";
+"玻璃質感也套用於界面卡片；可隨時關閉。" = "Use glass for interface cards too. This can be turned off at any time.";
+"所選分類已失效" = "Selected Category Unavailable";
+"目前篩選條件下找不到原先選擇的欄目，請重新選擇分類。" = "The selected source no longer offers this category with the current filters. Please choose it again.";
+"找不到這個類型" = "Category Unavailable";
+"提供它的模組已移除或更新。" = "Its module was removed or updated.";
+"這個類型還沒有作品" = "No Works in This Category";
+"還沒有類型" = "No Categories";
+"安裝提供類型的模組後會列在這裡。" = "Installed modules that provide categories are listed here.";
+"書店：更多%@" = "More %@";
+
+/* Reader paragraph alignment, independent of bottom justification. */
+"對齊方式" = "Text Alignment";
+"自然對齊" = "Natural";
+"兩端對齊" = "Justified";
+"ReaderSettings.TextAlignment.Footer" = "Natural alignment leaves the line end ragged. Justified alignment evens body text across both margins without stretching paragraph endings. Explicit book alignment remains unchanged.";

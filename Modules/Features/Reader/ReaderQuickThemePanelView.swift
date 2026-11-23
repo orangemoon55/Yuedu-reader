@@ -57,14 +57,15 @@ struct ReaderQuickThemePanelView: View {
     var allowsVerticalWritingMode = false
     var hasParagraphReviews = false
     let onSelectPageTurnOption: (ReaderQuickPageTurnOption) -> Void
-    var onSelectRoute: (ReaderQuickPanelRoute) -> Void = { _ in }
+    var onSelectRoute: ((ReaderQuickPanelRoute) -> Void)? = nil
 
     @Bindable private var settings = GlobalSettings.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The saved-background page pushed in this panel's own navigation.
     @State private var backgroundEditor: ReaderBackgroundEditorRoute?
-    @State private var quickSettingsDestination: ReaderQuickPanelRoute?
+    @State var panelNavigation = ReaderQuickPanelNavigation()
     /// Measured height of the panel's own content, so the sheet is exactly as tall
     /// as what it holds. A fixed detent left a band of dead space under the last
     /// row whenever the content came out shorter than the constant.
@@ -82,17 +83,14 @@ struct ReaderQuickThemePanelView: View {
             // sizes that content is taller than any detent.
             ScrollView {
                 VStack(alignment: .leading, spacing: DSSpacing.lg) {
-                    HStack(spacing: DSSpacing.md) {
-                        fontSizeStepper
-                        fontChoiceMenu
-                    }
+                    brightnessSlider
+                    typographyControls
                     readingBackgroundRow
                     pageTurnStyleRow
-                        .padding(.bottom, DSSpacing.xs)
                     quickActionGrid
                 }
-                .padding(.horizontal, DSSpacing.xl)
-                .padding(.top, DSSpacing.xl)
+                .padding(.horizontal, DSSpacing.lg)
+                .padding(.top, DSSpacing.sm)
                 .padding(.bottom, DSSpacing.xl)
                 .background(
                     GeometryReader { proxy in
@@ -104,9 +102,12 @@ struct ReaderQuickThemePanelView: View {
                 )
             }
             .softScrollEdges()
+            .disabled(panelNavigation.isHandingOff)
             .onPreferenceChange(ReaderQuickPanelContentHeightKey.self) { height in
-                guard height > 0 else { return }
-                contentHeight = height
+                guard let next = ReaderQuickPanelHeightPolicy.measurement(
+                    height, replacing: contentHeight, isRoot: canMeasureRoot, minimum: 1
+                ) else { return }
+                contentHeight = next
             }
             .scrollBounceBehavior(.basedOnSize)
             // This panel supplies its own bottom padding. Let the scroll viewport
@@ -114,12 +115,10 @@ struct ReaderQuickThemePanelView: View {
             .ignoresSafeArea(.container, edges: .bottom)
             .frame(maxWidth: DSLayout.readableCompactWidth, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
-            .pageBackgroundToolbar(for: .settings)
-            // No title bar and no close button: the panel is a short sheet the
-            // reader flicks away, and a navigation chrome on top of it ate height
-            // the controls could use.
+            .background(DSColor.readerMenuBackground.ignoresSafeArea())
+            // Compact in-content heading; pushed settings retain their own native bar.
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(item: $quickSettingsDestination) { route in
+            .navigationDestination(item: $panelNavigation.settingsDestination) { route in
                 ReaderQuickThemeSettingsDestination(
                     route: route,
                     fontSize: $fontSize,
@@ -147,9 +146,18 @@ struct ReaderQuickThemePanelView: View {
                         backgroundEditor = nil
                     },
                     onDelete: { backgroundEditor = nil },
-                    onRequestPaywall: { onSelectRoute(.paywall($0)) }
+                    onRequestPaywall: { selectTool(.paywall($0)) }
                 )
             }
+        }
+        .font(DSFont.readerMenu(.body))
+        .foregroundStyle(DSColor.readerMenuText)
+        .tint(DSColor.readerMenuText)
+        .background(DSColor.readerMenuBackground)
+        .environment(\.colorScheme, readerTheme.isDark ? .dark : .light)
+        .presentationBackground {
+            DSColor.readerMenuBackground
+                .environment(\.colorScheme, readerTheme.isDark ? .dark : .light)
         }
         .background {
             GeometryReader { proxy in
@@ -159,50 +167,50 @@ struct ReaderQuickThemePanelView: View {
                 )
             }
         }
-        .onPreferenceChange(ReaderQuickPanelSafeAreaBottomKey.self) {
-            bottomSafeAreaInset = $0
+        .onPreferenceChange(ReaderQuickPanelSafeAreaBottomKey.self) { inset in
+            guard let next = ReaderQuickPanelHeightPolicy.measurement(
+                inset, replacing: bottomSafeAreaInset, isRoot: canMeasureRoot
+            ) else { return }
+            bottomSafeAreaInset = next
         }
-        // The grabber is the only way out now that the title bar is gone, so the
-        // sheet must stay draggable and the indicator visible.
+        .onAppear { panelNavigation.appeared() }
+        // Both the close button and the native swipe-down gesture dismiss this panel.
         // A height detent excludes the bottom safe area, which UIKit adds back.
         // Our measurement already includes the panel's complete bottom padding.
         // The saved-background page is a whole form, not a row of controls: the panel
         // opens to full height while it is up, and goes back to fitting its content.
-        .presentationDetents(backgroundEditor == nil && quickSettingsDestination == nil
+        .presentationDetents(backgroundEditor == nil && panelNavigation.settingsDestination == nil
             ? [.height(max(DSLayout.minimumTapTarget, contentHeight - bottomSafeAreaInset))]
             : [.large])
         .presentationDragIndicator(.visible)
     }
 
-    // MARK: - 字級 + 翻頁
+    // MARK: - Typography and light
 
-    /// 小 A ── 現在的字級 ── 大 A, in one capsule.
-    ///
-    /// The size used to be reported by a row of dots under this control that
-    /// faded out after 1.8 seconds — it was gone by the time anyone looked for it,
-    /// and its appearing and disappearing made the panel change height. The number
-    /// now sits between the two buttons that change it and never moves.
-    ///
-    /// Both ends keep `.buttonRepeatBehavior(.enabled)`, so press-and-hold keeps
-    /// stepping.
-    ///
-    /// VoiceOver reads the capsule as one adjustable 字體大小 valued at the size, which a
-    /// swipe up or down moves a point. It was two buttons, 縮小字體 and 放大字體, with the
-    /// number hidden: nothing read the size, before a press or after it.
+    private var typographyControls: some View {
+        VStack(spacing: DSSpacing.sm) {
+            (dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: DSSpacing.sm))
+                : AnyLayout(HStackLayout(spacing: DSSpacing.md))) {
+                fontSizeStepper
+                fontChoiceMenu
+            }
+        }
+    }
+
+    /// One adjustable control, retaining the current number and 44pt end buttons.
     private var fontSizeStepper: some View {
         HStack(spacing: 0) {
-            fontSizeStepButton(-1, textFont: DSFont.body.weight(.semibold))
-
+            fontSizeStepButton(-1, textFont: DSFont.readerMenu(.subheadline))
             Text("\(Int(fontSize))")
-                .font(DSFont.title3.weight(.medium).monospacedDigit())
-                .foregroundStyle(DSColor.textPrimary)
-                .frame(minWidth: DSSpacing.xxl)
-
-            fontSizeStepButton(1, textFont: DSFont.title2.weight(.semibold))
+                .font(DSFont.readerMenu(.title3).weight(.medium).monospacedDigit())
+                .foregroundStyle(DSColor.readerMenuText)
+                .frame(minWidth: DSLayout.minimumTapTarget)
+            fontSizeStepButton(1, textFont: DSFont.readerMenu(.title3))
         }
-        .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
-        .background(DSColor.neutralControlFill, in: Capsule())
-        .shadow(color: DSColor.shadow, radius: 6, y: 1)
+        .frame(minWidth: DSLayout.minimumTapTarget * 3,
+               maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
+        .background(DSColor.readerMenuControlFill, in: RoundedRectangle(cornerRadius: DSRadius.lg))
         .accessibilityStepper(
             localized(ReadingSettingsScopeItem.fontSize.titleKey),
             valueText: String(format: localized("ReaderOverlay.Format.Points"), Int(fontSize)),
@@ -235,19 +243,26 @@ struct ReaderQuickThemePanelView: View {
                 }
             }
         } label: {
-            HStack(spacing: DSSpacing.xs) {
+            HStack(spacing: DSSpacing.sm) {
+                Image(systemName: "textformat")
+                    .font(DSFont.readerMenu(.subheadline))
+                    .foregroundStyle(DSColor.readerMenuSecondaryText)
+                    .accessibilityHidden(true)
                 Text(selectedFontName)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .font(DSFont.readerMenu(.subheadline))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: DSSpacing.xs)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(DSFont.footnote)
+                    .font(DSFont.readerMenu(.caption))
+                    .foregroundStyle(DSColor.readerMenuSecondaryText)
+                    .accessibilityHidden(true)
             }
-            .font(DSFont.subheadline)
-            .foregroundStyle(DSColor.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
+            .foregroundStyle(DSColor.readerMenuText)
             .padding(.horizontal, DSSpacing.md)
-            .background(DSColor.neutralControlFill, in: Capsule())
-            .overlay(Capsule().strokeBorder(DSColor.separator, lineWidth: 1))
+            .frame(minWidth: DSLayout.readerQuickPanelTopMenuWidth,
+                   maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
+            .background(DSColor.readerMenuControlFill, in: RoundedRectangle(cornerRadius: DSRadius.lg))
         }
         .accessibilityLabel(localized("字體"))
         .accessibilityValue(selectedFontName)
@@ -265,24 +280,27 @@ struct ReaderQuickThemePanelView: View {
 
     private var pageTurnStyleRow: some View {
         VStack(alignment: .leading, spacing: DSSpacing.sm) {
-            Text(localized("翻頁"))
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: DSSpacing.sm) {
-                    ForEach(ReaderQuickPageTurnOption.allCases) { option in
-                        ReaderQuickPageTurnChip(
-                            option: option,
-                            title: localized(pageTurnTitleKey(for: option)),
-                            selected: pageTurnOption == option,
-                            action: { onSelectPageTurnOption(option) }
-                        )
-                    }
+            sectionHeading("翻頁")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DSSpacing.xs),
+                                     count: dynamicTypeSize.isAccessibilitySize ? 1 : (dynamicTypeSize >= .xxxLarge ? 2 : 3)), spacing: DSSpacing.xs) {
+                ForEach(ReaderQuickPageTurnOption.allCases) { option in
+                    ReaderQuickPageTurnChip(
+                        option: option, title: localized(pageTurnTitleKey(for: option)),
+                        selected: pageTurnOption == option,
+                        action: { onSelectPageTurnOption(option) }
+                    )
                 }
-                .padding(.vertical, DSSpacing.xs)
             }
-            .scrollClipDisabled()
+            .padding(DSSpacing.xs)
+            .background(DSColor.readerMenuControlFill, in: RoundedRectangle(cornerRadius: DSRadius.lg))
         }
+    }
+
+    private func sectionHeading(_ key: String) -> some View {
+        Text(localized(key))
+            .font(DSFont.readerMenu(.footnote).weight(.medium))
+            .foregroundStyle(DSColor.readerMenuSecondaryText)
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// One half of the A / A stepper. `.buttonRepeatBehavior(.enabled)` makes
@@ -293,11 +311,11 @@ struct ReaderQuickThemePanelView: View {
         } label: {
             Text("A")
                 .font(textFont)
-                .foregroundStyle(DSColor.textPrimary)
+                .foregroundStyle(DSColor.readerMenuText)
                 .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelTopControlHeight)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(QuickPanelSegmentButtonStyle())
+        .buttonStyle(.plain)
         .buttonRepeatBehavior(.enabled)
     }
 
@@ -306,7 +324,8 @@ struct ReaderQuickThemePanelView: View {
     private var brightnessSlider: some View {
         HStack(spacing: DSSpacing.md) {
             Image(systemName: "sun.min.fill")
-                .font(DSFont.body)
+                .font(DSFont.readerMenu(.body))
+                .accessibilityHidden(true)
             Slider(
                 value: Binding(
                     get: { CGFloat(settings.readerBrightness) },
@@ -318,40 +337,64 @@ struct ReaderQuickThemePanelView: View {
                 ),
                 in: 0.05...1.0
             )
-            .tint(DSColor.textPrimary)
+            .tint(DSColor.readerMenuAccent)
+            .accessibilityLabel(localized("亮度"))
+            .accessibilityValue("\(Int((settings.readerBrightness * 100).rounded()))%")
             Image(systemName: "sun.max.fill")
-                .font(DSFont.body)
+                .font(DSFont.readerMenu(.body))
+                .accessibilityHidden(true)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(DSFont.readerMenu(.footnote))
+                    .foregroundStyle(DSColor.readerMenuSecondaryText)
+                    .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                    .contentShape(Circle())
+                    .accessibilityHidden(true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(localized("關閉"))
+            .accessibilityIdentifier("reader.quickPanel.close")
         }
         .frame(minHeight: DSLayout.minimumTapTarget)
-        .foregroundStyle(DSColor.textPrimary)
+        .foregroundStyle(DSColor.readerMenuText)
     }
 
     // MARK: - Reading backgrounds
 
-    /// One scrolling row, not the 3×2 paged grid this replaced: the four built-in
-    /// backgrounds, then every saved one, each by name, then 自定義 to make another.
+    /// The four defaults are all visible. Extra user backgrounds have a separate
+    /// rail; their arbitrary number never squeezes or clips the built-in names.
     private var readingBackgroundRow: some View {
         let resolution = settings.readerBackgroundResolution(mode: settings.readerMode, wornTheme: readerTheme)
         return VStack(alignment: .leading, spacing: DSSpacing.sm) {
-            Text(localized("閱讀背景"))
-                .font(DSFont.footnote)
-                .foregroundStyle(DSColor.textSecondary)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: DSSpacing.md) {
-                    ForEach(ReaderTheme.allCases, id: \.self) { background in
-                        readingBackgroundButton(background, resolution: resolution)
-                            .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
-                    }
-                    ForEach(settings.readerCustomBackgrounds) { background in
-                        savedBackgroundButton(background, resolution: resolution)
-                            .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
-                    }
-                    newBackgroundButton
-                        .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
+            HStack {
+                sectionHeading("閱讀背景")
+                Spacer()
+                Button { backgroundEditor = .new } label: {
+                    Label(localized("自定義"), systemImage: "plus")
+                        .font(DSFont.readerMenu(.footnote))
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(DSColor.readerMenuAccent)
+                        .frame(minHeight: DSLayout.minimumTapTarget)
                 }
-                .padding(.vertical, DSSpacing.xs)
-                .padding(.horizontal, 2)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("reader.quickPanel.addBackground")
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DSSpacing.md),
+                                     count: dynamicTypeSize.isAccessibilitySize ? 2 : 4), spacing: DSSpacing.md) {
+                ForEach(ReaderTheme.allCases, id: \.self) { background in
+                    readingBackgroundButton(background, resolution: resolution)
+                }
+            }
+            if !settings.readerCustomBackgrounds.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: DSSpacing.md) {
+                        ForEach(settings.readerCustomBackgrounds) { background in
+                            savedBackgroundButton(background, resolution: resolution)
+                                .frame(width: DSLayout.readerQuickPanelBackgroundTileWidth)
+                        }
+                    }
+                    .padding(.vertical, DSSpacing.xs)
+                }
             }
         }
     }
@@ -367,8 +410,8 @@ struct ReaderQuickThemePanelView: View {
                 set: { applyFollowSystemAppearance($0) }
             )
         )
-        .font(DSFont.body)
-        .foregroundStyle(DSColor.textPrimary)
+        .font(DSFont.readerMenu(.body))
+        .foregroundStyle(DSColor.readerMenuText)
     }
 
     private func readingBackgroundButton(
@@ -382,12 +425,13 @@ struct ReaderQuickThemePanelView: View {
             && resolution.theme == background
         return Button {
             settings.appearanceBindReaderTheme = false
-            settings.setReaderDarkMode(background == .night, deviceIsDark: colorScheme == .dark)
+            settings.setReaderDarkMode(background.isDark, deviceIsDark: colorScheme == .dark)
             // 黑色 is the reader's dark mode; the saved background stays the light mode's
             // and comes back with it. A light built-in one takes its place there.
-            if background != .night {
+            if !background.isDark {
                 settings.readerCustomBackgroundID = nil
             }
+            background.persist()
             readerTheme = background
         } label: {
             ReaderQuickPanelBackgroundTile(
@@ -395,12 +439,14 @@ struct ReaderQuickThemePanelView: View {
                 image: nil,
                 title: background.localizedTitle,
                 titleColor: background.previewTextColor,
-                selected: selected
+                selected: selected,
+                captionSpacing: DSSpacing.sm
             )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(background.localizedTitle)
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("reader.quickPanel.background.\(background.epubJSName)")
     }
 
     private func savedBackgroundButton(
@@ -446,67 +492,47 @@ struct ReaderQuickThemePanelView: View {
         }
     }
 
-    private var newBackgroundButton: some View {
-        Button {
-            backgroundEditor = .new
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous)
-                    .fill(DSColor.neutralControlFill)
-                VStack(spacing: DSSpacing.xs) {
-                    Image(systemName: "plus")
-                        .font(DSFont.title2.weight(.semibold))
-                        .accessibilityHidden(true)
-                    Text(localized("自定義"))
-                        .font(DSFont.subheadline)
-                }
-                .foregroundStyle(DSColor.textPrimary)
-            }
-            .frame(height: DSLayout.readerQuickPanelReadingBackgroundTileHeight)
-            .overlay(
-                RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous)
-                    .stroke(DSColor.separator, lineWidth: 1)
-            )
-            .shadow(color: DSColor.shadow, radius: 6, y: 1)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(localized("自定義"))
-    }
+    // MARK: - Tools
 
-    // MARK: - 快捷動作
-
-    /// The space the background pager gave back.
-    ///
-    /// 自動閱讀 comes first — that is where every reader that ships this feature
-    /// puts it, and until now this app had no entry for it at all: the controller
-    /// and its panel were both complete, but nothing ever set `showAutoReadPanel`.
     private var quickActionGrid: some View {
-        let actions = [
-            ReaderQuickThemeAction(id: .display, titleKey: "顯示設定", systemImage: "textformat.size"),
-            ReaderQuickThemeAction(id: .spacing, titleKey: "間距", systemImage: "line.3.horizontal"),
-            ReaderQuickThemeAction(id: .readingAloud, titleKey: "朗讀", systemImage: "speaker.wave.2"),
-            ReaderQuickThemeAction(id: .autoRead, titleKey: "自動閱讀", systemImage: "play.fill"),
-            ReaderQuickThemeAction(id: .commentBubble, titleKey: "氣泡設定", systemImage: "bubble.left.and.bubble.right"),
-            ReaderQuickThemeAction(id: .chapterTitleStyle, titleKey: "章節標題樣式", systemImage: "textformat"),
-            ReaderQuickThemeAction(id: .headerFooter, titleKey: "頁首頁尾", systemImage: "rectangle.bottomthird.inset.filled"),
-            ReaderQuickThemeAction(id: .settings, titleKey: "更多設定", systemImage: "ellipsis")
-        ]
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: DSSpacing.sm) {
-            ForEach(actions) { action in
-                ReaderQuickThemeActionTile(action: action) { selectTool(action.id) }
+        VStack(spacing: 0) {
+            ForEach(ReaderQuickThemeAction.rows.indices, id: \.self) { index in
+                if index > 0 { Divider().padding(.horizontal, DSSpacing.md) }
+                let row = ReaderQuickThemeAction.rows[index]
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 0) {
+                        ForEach(row) { action in
+                            ReaderQuickThemeActionTile(action: action) { selectTool(action.id) }
+                        }
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        ForEach(row) { action in
+                            ReaderQuickThemeActionTile(action: action) { selectTool(action.id) }
+                        }
+                    }
+                }
             }
         }
+        .background(DSColor.readerMenuControlFill, in: RoundedRectangle(cornerRadius: DSRadius.lg))
+        .accessibilityIdentifier("reader.quickPanel.tools")
     }
 
     // MARK: - Actions
 
+    private var canMeasureRoot: Bool {
+        !panelNavigation.isHandingOff && backgroundEditor == nil && panelNavigation.settingsDestination == nil
+    }
+
     private func selectTool(_ route: ReaderQuickPanelRoute) {
-        switch route {
-        case .settings, .display, .spacing, .headerFooter, .decoration, .chapterTitleStyle, .commentBubble:
-            quickSettingsDestination = route
-        case .tableOfContents, .bookmarks, .readingAloud, .autoRead, .touchZoneEditor, .styleImporter, .paywall:
-            dismiss()
-            DispatchQueue.main.async { onSelectRoute(route) }
+        panelNavigation.select(route) { selected in
+            // Record the request before dismissing. The reader's onDismiss is
+            // the only place allowed to present the next sheet on iOS 17.
+            if let onSelectRoute {
+                onSelectRoute(selected)
+            } else {
+                dismiss()
+            }
         }
     }
 
@@ -547,118 +573,69 @@ struct ReaderQuickThemePanelView: View {
 
 }
 
-/// One background's tile: its colour or picture, its name, and the selection ring.
-/// Built-in and saved ones alike carry the name — only the saved ones did at first,
-/// which left the built-in half of the row unnamed (2026-09-29).
-///
-/// The tile owns its size. Its picture used to be framed by `maxWidth: .infinity`
-/// alone, and a flexible frame never shrinks a child wider than the proposal: a
-/// scaled-to-fill picture whose aspect is wider than the tile's (74×82, so any
-/// landscape picture and even a square one) came back wider than the tile, the
-/// whole `ZStack` grew to match, and the row's `.frame(width:)` only centred the
-/// result. The star badge then sat over the next tile (feedback #12, iPad).
-/// Internal, not private, so a test can measure it.
+/// A colour sample above its name; text never receives a white badge over it.
+/// Built-in samples stretch evenly across the panel; saved pictures stay clipped.
 struct ReaderQuickPanelBackgroundTile: View {
     let fill: Color
     let image: UIImage?
     let title: String
     let titleColor: Color
     let selected: Bool
-
-    private static let width = DSLayout.readerQuickPanelBackgroundTileWidth
-    private static let height = DSLayout.readerQuickPanelReadingBackgroundTileHeight
+    var captionSpacing = DSSpacing.xs
+    @ScaledMetric(relativeTo: .caption) private var sampleHeight = DSLayout.readerQuickPanelBackgroundSampleHeight
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous)
-                .fill(fill)
-
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: Self.width, height: Self.height)
-                    .clipped()
-                    .accessibilityHidden(true)
-                    .allowsHitTesting(false)
-            }
-
-            Text(title)
-                .font(DSFont.caption)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .foregroundStyle(titleColor)
-                .padding(.horizontal, DSSpacing.sm)
-                .padding(.bottom, DSSpacing.sm)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        VStack(spacing: captionSpacing) {
+            // Size the fill first. The preview can want more room than the fixed
+            // sample, so make it an overlay and clip to the sample, not the preview.
+            fill
+                .frame(height: sampleHeight)
+                .overlay {
+                    if let image {
+                        GeometryReader { geometry in
+                            Image(uiImage: image).resizable().scaledToFill()
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: DSSpacing.xs) {
+                            Text(localized("閱讀"))
+                                .font(DSFont.readerMenu(.subheadline))
+                            ForEach(0..<3) { line in
+                                Capsule().fill(titleColor.opacity(line == 2 ? 0.20 : 0.32))
+                                    .frame(maxWidth: line == 2 ? DSLayout.readerQuickPanelBackgroundLastLineWidth : .infinity)
+                                    .frame(height: DSLayout.readerQuickPanelBackgroundLineHeight)
+                            }
+                        }
+                        .padding(DSSpacing.sm)
+                        .foregroundStyle(titleColor)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: DSRadius.lg))
+                .overlay {
+                    RoundedRectangle(cornerRadius: DSRadius.lg)
+                        .strokeBorder(selected ? DSColor.readerMenuAccent : DSColor.readerMenuSeparator.opacity(0.3),
+                                      lineWidth: selected ? 2 : 0.5)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(DSColor.readerMenuOnSelection, DSColor.readerMenuAccent)
+                            .font(DSFont.readerMenu(.caption))
+                            .padding(DSSpacing.xs)
+                    }
+                }
                 .accessibilityHidden(true)
-
-            if selected {
-                Image(systemName: "asterisk")
-                    .font(DSFont.subheadline.weight(.semibold))
-                    .foregroundStyle(titleColor.opacity(0.6))
-                    .padding(.top, DSSpacing.sm)
-                    .padding(.trailing, DSSpacing.md)
-                    .accessibilityHidden(true)
-            }
+            Text(title)
+                .font(DSFont.readerMenu(.caption))
+                .foregroundStyle(selected ? DSColor.readerMenuAccent : DSColor.readerMenuText)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
         }
-        .frame(width: Self.width, height: Self.height)
-        .clipShape(RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DSRadius.xxl, style: .continuous)
-                .stroke(
-                    selected ? DSColor.textPrimary : DSColor.separator,
-                    lineWidth: selected ? 3 : 1
-                )
-        )
-        .shadow(color: DSColor.shadow, radius: 6, y: 1)
-    }
-}
-
-/// Full-width quick-panel action button: darkens and gently compresses while
-/// pressed, then springs back on release.
-private struct QuickPanelActionButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Filled with the accent while auto-read is running, so the panel says what
-    /// state the reader is in without a second row of text.
-    var isProminent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(DSFont.headline)
-            .foregroundStyle(isProminent ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textPrimary))
-            .frame(maxWidth: .infinity, minHeight: DSLayout.readerQuickPanelControlHeight)
-            .background(
-                isProminent
-                    ? DSColor.accent.opacity(configuration.isPressed ? 0.8 : 1)
-                    : (configuration.isPressed ? DSColor.neutralControlPressedFill : DSColor.neutralControlFill),
-                in: Capsule()
-            )
-            .shadow(color: DSColor.shadow, radius: 6, y: 1)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-            .animation(DSAnimation.fast, value: configuration.isPressed)
-    }
-}
-
-/// Segment sharing one capsule with its neighbor in the A / A control. While
-/// pressed, an inset darker capsule appears behind the content; on release it
-/// shrinks and fades back out, echoing the Apple Books quick panel.
-private struct QuickPanelSegmentButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                Capsule()
-                    .fill(DSColor.neutralControlPressedFill)
-                    .padding(DSSpacing.xs)
-                    .opacity(configuration.isPressed ? 1 : 0)
-                    .scaleEffect(configuration.isPressed || reduceMotion ? 1 : 0.85)
-            )
-            .animation(
-                configuration.isPressed ? DSAnimation.fast : DSAnimation.standard,
-                value: configuration.isPressed
-            )
+        .frame(maxWidth: .infinity, alignment: .top)
+        .contentShape(Rectangle())
     }
 }
 
@@ -687,15 +664,15 @@ private struct QuickPanelSegmentButtonStyle: ButtonStyle {
     return HStack(spacing: DSSpacing.md) {
         ReaderQuickPanelBackgroundTile(
             fill: DSColor.neutralControlFill, image: nil, title: "Plain",
-            titleColor: DSColor.textPrimary, selected: false
+            titleColor: DSColor.readerMenuText, selected: false
         )
         ReaderQuickPanelBackgroundTile(
             fill: DSColor.neutralControlFill, image: landscape, title: "Landscape",
-            titleColor: DSColor.textPrimary, selected: true
+            titleColor: DSColor.readerMenuText, selected: true
         )
         ReaderQuickPanelBackgroundTile(
             fill: DSColor.neutralControlFill, image: nil, title: "Plain",
-            titleColor: DSColor.textPrimary, selected: false
+            titleColor: DSColor.readerMenuText, selected: false
         )
     }
     .padding(DSSpacing.xl)

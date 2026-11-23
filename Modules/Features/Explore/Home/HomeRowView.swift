@@ -14,6 +14,7 @@ extension HomeSection {
         switch binding {
         case .continueReading: return localized("繼續閱讀")
         case .bookshelf: return localized("書架")
+        case .sourceBook(let book): return book.title
         case .latest: return localized("最新")
         case .related: return localized("相關")
         case .nextInSeries: return localized("系列下一本")

@@ -19,7 +19,7 @@ final class RecentReadingReaderChromeUITests: XCTestCase {
     func testRecentReadingReaderTopBarSitsWhereTheShelfPutsIt() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-no-official-modules", "-onboarding.completed", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-yd_root_tab_visible_ids", "(bookshelf, settings, search)",
+                               "-yd_root_tab_visible_ids", "(bookshelf, settings)",
                                "-bookSortOrder", "recentlyRead",
                                "-bookLayoutIsGrid", "NO"]
         app.launch()
@@ -34,9 +34,9 @@ final class RecentReadingReaderChromeUITests: XCTestCase {
         let fromShelf = try readerBackButtonFrame(in: app)
         app.buttons["reader_back_button"].tap()
 
-        let searchTab = app.tabBars.buttons["Search"]
-        XCTAssertTrue(searchTab.waitForExistence(timeout: 10), app.debugDescription)
-        searchTab.tap()
+        let searchButton = app.buttons["rootTab.search"]
+        XCTAssertTrue(searchButton.waitForExistence(timeout: 10), app.debugDescription)
+        searchButton.tap()
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
         field.tap()

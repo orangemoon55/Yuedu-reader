@@ -20,6 +20,7 @@ struct ContentView: View {
     /// screen's own (`RootTabBarVisibility`).
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @State private var selectedRootTab: RootTabItem = .explore
+    @State private var rootKeyboardVisible = false
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
     /// A keyword a book source handed back via `java.searchBook`, or a detail page's author,
@@ -36,6 +37,8 @@ struct ContentView: View {
         /// Search only this source (a book label tapped on its detail page, as legado's
         /// `SearchActivity.start(source, kind)`); nil searches every enabled source.
         var sourceURL: String? = nil
+        /// Author-name gestures explicitly start an all-enabled-sources session.
+        var isAuthorNameSearch = false
     }
 
     private var effectiveColorScheme: ColorScheme {
@@ -104,6 +107,11 @@ struct ContentView: View {
         GlobalAppTypography.activate(postScriptName: drawnGlobalFont, boldText: isBoldTextOn)
         return tabView
         .environment(\.rootTabBarVisibility, rootTabBar)
+        .background {
+            RootTabKeyboardObserver(isVisible: $rootKeyboardVisible)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         // For 關於's 新手導覽, and the tabs that open the page a start names.
         .environment(onboarding)
         // 外觀主題's 淺色／深色 preview is for 外觀主題; another tab is not previewing.
@@ -246,7 +254,8 @@ struct ContentView: View {
             else { return }
             sourceSearchRequest = SourceSearchRequest(
                 keyword: keyword,
-                sourceURL: note.userInfo?["sourceURL"] as? String
+                sourceURL: note.userInfo?["sourceURL"] as? String,
+                isAuthorNameSearch: note.userInfo?["authorNameSearch"] as? Bool ?? false
             )
         }
         // Full screen, not a sheet: a result's 作品詳情 pushes its reader onto this stack, as
@@ -259,9 +268,11 @@ struct ContentView: View {
             NavigationStack {
                 SearchView(
                     initialQuery: request.keyword,
-                    sessionScope: request.sourceURL.map {
-                        SearchSourceScope(mode: .custom, selectedSourceURLs: [$0])
-                    }
+                    sessionScope: request.isAuthorNameSearch
+                        ? SearchSourceScope.all
+                        : request.sourceURL.map {
+                            SearchSourceScope(mode: .custom, selectedSourceURLs: [$0])
+                        }
                 )
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
@@ -328,21 +339,61 @@ struct ContentView: View {
         }
     }
 
-    private var visibleTabsTabView: some View {
-        TabView(selection: Binding {
+    private var usesFloatingRootTabBar: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+    }
+
+    private var rootTabSelection: Binding<RootTabItem> {
+        Binding {
             selectedRootTab
         } set: { tab in
             // Stamped as the tap lands: iOS 27 appears the tab's root before `onChange` runs.
             if tab == .library, selectedRootTab != .library { LibraryTabTiming.noteSelected() }
             selectedRootTab = tab
-        }) {
+        }
+    }
+
+    private var floatingRootTabIconSize: CGFloat {
+        gs.usesCustomRootTabIconSize ? CGFloat(gs.rootTabIconSize) : FloatingRootTabBarLayout.defaultIconSize
+    }
+
+    private var floatingRootTabBar: some View {
+        FloatingRootTabBar(
+            tabs: gs.visibleRootTabs,
+            selection: rootTabSelection,
+            hidesLabels: shouldHideRootTabLabels,
+            iconSize: floatingRootTabIconSize,
+            tint: appearanceTheme?.accentColor ?? .accentColor,
+            customIcon: { tab in
+                RootTabIconRenderer.customIcon(
+                    for: tab, colorScheme: effectiveColorScheme,
+                    pointSize: floatingRootTabIconSize,
+                    displayScale: displayScale, settings: gs
+                )
+            }
+        )
+        .padding(.top, FloatingRootTabBarLayout.topSpacing)
+        .padding(.bottom, FloatingRootTabBarLayout.bottomSpacing)
+    }
+
+    private var visibleTabsTabView: some View {
+        TabView(selection: rootTabSelection) {
             ForEach(gs.visibleRootTabs) { tab in
                 rootTabContent(for: tab)
                     .modifier(ThemedSurfaceBackground(
                         scope: AppearancePageBackgroundScope(rawValue: tab.rawValue) ?? .global,
                         isProActive: subscriptionStore.hasAccess(.readerThemePacks)
                     ))
-                    .background { RootTabBarHider(visibility: rootTabBar) }
+                    .background {
+                        RootTabBarHider(visibility: rootTabBar, isFloating: usesFloatingRootTabBar)
+                    }
+                    // Keep navigation full-height: capsule overlays live content.
+                    // Only scroll-content margins reserve the reachable last row.
+                    .modifier(FloatingRootTabBarContainer(isPresented: rootTabBar.showsFloatingTabBar(
+                        isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
+                    )) {
+                        floatingRootTabBar
+                    })
                     .tag(tab)
                     .tabItem {
                         rootTabItemLabel(for: tab)

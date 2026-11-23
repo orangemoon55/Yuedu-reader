@@ -47,6 +47,77 @@ struct FixedPagePositionSaveTests {
         #expect(!strip.isWatchingFrames, "the probe's display link outlived the reader")
     }
 
+    @Test("repeated exit fences late chapter completions and keeps an unloaded bookmark")
+    func exitWhileChapterIsLoading() async throws {
+        for mode in [FixedPageReadingMode.rtl, .webtoon] {
+            for _ in 0..<3 {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let store = BookStore(metadataFileURL: directory.appendingPathComponent("books_meta.json"))
+                var book = ReadingBook(title: "Exit loading", author: "", contentFilename: "")
+                book.isOnline = true
+                book.mangaPage = 5
+                book.onlineChapters = [OnlineChapterRef(index: 0, title: "1", url: "https://example.invalid/1")]
+                store.replaceBooksFromSync([book])
+                store.readerSettings.setFixedPageConfiguration(.recommendedDefault(for: mode), for: book.id)
+                let fetcher = MockChapterFetcher()
+                await fetcher.enqueuePending(chapterIndex: 0)
+                let state = FixedPageReaderState()
+                let reader = FixedPageReaderViewController(book: book, store: store, state: state, chapterFetcher: fetcher)
+                reader.loadViewIfNeeded()
+                let deadline = ContinuousClock.now + .seconds(3)
+                while !(await fetcher.hasPendingRequest(for: 0)), ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                try #require(await fetcher.hasPendingRequest(for: 0))
+                reader.prepareForExit()
+                reader.prepareForExit()
+                reader.beginAppearanceTransition(false, animated: false)
+                reader.endAppearanceTransition()
+                var stateWrites = 0
+                let observation = state.objectWillChange.sink { stateWrites += 1 }
+                await fetcher.resolvePending(chapterIndex: 0, with: .success(Harness.package(of: book, chapter: 0)))
+                // Drain the released continuation and the existing debounced-save interval.
+                try await Task.sleep(for: .milliseconds(950))
+                #expect(reader.hasExited)
+                #expect(reader.reader?.container == nil)
+                #expect(stateWrites == 0)
+                #expect(store.readingBook(id: book.id)?.mangaPage == 5)
+                observation.cancel()
+                store.waitForQueuedWrites()
+                try? FileManager.default.removeItem(at: directory)
+            }
+        }
+    }
+
+    @Test("exiting a moving strip refuses late source unsuspension and stale page writes")
+    func exitDuringSourceSwitchDoesNotResumeOldReader() async throws {
+        let harness = try await Harness()
+        defer { harness.tearDown() }
+        try await harness.read(page: 3)
+        let strip = try #require(harness.reader.reader as? FixedPageWebtoonViewController)
+        strip.scrollViewWillBeginDragging(strip.collectionView)
+        harness.state.onSetSourceChangeSuspended?(true)
+        harness.reader.prepareForExit()
+        harness.leave()
+        let publishes = harness.publishes
+        var stateWrites = 0
+        let observation = harness.state.objectWillChange.sink { stateWrites += 1 }
+        for _ in 0..<4 {
+            harness.state.onSetSourceChangeSuspended?(false)
+            harness.reader.reader(didMoveToPage: 0, total: Harness.pagesPerChapter)
+            harness.state.onReload?()
+            harness.reader.prepareForExit()
+        }
+        try await Task.sleep(for: .milliseconds(950))
+        #expect(harness.publishes == publishes)
+        #expect(stateWrites == 0)
+        #expect(!strip.isWatchingFrames)
+        #expect(!strip.isAutoScrolling)
+        #expect(harness.store.readingBook(id: harness.bookID)?.mangaPage == 3)
+        observation.cancel()
+    }
+
     /// The main thread's own time for each page read, with the real `HomeView` and 300 books
     /// mounted behind the reader: what one position save costs while the strip moves.
     /// Opt-in (`TEST_RUNNER_SHELF_RENDER_SCALE_TESTS=1`), like `ShelfRenderScaleTests`; the
@@ -102,6 +173,7 @@ struct FixedPagePositionSaveTests {
         let store: BookStore
         let bookID: UUID
         let reader: FixedPageReaderViewController
+        let state: FixedPageReaderState
         private let window: UIWindow
         private let shelf: WindowHost?
         private var cancellable: AnyCancellable?
@@ -140,7 +212,7 @@ struct FixedPagePositionSaveTests {
             }
             // The strip, as 回饋 #133 reads it.
             store.readerSettings.setFixedPageConfiguration(.recommendedDefault(for: .webtoon), for: book.id)
-            let state = FixedPageReaderState()
+            state = FixedPageReaderState()
             reader = FixedPageReaderViewController(book: book, store: store, state: state, chapterFetcher: fetcher)
             let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
             window = UIWindow(windowScene: scene)
@@ -193,7 +265,7 @@ struct FixedPagePositionSaveTests {
             try? FileManager.default.removeItem(at: directory)
         }
 
-        private static func package(of book: ReadingBook, chapter: Int) -> ChapterPackage {
+        static func package(of book: ReadingBook, chapter: Int) -> ChapterPackage {
             let content = (0..<pagesPerChapter)
                 .map { #"<img src="https://example.invalid/c\#(chapter)/p\#($0).jpg">"# }
                 .joined(separator: "\n")

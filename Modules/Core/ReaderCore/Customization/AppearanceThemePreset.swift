@@ -469,7 +469,7 @@ struct AppearanceThemePreset: Identifiable, Hashable {
         [classic] + freeSolidPresets + bundledThemePacks
     }
 
-    /// Low-saturation six-hue palette (blue/orange/green/purple/pink/gold).
+    /// Low-saturation six-hue palette.
     /// IDs are stable storage keys — do not rename when display names change.
     static let freeSolidPresets: [AppearanceThemePreset] = [
         AppearanceThemePreset(

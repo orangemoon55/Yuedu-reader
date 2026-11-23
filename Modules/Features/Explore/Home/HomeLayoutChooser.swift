@@ -57,6 +57,9 @@ struct HomeLayoutSample {
             .init(cover: "the-odyssey", title: "The Odyssey", work: "The Odyssey", author: "Homer", language: "en"),
             .init(cover: "dorian-gray", title: "The Picture of Dorian Gray", work: "The Picture of Dorian Gray", author: "Oscar Wilde", language: "en"),
         ],
+        .coverIntroCard: [
+            .init(cover: "war-and-peace", title: "War and Peace", work: "War and Peace", author: "Leo Tolstoy", language: "en"),
+        ],
         .readingCard: [
             .init(cover: "wuthering-heights", title: "Wuthering Heights", work: "Wuthering Heights", author: "Emily Brontë", language: "en"),
             .init(cover: "treasure-island", title: "Treasure Island", work: "Treasure Island", author: "Robert Louis Stevenson", language: "en"),
@@ -68,7 +71,6 @@ struct HomeLayoutSample {
             .init(cover: "jane-eyre", title: "Jane Eyre", work: "Jane Eyre", author: "Charlotte Brontë", language: "en"),
             .init(cover: "crime-and-punishment", title: "Crime and Punishment", work: "Crime and Punishment", author: "Fyodor Dostoevsky", language: "en"),
             .init(cover: "frankenstein", title: "Frankenstein", work: "Frankenstein", author: "Mary Shelley", language: "en"),
-            .init(cover: "war-and-peace", title: "War and Peace", work: "War and Peace", author: "Leo Tolstoy", language: "en"),
         ],
         .compactReadingCard: [
             .init(cover: "tangsong-chuanqi", title: "唐宋傳奇集", work: "唐宋傳奇集", author: "魯迅", language: "zh"),
@@ -209,7 +211,8 @@ struct HomeLayoutSample {
 
     @MainActor
     private static func cards(of books: [HomeLayoutSampleBook]) -> [HomeCardContent] {
-        books.map { HomeCardContent(sample: $0.title, author: $0.author, kind: $0.kind, cover: bundledCover(of: $0)) }
+        books.map { HomeCardContent(sample: $0.title, author: $0.author, kind: $0.kind, cover: bundledCover(of: $0),
+                                    blurb: $0.cover == "war-and-peace" ? localized("在時代的洪流中，幾個家族的命運交錯。一部關於戰爭、生活與愛情的長篇故事。") : nil) }
     }
 
     /// The bundled cover of a sample book. A missing file is a packaging bug: logged, and the
@@ -295,7 +298,11 @@ struct HomeLayoutPreview: View {
 
     @ViewBuilder
     private var content: some View {
-        if layout.style.drawsLists {
+        if layout.style == .coverIntroCard, !sample.cards(for: .coverIntroCard).isEmpty {
+            HomeRankCarousel(cards: sample.cards(for: .coverIntroCard), open: { _, _ in },
+                             previewRelated: Array(sample.cards(for: .compactReadingCard).prefix(3)))
+                .environment(\.homeRankPreview, true)
+        } else if layout.style.drawsLists {
             HomeSectionLists(layout: layout, collections: sample.collections(for: layout.style),
                              contents: sample.listContents, open: { _ in })
         } else if sample.cards(for: layout.style).isEmpty {

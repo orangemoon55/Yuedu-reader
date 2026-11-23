@@ -182,6 +182,9 @@ struct WorkSummary: Hashable, Sendable {
     /// them without a `series` (趨勢's 華語 and 日本 works, maintainer 2026-10-27): its title is
     /// the series' name, which the author line would only repeat.
     var seriesCovers: [CoverReference]
+    /// Ordered nested records; nil when no volume rule was supplied. Array indirection
+    /// keeps WorkSummary → WorkVolume → WorkDetailRoute → WorkSummary value-safe.
+    var volumes: [WorkVolume]? = nil
 
     static let titleLimit = 500
     static let authorLimit = 20

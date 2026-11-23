@@ -26,10 +26,6 @@ struct SettingsView: View {
     @State private var autoOpenDiagnostics = false
     @State private var autoOpenFeedbackCenter = false
     #endif
-    private let privacyPolicyURL = URL(string: "https://yuedureader.com/privacy")
-    private let userAgreementURL = URL(string: "https://yuedureader.com/terms")
-    private let paidTermsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")
-    private let sourceCodeURL = URL(string: "https://github.com/CHANG-JUI-LIN/Yuedu-reader/releases")
 
     private var appLanguageFooter: String {
         // The name iOS Settings lists the app under: the display name (閱讀), not the bundle name.
@@ -145,6 +141,8 @@ struct SettingsView: View {
                             title: localized("網路設定"),
                             action: { showNetworkSettings = true }
                         )
+                        .accessibilityIdentifier("settings_network")
+
                     } header: {
                         Text(localized("設定分組：資源"))
                             .foregroundStyle(DSColor.textSecondary)
@@ -250,16 +248,10 @@ struct SettingsView: View {
                         }
 
                         NavigationLink {
-                            AboutSupportView(
-                                appVersion: appVersion,
-                                privacyPolicyURL: privacyPolicyURL,
-                                userAgreementURL: userAgreementURL,
-                                paidTermsURL: paidTermsURL,
-                                sourceCodeURL: sourceCodeURL
-                            )
+                            AboutSupportView(appVersion: appVersion)
                         } label: {
                             HStack {
-                                Label(localized("關於 Yuedu Reader"), systemImage: "info.circle.fill")
+                                Label("关于 \(PersonalBuildFeatures.appDisplayName)", systemImage: "info.circle.fill")
                                     .foregroundColor(DSColor.textPrimary)
                                     .labelStyle(IconConsistentLabelStyle())
                                 Spacer(minLength: 12)
@@ -274,6 +266,7 @@ struct SettingsView: View {
                     }
                     .interfaceSectionSurface()
                 }
+            .accessibilityIdentifier("settings.form")
             .softScrollEdges()
             .themedAppSurface(for: .settings)
             .rootTabTitle(localized("設定"), onScroll: .minimizesBar)
@@ -376,14 +369,9 @@ struct SettingsView: View {
 
 private struct AboutSupportView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
-    @Environment(\.openURL) private var openURL
     @Environment(OnboardingState.self) private var onboarding: OnboardingState?
     @Bindable private var gs = GlobalSettings.shared
     let appVersion: String
-    let privacyPolicyURL: URL?
-    let userAgreementURL: URL?
-    let paidTermsURL: URL?
-    let sourceCodeURL: URL?
 
     var body: some View {
         List {
@@ -396,11 +384,11 @@ private struct AboutSupportView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
 
-                    Text(localized("閱讀"))
+                    Text(PersonalBuildFeatures.appDisplayName)
                         .font(DSFont.title3.weight(.semibold))
                         .foregroundStyle(DSColor.textPrimary)
 
-                    Text(localized("版本資訊與政策協議"))
+                    Text(localized("版本資訊"))
                         .font(DSFont.footnote)
                         .foregroundColor(DSColor.textSecondary)
                         .multilineTextAlignment(.center)
@@ -455,64 +443,9 @@ private struct AboutSupportView: View {
                 .interfaceSectionSurface()
             }
 
-            Section(header: Text(localized("開放原始碼")).foregroundStyle(DSColor.textSecondary)) {
-                actionRow(
-                    icon: "chevron.left.forwardslash.chevron.right",
-                    title: localized("原始碼與開源授權"),
-                    detail: localized("取得本版本對應原始碼與 MPL-2.0 授權"),
-                    trailingIcon: "arrow.up.right"
-                ) {
-                    if let url = sourceCodeURL {
-                        openURL(url)
-                    }
-                }
-            }
-            .interfaceSectionSurface()
-
-            Section {
-                actionRow(
-                    icon: "hand.raised.fill",
-                    title: localized("隱私權政策"),
-                    detail: localized("本機資料、同步與第三方來源說明"),
-                    trailingIcon: "arrow.up.right"
-                ) {
-                    if let url = privacyPolicyURL {
-                        openURL(url)
-                    }
-                }
-
-                actionRow(
-                    icon: "doc.text.fill",
-                    title: localized("使用者協議"),
-                    detail: localized("使用規則、第三方內容與責任邊界"),
-                    trailingIcon: "arrow.up.right"
-                ) {
-                    if let url = userAgreementURL {
-                        openURL(url)
-                    }
-                }
-
-                actionRow(
-                    icon: "creditcard.fill",
-                    title: localized("付費服務條款"),
-                    detail: localized("未來付費功能、訂閱、退款與 Apple 付款規則"),
-                    trailingIcon: "arrow.up.right"
-                ) {
-                    if let url = paidTermsURL {
-                        openURL(url)
-                    }
-                }
-            } header: {
-                Text(localized("政策與協議"))
-                    .foregroundStyle(DSColor.textSecondary)
-            } footer: {
-                Text(localized("使用來源配置、第三方服務與未來付費功能前，請先閱讀相關條款。"))
-                    .dsSectionFooter()
-            }
-            .interfaceSectionSurface()
         }
         .softScrollEdges()
-        .navigationTitle(localized("關於 Yuedu Reader"))
+        .navigationTitle("关于 \(PersonalBuildFeatures.appDisplayName)")
         .toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .settings)
     }

@@ -105,6 +105,8 @@ struct ReaderDownloadOptionsView: View {
                     } label: {
                         Image(systemName: "xmark")
                     }
+                    .accessibilityLabel(localized("關閉"))
+                    .accessibilityIdentifier("reader.offline.close")
                 }
                 if mode == .range {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -113,6 +115,8 @@ struct ReaderDownloadOptionsView: View {
                         } label: {
                             Image(systemName: "checkmark")
                         }
+                        .accessibilityLabel(localized("開始下載"))
+                        .accessibilityIdentifier("reader.offline.start")
                         .disabled(totalChapters <= 0)
                     }
                 }

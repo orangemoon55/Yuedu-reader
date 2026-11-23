@@ -74,6 +74,10 @@ private struct ExploreRouteDestinations: ViewModifier {
             RuleModuleDetailView(moduleID: id)
         case .moduleList(let route):
             ModuleListPage(route: route)
+        case .genres:
+            ModuleGenresPage()
+        case .moduleStore(let route):
+            ModuleStorePage(route: route)
         case .aiRecommendations:
             AIRecommendationModuleView()
         case .moduleManager:
@@ -267,7 +271,7 @@ enum ExplorePlace {
         // AI 推薦's row is its whole list.
         // 書架's whole list is the 書架 tab, which 探索 cannot switch to. A section of lists has
         // a card per list, each opening its own (`listsPage` is its header's).
-        case .myLibrary, .continueReading, .bookshelf, .related, .nextInSeries,
+        case .sourceBook, .myLibrary, .continueReading, .bookshelf, .related, .nextInSeries,
              .aiRecommendations, .lists, .unknown:
             return nil
         }

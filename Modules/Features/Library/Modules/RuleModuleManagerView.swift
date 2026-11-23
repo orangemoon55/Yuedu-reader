@@ -22,6 +22,7 @@ struct RuleModuleManagerView: View {
     @ObservedObject var repositories: RuleModuleRepositoryModel
     @ObservedObject private var availability = PublicLibraryAvailability.shared
     @Environment(\.ruleModuleAddFlow) private var addFlow
+    @AppStorage(ReaderChapterCommentDecorator.enabledKey) private var showsModuleComments = true
     /// Once per visit: back from a repository's page, the indexes are not read again.
     @State private var hasLoaded = false
     @State private var pendingUnsubscription: RuleModuleRepositoryModel.Repository?
@@ -76,6 +77,16 @@ struct RuleModuleManagerView: View {
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
+            if library.modules.contains(where: { $0.module.comments != nil }) {
+                Section {
+                    Toggle(localized("在正文顯示模組的評論"), isOn: $showsModuleComments)
+                        .accessibilityIdentifier("modules.chapterComments.enabled")
+                } footer: {
+                    Text(localized("重新打開書籍後套用，原書源的評論不受影響。"))
+                        .dsSectionFooter()
+                }
+                .interfaceSectionSurface()
+            }
         }
         .softScrollEdges()
         .navigationTitle(localized("模組"))

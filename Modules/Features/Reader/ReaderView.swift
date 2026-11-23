@@ -10,6 +10,7 @@ private enum ReaderSettingsDeferredPresentationRoute {
     case styleImporter(ReaderStyleImportRoute)
     /// A locked control inside settings (匯入字體 without Pro) asked for the paywall.
     case paywall(PremiumFeature)
+    case touchZoneEditor
 }
 
 // MARK: - Main Reader View
@@ -107,7 +108,7 @@ struct ReaderView: View {
     /// run from the panel's real `onDismiss` — the same contract
     /// `Technotes/iOS17MenuModalPresentation.md` sets out, and the reason 現代's
     /// book card lost 聽書 before it was applied there.
-    @State var quickPanelDeferredRoute: ReaderQuickPanelRoute?
+    @State private var quickPanelPresentation = DismissalSequencedPresentation<ReaderQuickPanelRoute>()
     @State var showReaderSearch = false
     @State var readerSearchSelection = ""
     /// 全書搜尋: the last search and its results while the book is open, and the hit the
@@ -378,7 +379,7 @@ struct ReaderView: View {
     @State var isRestoringPosition = true
     /// The saved position the book opened at, while the reader is still owed it.
     @State var openingRestore = ReaderOpeningRestore()
-    var savedCoreTextRestoreTarget: (chapterIndex: Int, charOffset: Int)? {
+    var savedCoreTextRestoreTarget: (chapterIndex: Int, charOffset: Int, translationOffset: Int?)? {
         get { openingRestore.target }
         nonmutating set { openingRestore.target = newValue }
     }
@@ -402,6 +403,8 @@ struct ReaderView: View {
     @State var versionFinder = ReaderVersionFinder()
     /// The source whose 來源配置登入 the book card opened.
     @State var sourceLoginTarget: BookSource?
+    /// A module's comments in the text of this book (`ReaderChapterCommentDecorator`).
+    @State var commentDecorator = ReaderChapterCommentDecorator()
     /// 調試正文's 調試規則, from 更多.
     @State var contentDebugTarget: ReaderContentDebugTarget?
     @State private var replaceRuleDraft: ReplaceRule?
@@ -1192,10 +1195,12 @@ struct ReaderView: View {
             progressTrace("onPageChanged page=\(newPage) noPosition — the reading position stays")
             return
         }
+        openingRestore.readerSettled(at: settledPosition)
         let newChapter = settledPosition.spineIndex
         let chapterChanged = newChapter != currentChapterIndex
 
         currentChapterIndex = newChapter
+        commentDecorator.retryMissingIfNeeded(spine: newChapter, title: chapterTitle(forSpineIndex: newChapter))
         moveReaderSession(
             to: settledPosition,
             source: .settledPage,
@@ -1210,7 +1215,8 @@ struct ReaderView: View {
         // offset.
         let deliveredRestore = savedCoreTextRestoreTarget.flatMap { target in
             openingRestore.pageSettled(newPage, pageIndex: { engine.pageIndex(for: $0) })
-                ? CoreTextReadingPosition(spineIndex: target.chapterIndex, charOffset: target.charOffset)
+                ? CoreTextReadingPosition(spineIndex: target.chapterIndex, charOffset: target.charOffset,
+                                          translationOffset: target.translationOffset)
                 : nil
         }
         defer {
@@ -2182,7 +2188,7 @@ struct ReaderView: View {
                 // the AI, which is the whole point: a press of 聽書 followed by silence.
                 ReaderTTSPreparationBanner(
                     text: notice,
-                    colorScheme: readerTheme == .night ? .dark : .light
+                    colorScheme: readerTheme.isDark ? .dark : .light
                 )
                 .padding(.top, DSSpacing.sm)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -2195,7 +2201,7 @@ struct ReaderView: View {
                 // 自動換源: the same band, while it searches and briefly when it fails.
                 ReaderAutoChangeSourceBanner(
                     notice: notice,
-                    colorScheme: readerTheme == .night ? .dark : .light,
+                    colorScheme: readerTheme.isDark ? .dark : .light,
                     onExpire: { readerViewModel.dismissAutoChangeSourceNotice(notice) }
                 )
                 .padding(.top, DSSpacing.sm)
@@ -2211,7 +2217,7 @@ struct ReaderView: View {
                 // sits over the top bar's empty middle, clear of its buttons.
                 ReaderBookmarkToastView(
                     toast: toast,
-                    colorScheme: readerTheme == .night ? .dark : .light
+                    colorScheme: readerTheme.isDark ? .dark : .light
                 )
                 .padding(.top, DSSpacing.sm)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -2779,8 +2785,8 @@ struct ReaderView: View {
                     hasParagraphReviews: currentBookHasParagraphReviews,
                     onOpenTouchZoneEditor: {
                         guard subscriptionStore.isProActive, !effectiveScrollMode else { return }
-                        setReaderChromeVisible(false)
-                        showTouchZoneEditor = true
+                        readerSettingsDeferredPresentation.select(.touchZoneEditor)
+                        showSettings = false
                     },
                     onOpenStyleImporter: requestFirstLevelReaderStyleImporter,
                     onOpenPaywall: readerSettingsPaywallAction,
@@ -2802,7 +2808,7 @@ struct ReaderView: View {
                 hasParagraphReviews: currentBookHasParagraphReviews,
                 onSelectPageTurnOption: { applyQuickPageTurnOption($0) },
                 onSelectRoute: {
-                    quickPanelDeferredRoute = $0
+                    quickPanelPresentation.select($0)
                     showQuickThemePanel = false
                 }
             )
@@ -2869,7 +2875,7 @@ struct ReaderView: View {
             }
         }
         .sheet(isPresented: $showTOC) {
-            AdaptiveSheetContainer(maxWidth: DSLayout.readableListWidth) {
+            AdaptiveSheetContainer(maxWidth: DSLayout.readableListWidth * 4 / 3) {
                 ReaderTOCView(
                     chapters: chapters.map { chapter in
                         var display = chapter
@@ -2878,7 +2884,6 @@ struct ReaderView: View {
                         return display
                     },
                     bookTitle: book?.title ?? "",
-                    bookID: book?.id,
                     currentPage: currentPage,
                     totalPages: renderedPageCount,
                     tocLayoutMode: .from(writingMode: bookDirection.principalMode),
@@ -3119,6 +3124,8 @@ struct ReaderView: View {
         .sheet(item: $sourceLoginTarget) { source in
             BookSourceLoginSheet(source: source) { sourceLoginTarget = nil }
         }
+        // A chapter's comments arrived from a module: build the chapter again with them.
+        .onReceive(commentDecorator.updates) { spine in applyCommentUpdate(spine: spine) }
         .sheet(item: $contentDebugTarget) { target in
             BookSourceRuleDebugView(source: target.source, initialTab: .content, initialURL: target.chapterURL)
         }
@@ -3131,7 +3138,7 @@ struct ReaderView: View {
             }
         }
         .sheet(item: $reviewTarget) { target in
-            LegadoReviewBrowserView(target: target) { _ in
+            ReaderReviewSheetContent(target: target) { _ in
                 reviewTarget = nil
             }
         }
@@ -3204,8 +3211,7 @@ struct ReaderView: View {
 
     /// Runs whatever the quick panel asked for, once its sheet is actually gone.
     private func presentDeferredQuickPanelRoute() {
-        guard let route = quickPanelDeferredRoute else { return }
-        quickPanelDeferredRoute = nil
+        guard let route = quickPanelPresentation.consumeAfterDismissal() else { return }
         selectQuickPanelRoute(route)
     }
 
@@ -3254,6 +3260,10 @@ struct ReaderView: View {
             readerStyleImportRoute = styleRoute
         case .paywall(let feature):
             paywallFeature = feature
+        case .touchZoneEditor:
+            guard subscriptionStore.isProActive, !effectiveScrollMode else { return }
+            setReaderChromeVisible(false)
+            showTouchZoneEditor = true
         }
     }
 
@@ -3374,7 +3384,7 @@ struct ReaderView: View {
         }
 
         let position = restored.coreTextPosition
-        savedCoreTextRestoreTarget = (position.spineIndex, max(0, position.charOffset))
+        savedCoreTextRestoreTarget = (position.spineIndex, max(0, position.charOffset), position.translationOffset)
         setCoreTextExternalTarget(position)
         currentChapterIndex = position.spineIndex
         scrollVisibleChapter = position.spineIndex
@@ -3399,7 +3409,8 @@ struct ReaderView: View {
             if let target = savedCoreTextRestoreTarget {
                 // Positions count spine items; an EPUB's `chapters` are its TOC entries (`spineChapters`).
                 let position = CoreTextReadingPosition(spineIndex: max(0, min(target.chapterIndex, spineChapters.count - 1)),
-                                                       charOffset: max(0, target.charOffset))
+                                                       charOffset: max(0, target.charOffset),
+                                                       translationOffset: target.translationOffset)
                 pendingScrollJumpTarget = position
                 currentChapterIndex = position.spineIndex
                 scrollVisibleChapter = position.spineIndex
@@ -3460,6 +3471,8 @@ struct ReaderView: View {
         )
         ensureChapterReady(chapterIndex: position.spineIndex)
         epubRenderer.updateCurrentPosition(globalPage: page, engine: engine)
+        // A saved place among a module's comment cards has no page until the comments arrive.
+        openingRestore.restoreShown(at: position, shownAs: engine.readingPosition(forPage: page))
         finishCoreTextRestore(restoredSpine: position.spineIndex)
     }
 

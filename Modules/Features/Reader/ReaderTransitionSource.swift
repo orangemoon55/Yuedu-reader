@@ -65,6 +65,18 @@ struct ReaderTransitionSource {
         return upgraded
     }
 
+    /// A close needs both visible artwork and a live landing target. Otherwise
+    /// folding a plain card over the page produces a full-screen blank cover
+    /// followed by a stranded placeholder on the shelf. Opening may still use
+    /// its existing plain-card fallback while the reader is being prepared.
+    @MainActor
+    var canAnimateCardClose: Bool {
+        guard let snapshot = bestAvailableSnapshot(), snapshot.cgImage != nil,
+              let frame = resolvedFrame(allowingTapFallback: false) else { return false }
+        return !frame.isNull && !frame.isInfinite
+            && frame.width > 1 && frame.height > 1
+    }
+
     /// Resolve a snapshot of the geometry, or nil when unavailable.
     func resolveGeometry() -> ReaderCardGeometry? {
         guard let frame else { return nil }
@@ -73,8 +85,8 @@ struct ReaderTransitionSource {
 
     /// Resolve live shelf geometry when available. Opening may use the
     /// tap-time frame before the destination exists; closing treats a nil live
-    /// provider as source-unavailable and lets the animator center its fallback
-    /// instead of flying toward stale coordinates.
+    /// provider as source-unavailable and crossfades instead of folding toward
+    /// stale coordinates.
     @MainActor
     func resolvedFrame(allowingTapFallback: Bool = true) -> CGRect? {
         guard let frameProvider else {

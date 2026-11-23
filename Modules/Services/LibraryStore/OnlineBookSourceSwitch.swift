@@ -132,7 +132,7 @@ struct OnlineBookSourceSwitch {
     ) {
         guard !oldRefs.isEmpty, !newRefs.isEmpty else { return }
         switch book.resolvedPipelineKind {
-        case .manga where book.mangaChapterIndex > 0:
+        case .manga:
             let mapped = Self.mappedChapterIndex(oldRefs: oldRefs, newRefs: newRefs, oldIndex: book.mangaChapterIndex)
             store.updateMangaPosition(
                 bookId: book.id, chapter: mapped,

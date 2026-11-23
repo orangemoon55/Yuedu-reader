@@ -33,6 +33,7 @@ extension HomeSectionBinding {
         case .gutenbergCollection, .gutenbergLists, .gutenbergFeed, .gutenbergShelf: .gutenberg
         case .aozoraNew, .aozoraIndex: .aozora
         case .sourceCategories(let references): references.first.map { .bookSource(url: $0.sourceURL) }
+        case .sourceBook(let book): .bookSource(url: book.sourceURL)
         case .module(let moduleID, _): .module(id: moduleID)
         case .aiRecommendations: .official
         // A section of lists from one source is that source's; from several, no one's.

@@ -1,0 +1,117 @@
+import SwiftUI
+
+/// The selected source’s catalogue and book list belongs to Search. Discovery keeps its user's HomePage.
+struct SearchCategoryHome: View {
+    @StateObject private var categories = DiscoveryCategoryModel()
+    @ObservedObject private var pageStore = HomePageStore.shared
+    @ObservedObject private var sourceStore = BookSourceStore.shared
+    @Environment(\.searchTabNavigation) private var navigation
+    @State private var sources: [BookSource] = []
+    @State private var publishedSources: [BookSource]?
+    @State private var sourceRevision = 0
+    @State private var sourceSearchText = ""
+    @FocusState private var sourceSearchFocused: Bool
+
+    private struct SourceSearchRequest: Hashable {
+        let sourceURL: String
+        let query: String
+    }
+
+    private var currentSearchSource: BookSource? {
+        guard let source = categories.activeSource else { return nil }
+        return sources.first {
+            source.matches($0) && !$0.searchUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: DSSpacing.xs) {
+            sourceSearchField
+                .padding(.horizontal, DSSpacing.lg)
+                .padding(.top, DSSpacing.xxs)
+            DiscoverySourceCategoryPage(model: categories,
+                configuration: pageStore.selectedConfiguration.rawValue,
+                page: pageStore.page, sources: sources,
+                onAllTypes: { navigation?.path.append(ExploreNavigationRoute.genres) })
+        }
+            .rootTabTitle(localized("搜索"), onScroll: .fadesTitle)
+            .pageBackgroundToolbar(for: .explore)
+            .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
+            .navigationDestination(for: SourceSearchRequest.self) { request in
+                SearchView(initialQuery: request.query, sessionScope: SearchSourceScope(
+                    mode: .custom, selectedSourceURLs: [request.sourceURL]
+                ))
+            }
+            .navigationDestination(for: DiscoveryCategoryChoice.self) { choice in
+                if let source = sources.first(where: { $0.bookSourceUrl == choice.reference.sourceURL }) {
+                    DiscoveryBookList(model: categories.list(for: choice, source: source))
+                        .navigationTitle(choice.title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .themedAppSurface(for: .explore)
+                } else {
+                    ContentUnavailableView {
+                        UnavailableLabel(localized("來源配置已停用或移除"), systemImage: "books.vertical")
+                    }
+                }
+            }
+            .task(id: sourceRevision) { [sourceRevision] in
+                await sourceStore.waitUntilLoaded()
+                let snapshot = publishedSources ?? sourceStore.sources
+                let found = await Self.explorable(snapshot)
+                guard !Task.isCancelled, sourceRevision == self.sourceRevision else { return }
+                sources = found
+            }
+            .onReceive(sourceStore.sourcesPublisher) { snapshot in
+                guard sourceStore.isLoaded else { return }
+                publishedSources = snapshot
+                sourceRevision &+= 1
+            }
+    }
+
+    private var sourceSearchField: some View {
+        HStack(spacing: DSSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(DSColor.textSecondary)
+                .accessibilityHidden(true)
+            TextField(localized("搜尋書名或作者"), text: $sourceSearchText)
+                .font(DSFont.body)
+                .focused($sourceSearchFocused)
+                .submitLabel(.search)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .frame(minHeight: DSLayout.minimumTapTarget)
+                .onSubmit { submitSourceSearch() }
+                .accessibilityHint(localized("源內搜索"))
+                .accessibilityIdentifier("search.keywordField")
+            if !sourceSearchText.isEmpty {
+                Button {
+                    sourceSearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(DSColor.textSecondary)
+                        .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(localized("清除"))
+            }
+        }
+        .padding(.leading, DSSpacing.md)
+        .padding(.trailing, sourceSearchText.isEmpty ? DSSpacing.md : DSSpacing.xs)
+        .background { NavigationGlassCapsule(tint: DSColor.accent) }
+        .disabled(currentSearchSource == nil || navigation == nil)
+    }
+
+    private func submitSourceSearch() {
+        let term = sourceSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty, let source = currentSearchSource, let navigation else { return }
+        sourceSearchFocused = false
+        navigation.path.append(SourceSearchRequest(sourceURL: source.bookSourceUrl, query: term))
+    }
+
+    /// Filtering the library once per source update, not during each book-row body.
+    @concurrent private static func explorable(_ snapshot: [BookSource]) async -> [BookSource] {
+        DiscoverViewModel.exploreSources(in: snapshot)
+    }
+}

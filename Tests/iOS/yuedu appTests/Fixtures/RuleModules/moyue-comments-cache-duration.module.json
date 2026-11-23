@@ -1,0 +1,162 @@
+{
+  "id": "moyue-comments",
+  "title": "墨阅评论·段评模块",
+  "description": "基于墨阅(wuxie.qd.je)书源的段评/本章说评论模块。搜索走纯 JSONPath; 章节表清洗（第X更求推荐票）等括号后缀,与起点/本地TXT的干净章节标题对齐,确保 ChapterTitleMatch 章节匹配通过。评论列表走墨阅 /reviews/list 真分页接口(每页100条、可翻页),突破20条限制。全程走墨阅服务器,与起点官方模块互不冲突、可同时启用。",
+  "author": "阅读",
+  "site": "https://www.wuxie.qd.je",
+  "version": "2.0.2",
+  "requiredVersion": "3.0.2",
+  "hosts": [
+    "www.wuxie.qd.je"
+  ],
+  "rateLimit": "2/1000",
+  "javascript": true,
+  "modules": [],
+  "search": {
+    "request": {
+      "url": "https://www.wuxie.qd.je/api/c/search?keyword={{keyword}}&page={{page}}",
+      "method": "POST",
+      "headers": {
+        "Accept": "application/json",
+        "X-MY-SRC": "eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs",
+        "X-MY-SRC-CH": "release",
+        "Content-Type": "application/json"
+      },
+      "script": "(function(){\n  var kw=String(values.keyword||'');\n  var pg=String(values.page||1);\n  request.url='https://www.wuxie.qd.je/api/c/search';\n  request.method='POST';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.headers['Content-Type']='application/json';\n  request.body=JSON.stringify({keyword:kw,page:Number(pg)||1,page_size:20});\n  return JSON.stringify(request);\n})()"
+    },
+    "params": [
+      {
+        "name": "page",
+        "type": "page",
+        "value": "1"
+      }
+    ],
+    "cacheDuration": 3600,
+    "list": {
+      "items": "$.books[*]",
+      "title": "$.title",
+      "author": "$.author",
+      "intro": "$.intro",
+      "kind": "$.kind",
+      "cover": "$.coverUrl",
+      "url": "$.bookUrl",
+      "id": "$.id"
+    }
+  },
+  "comments": {
+    "cacheDuration": 300,
+    "chapters": {
+      "request": {
+        "url": "https://www.wuxie.qd.je/api/c/toc/{{id}}",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "script": "(function(){\n  var id=String(values.id||'');\n  request.url='https://www.wuxie.qd.je/api/c/toc/'+encodeURIComponent(id);\n  request.method='GET';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.body=null;\n  return JSON.stringify(request);\n})()"
+      },
+      "cacheDuration": 86400,
+      "list": {
+        "items": "@js:(function(){var r=typeof result==='string'?JSON.parse(result):result;var c=(r&&r.chapters)||[];var o=[];function clean(t){t=String(t||'');  t=t.replace(/[（(][^）)]*[）)]/g,'');  t=t.replace(/\\s+/g,' ').trim();return t;}for(var i=0;i<c.length;i++){var x=c[i]||{};o.push({id:String(x.id||''),title:clean(x.title)});}return JSON.stringify(o);})()",
+        "id": "$.id",
+        "title": "$.title"
+      }
+    },
+    "authorSay": {
+      "request": {
+        "url": "https://www.wuxie.qd.je/api/c/book-content?bookId={{id}}&chapterId={{chapterId}}",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "script": "(function(){\n  var id=String(values.id||'');\n  var cid=String(values.chapterId||'');\n  request.url='https://www.wuxie.qd.je/api/c/book-content?bookId='+encodeURIComponent(id)+'&chapterId='+encodeURIComponent(cid)+'&vip=0';\n  request.method='GET';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.body=null;\n  return JSON.stringify(request);\n})()"
+      },
+      "cacheDuration": 600,
+      "text": "@js:(function(){var r=typeof result==='string'?JSON.parse(result):result;var a=(r&&r.authorComments)||(r&&r.data&&r.data.authorComments)||'';return String(a||'');})()",
+      "author": "@js:(function(){var r=typeof result==='string'?JSON.parse(result):result;var a=(r&&r.authorName)||(r&&r.data&&r.data.authorName)||'';return String(a||'');})()"
+    },
+    "chapter": {
+      "request": {
+        "url": "https://www.wuxie.qd.je/api/c/reviews/list?bookId={{id}}&chapterId={{chapterId}}&paragraphId=-1&page={{page}}&size=100",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "script": "(function(){\n  var id=String(values.id||'');\n  var cid=String(values.chapterId||'');\n  var pid='-1';\n  var page=String(values.page||'1');\n  if(!page||page==='0')page='1';\n  request.url='https://www.wuxie.qd.je/api/c/reviews/list?bookId='+encodeURIComponent(id)\n    +'&chapterId='+encodeURIComponent(cid)\n    +'&paragraphId='+encodeURIComponent(pid)\n    +'&page='+encodeURIComponent(page)\n    +'&size=100';\n  request.method='GET';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.body=null;\n  return JSON.stringify(request);\n})()"
+      },
+      "cacheDuration": 300,
+      "list": {
+        "items": "@js:(function(){\n  function fmt(s){ s=String(s||''); return s.length>=16?s.slice(0,16):s; }\n  var raw=typeof result==='string'?JSON.parse(result):result;\n  var data=(raw&&raw.data)||{};\n  var L=data.comments||[];\n  var para=String(data.paragraph||'').replace(/\\u3000/g,'').trim();\n  var out=[];\n  for(var i=0;i<L.length;i++){\n    var c=L[i]||{};\n    var txt=String(c.content||'').replace(/\\[fn=\\d+\\]/g,'').replace(/\\r?\\n+/g,' ').trim();\n    if(!txt && !c.imageUrl && !c.audioUrl) continue;\n    if(!txt) txt='[图片/语音评论]';\n    out.push({\n      content:txt,\n      author:String(c.nickname||'书友'),\n      likes:String(c.likeCount||0),\n      date:fmt(c.createTime),\n      quote:para.slice(0,40),\n      reviewId:String(c.reviewId||''),\n      isGod:c.isGod?1:0\n    });\n  }\n  return JSON.stringify(out);\n})()",
+        "text": "$.content",
+        "author": "$.author",
+        "likes": "$.likes",
+        "date": "$.date"
+      },
+      "total": "@js:(function(){var r=typeof result==='string'?JSON.parse(result):result;return String(((r&&r.data)||{}).total||0);})()"
+    },
+    "paragraph": {
+      "request": {
+        "url": "https://www.wuxie.qd.je/api/c/reviews/list?bookId={{id}}&chapterId={{chapterId}}&paragraphId={{paragraphId}}&page={{page}}&size=100",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "script": "(function(){\n  var id=String(values.id||'');\n  var cid=String(values.chapterId||'');\n  var pid=String(values.paragraphId!=-1?values.paragraphId:-1);\n  var page=String(values.page||'1');\n  if(!page||page==='0')page='1';\n  request.url='https://www.wuxie.qd.je/api/c/reviews/list?bookId='+encodeURIComponent(id)\n    +'&chapterId='+encodeURIComponent(cid)\n    +'&paragraphId='+encodeURIComponent(pid)\n    +'&page='+encodeURIComponent(page)\n    +'&size=100';\n  request.method='GET';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.body=null;\n  return JSON.stringify(request);\n})()"
+      },
+      "cacheDuration": 300,
+      "list": {
+        "items": "@js:(function(){\n  function fmt(s){ s=String(s||''); return s.length>=16?s.slice(0,16):s; }\n  var raw=typeof result==='string'?JSON.parse(result):result;\n  var data=(raw&&raw.data)||{};\n  var L=data.comments||[];\n  var para=String(data.paragraph||'').replace(/\\u3000/g,'').trim();\n  var out=[];\n  for(var i=0;i<L.length;i++){\n    var c=L[i]||{};\n    var txt=String(c.content||'').replace(/\\[fn=\\d+\\]/g,'').replace(/\\r?\\n+/g,' ').trim();\n    if(!txt && !c.imageUrl && !c.audioUrl) continue;\n    if(!txt) txt='[图片/语音评论]';\n    out.push({\n      content:txt,\n      author:String(c.nickname||'书友'),\n      likes:String(c.likeCount||0),\n      date:fmt(c.createTime),\n      quote:para.slice(0,40),\n      reviewId:String(c.reviewId||''),\n      isGod:c.isGod?1:0\n    });\n  }\n  return JSON.stringify(out);\n})()",
+        "text": "$.content",
+        "author": "$.author",
+        "likes": "$.likes",
+        "date": "$.date"
+      },
+      "total": "@js:(function(){var r=typeof result==='string'?JSON.parse(result):result;return String(((r&&r.data)||{}).total||0);})()"
+    },
+    "counts": {
+      "request": {
+        "url": "https://www.wuxie.qd.je/api/c/book-content?bookId={{id}}&chapterId={{chapterId}}",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "script": "(function(){\n  var id=String(values.id||'');\n  var cid=String(values.chapterId||'');\n  request.url='https://www.wuxie.qd.je/api/c/book-content?bookId='+encodeURIComponent(id)+'&chapterId='+encodeURIComponent(cid)+'&vip=0';\n  request.method='GET';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.body=null;\n  return JSON.stringify(request);\n})()"
+      },
+      "cacheDuration": 300,
+      "list": {
+        "items": "@js:(function(){\n  function clean(s){return String(s||'').replace(/\\u3000/g,'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/[\\r\\n\\t]+/g,' ').replace(/\\s+/g,' ').trim();}\n  var raw=typeof result==='string'?JSON.parse(result):result;\n  var body=String((raw&&raw.body)||'');\n  var lines=body.split(/\\n+/);\n  var out=[]; var idx=0;\n  for(var i=0;i<lines.length;i++){\n    var txt=clean(lines[i]);\n    if(!txt) continue;\n    idx+=1;\n    var quote=txt.slice(0,40); if(quote.length<4) quote=txt;\n    var cnt=txt.replace(/\\s/g,'').length; if(cnt<=0) continue;\n    out.push({count:String(cnt),index:String(idx),id:String(idx),quote:quote});\n  }\n  return JSON.stringify(out);\n})()",
+        "count": "$.count",
+        "index": "$.index",
+        "id": "$.id",
+        "quote": "$.quote"
+      },
+      "paragraphCount": "@js:(function(){\n  var raw=typeof result==='string'?JSON.parse(result):result;\n  var body=String((raw&&raw.body)||'');\n  var lines=body.split(/\\n+/); var n=0;\n  for(var i=0;i<lines.length;i++){ if(lines[i].replace(/\\s/g,'')) n++; }\n  return String(n);\n})()"
+    },
+    "hot": {
+      "request": {
+        "url": "https://www.wuxie.qd.je/api/c/reviews/list?bookId={{id}}&chapterId={{chapterId}}&paragraphId=-1&size=100",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "script": "(function(){\n  var id=String(values.id||'');\n  var cid=String(values.chapterId||'');\n  var pid='-1';\n  var page=String(values.page||'1');\n  if(!page||page==='0')page='1';\n  request.url='https://www.wuxie.qd.je/api/c/reviews/list?bookId='+encodeURIComponent(id)\n    +'&chapterId='+encodeURIComponent(cid)\n    +'&paragraphId='+encodeURIComponent(pid)\n    +'&page='+encodeURIComponent(page)\n    +'&size=100';\n  request.method='GET';\n  request.headers={\n    'Accept':'application/json',\n    'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',\n    'X-MY-SRC':'eyJ2IjoiMS41MyIsImNoIjoicmVsZWFzZSIsImlhdCI6MTc5NTAwNTg2NDY4OSwiZXhwIjoxNzk3NTk3ODY0Njg5LCJuIjoiUXZ6NVZXa0w3cXY0OUdQViJ9.Ls4p1OdMHN92DjO_9qir6xlYuG3XyrOyDcfBcM9TiPs',\n    'X-MY-SRC-CH':'release'\n  };\n  request.body=null;\n  return JSON.stringify(request);\n})()"
+      },
+      "cacheDuration": 300,
+      "list": {
+        "items": "@js:(function(){\n  function fmt(s){ s=String(s||''); return s.length>=16?s.slice(0,16):s; }\n  var raw=typeof result==='string'?JSON.parse(result):result;\n  var data=(raw&&raw.data)||{};\n  var L=data.comments||[];\n  var para=String(data.paragraph||'').replace(/\\u3000/g,'').trim();\n  var out=[];\n  for(var i=0;i<L.length;i++){\n    var c=L[i]||{};\n    var txt=String(c.content||'').replace(/\\[fn=\\d+\\]/g,'').replace(/\\r?\\n+/g,' ').trim();\n    if(!txt && !c.imageUrl && !c.audioUrl) continue;\n    if(!txt) txt='[图片/语音评论]';\n    out.push({\n      content:txt,\n      author:String(c.nickname||'书友'),\n      likes:String(c.likeCount||0),\n      date:fmt(c.createTime),\n      quote:para.slice(0,40),\n      reviewId:String(c.reviewId||''),\n      isGod:c.isGod?1:0\n    });\n  }\n  return JSON.stringify(out);\n})()",
+        "text": "$.content",
+        "author": "$.author",
+        "likes": "$.likes",
+        "date": "$.date",
+        "quote": "$.quote",
+        "index": "$.reviewId",
+        "id": "$.reviewId"
+      },
+      "paragraphCount": "@js:(function(){var r=typeof result==='string'?JSON.parse(result):result;var d=(r&&r.data)||{};return String(d.maxParagraph||d.paragraphCount||1);})()"
+    }
+  },
+  "globalParams": [],
+  "localizations": {
+    "zh-Hans": {
+      "title": "墨阅评论·段评模块",
+      "description": "墨阅书源的段评/本章说评论模块,真分页可翻页,走墨阅服务器。"
+    },
+    "en": {
+      "title": "Moyue Comments",
+      "description": "Paragraph & chapter comments module for the Moyue source."
+    }
+  }
+}

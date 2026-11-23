@@ -59,6 +59,9 @@ final class FixedPageWebtoonViewController: UIViewController, FixedPageModeReade
     }
 
     // Infinite scroll loading guards
+    private var hasExited = false
+    private var nextChapterTask: Task<Void, Never>?
+    private var previousChapterTask: Task<Void, Never>?
     private var isLoadingNextChapter = false
     private var isLoadingPrevChapter = false
 
@@ -104,6 +107,21 @@ final class FixedPageWebtoonViewController: UIViewController, FixedPageModeReade
         // A reader closed mid-fling never hears the fling end. The strip stops moving with
         // it, and the frame-gap probe's display link, which holds the probe, goes with it.
         isFingerScrolling = false
+    }
+
+    func stopForExit() {
+        guard !hasExited else { return }
+        hasExited = true
+        container = nil
+        nextChapterTask?.cancel()
+        previousChapterTask?.cancel()
+        stopAutoScroll()
+        cancelZoomAnimation()
+        isFingerScrolling = false
+        frameGapProbe.stop()
+        collectionView.delegate = nil
+        for case let cell as FixedPageWebtoonCell in collectionView.visibleCells { cell.unload() }
+        view.isUserInteractionEnabled = false
     }
 
     override func viewDidLoad() {
@@ -573,10 +591,11 @@ final class FixedPageWebtoonViewController: UIViewController, FixedPageModeReade
         // Near bottom: trigger next chapter append
         if scrollable, bottomDistance < 1200, !isLoadingNextChapter {
             isLoadingNextChapter = true
-            Task { [weak self] in
-                guard let self else { return }
+            nextChapterTask = Task { [weak self] in
+                guard let self, !self.hasExited else { return }
                 let start = SourcePerfTrace.now
                 if let nextPages = await self.container?.readerAppendNextChapter() {
+                    guard !self.hasExited, !Task.isCancelled else { return }
                     let fetched = (SourcePerfTrace.now - start) * 1000
                     SourcePerfTrace.span(
                         "webtoon.appendChapter",
@@ -593,10 +612,11 @@ final class FixedPageWebtoonViewController: UIViewController, FixedPageModeReade
         // Near top: trigger previous chapter prepend
         if scrollView.contentOffset.y < 300, !isLoadingPrevChapter, currentIndex < 3 {
             isLoadingPrevChapter = true
-            Task { [weak self] in
-                guard let self else { return }
+            previousChapterTask = Task { [weak self] in
+                guard let self, !self.hasExited else { return }
                 let start = SourcePerfTrace.now
                 if let prevPages = await self.container?.readerPrependPreviousChapter() {
+                    guard !self.hasExited, !Task.isCancelled else { return }
                     let fetched = (SourcePerfTrace.now - start) * 1000
                     SourcePerfTrace.span(
                         "webtoon.prependChapter",

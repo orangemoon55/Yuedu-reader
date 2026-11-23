@@ -151,7 +151,7 @@ struct RootTabCustomizationView: View {
                     }
                     Slider(
                         value: iconSizeBinding,
-                        in: 22...36,
+                        in: 20...36,
                         step: 1
                     )
                     .disabled(!canCustomize)

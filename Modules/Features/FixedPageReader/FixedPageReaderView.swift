@@ -37,9 +37,12 @@ final class FixedPageReaderState: ObservableObject {
     var onSetConfiguration: ((FixedPageReaderConfiguration) -> Void)?
     var onNextChapter: (() -> Void)?
     var onPrevChapter: (() -> Void)?
+    var onPrepareForExit: (() -> Void)?
     var onReload: (() -> Void)?
     var onToggleAutoScroll: (() -> Void)?
     var onStopAutoScroll: (() -> Void)?
+    /// Flush the live page, then fence off the old controller until the switch finishes.
+    var onSetSourceChangeSuspended: ((Bool) -> Void)?
 }
 
 struct FixedPageChapterListItem: Identifiable, Equatable {
@@ -77,6 +80,11 @@ struct FixedPageReaderView: View {
     @Bindable private var globalSettings = GlobalSettings.shared
     @State private var readingStatsTracker: ReadingStatsSessionTracker?
     @State private var showTouchZoneEditor = false
+    @State private var showDownloadOptions = false
+    @State private var sourcePickerBook: ReadingBook?
+    @State private var sourceSwitchTask: Task<Void, Never>?
+    @State private var sourceGeneration = UUID()
+    @State private var isSwitchingSource = false
 
     var body: some View {
         // The shelf's card push hosts this reader in a UIKit controller whose bar
@@ -94,7 +102,16 @@ struct FixedPageReaderView: View {
 
     private var readerContent: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            if state.isManga {
+                Color(uiColor: .systemBackground)
+                    .overlay {
+                        ReadccLegacyGlassSurface(shape: Rectangle())
+                            .opacity(0.65)
+                    }
+                    .ignoresSafeArea()
+            } else {
+                Color.black.ignoresSafeArea()
+            }
 
             if let book = store.readingBook(id: bookId) {
                 FixedPageReaderRepresentable(
@@ -103,9 +120,13 @@ struct FixedPageReaderView: View {
                     state: state,
                     chapterFetcher: dependencies.chapterFetcher
                 )
+                    // A controller snapshots source headers, decoder, TOC and held pages.
+                    // A successful switch must replace it, not call its old onReload.
+                    .id(sourceGeneration)
+                    .mangaCanvasMargins(isManga: state.isManga)
                     .ignoresSafeArea()
 
-                if state.isLoading {
+                if state.isLoading || isSwitchingSource {
                     ProgressView().tint(.white).controlSize(.large)
                 }
 
@@ -114,22 +135,7 @@ struct FixedPageReaderView: View {
                 }
 
                 if state.showControls {
-                    FixedPageReaderControlsOverlay(
-                        state: state,
-                        isModal: readerNavigator == nil && !usesParentNavigationStack,
-                        onClose: {
-                            if let readerNavigator {
-                                readerNavigator.close()
-                            } else {
-                                // Pops a detail-origin push, dismisses a modal reader.
-                                presentationMode.wrappedValue.dismiss()
-                            }
-                        },
-                        onOpenTouchZoneEditor: {
-                            state.showControls = false
-                            showTouchZoneEditor = true
-                        }
-                    )
+                    readerControls(for: book)
                         .transition(.opacity)
                 }
 
@@ -159,7 +165,8 @@ struct FixedPageReaderView: View {
         .hidesRootTabBar()
         .navigationBarBackButtonHidden(true)
         .toolbarTitleDisplayMode(.inline)
-        .toolbar(state.showControls ? .visible : .hidden, for: .navigationBar, .bottomBar)
+        .toolbar(state.isManga ? .hidden : (state.showControls ? .visible : .hidden), for: .navigationBar)
+        .toolbar(state.showControls ? .visible : .hidden, for: .bottomBar)
         // The page is black in either appearance, and light-mode bars put a black
         // title and status bar on it. A visible bar background keeps the controls on
         // a backdrop wherever a bar does not take the dark scheme (iOS 27's bottom
@@ -193,6 +200,8 @@ struct FixedPageReaderView: View {
             beginReadingStatsSession()
         }
         .onDisappear {
+            // Leaving the reader while a TOC is pending must not rebind its source later.
+            sourceSwitchTask?.cancel()
             finishReadingStatsSession()
         }
         .onChanged(of: scenePhase) { phase in
@@ -216,10 +225,197 @@ struct FixedPageReaderView: View {
         .sheet(isPresented: $state.showChapterList) {
             FixedPageChapterListView(state: state, bookID: bookId) { state.showChapterList = false }
         }
+        .sheet(isPresented: $showDownloadOptions) {
+            if let book = currentBook {
+                downloadOptions(for: book)
+            }
+        }
+        .sheet(item: $sourcePickerBook) { book in
+            if let sourceID = book.bookSourceId {
+                SourceSearchSheet(
+                    query: book.title, author: book.author,
+                    currentSourceId: sourceID, currentBookURL: book.bookInfoURL ?? "",
+                    kind: .manga, restrictToKind: true,
+                    onSelectOrigin: { switchSource(to: $0) }
+                )
+            }
+        }
+    }
+
+    /// Keep optional closure inference outside the large reader/sheet ViewBuilder.
+    /// Both actions retain exactly the source/kind/queue guards they used inline.
+    private func readerControls(for book: ReadingBook) -> FixedPageReaderControlsOverlay {
+        let sourceAction: (() -> Void)?
+        if book.isOnline, book.resolvedPipelineKind == .manga, book.bookSourceId != nil {
+            sourceAction = {
+                guard !isSwitchingSource else { return }
+                state.onStopAutoScroll?()
+                sourcePickerBook = currentBook
+            }
+        } else {
+            sourceAction = nil
+        }
+        let cacheAction: (() -> Void)?
+        if offlineCacheSupported(book) {
+            cacheAction = { openDownloadOptions() }
+        } else {
+            cacheAction = nil
+        }
+        return FixedPageReaderControlsOverlay(
+            state: state,
+            isModal: readerNavigator == nil && !usesParentNavigationStack,
+            onClose: closeReader,
+            onOpenTouchZoneEditor: {
+                state.showControls = false
+                showTouchZoneEditor = true
+            },
+            onChangeSource: sourceAction,
+            onOfflineCache: cacheAction,
+            offlineCacheEnabled: !isSwitchingSource && offlineCacheChapterIndex(for: book) != nil,
+            onRefresh: {
+                guard !state.isLoading, !isSwitchingSource else { return }
+                state.onStopAutoScroll?()
+                if book.isOnline {
+                    // Same single-chapter cache invalidation as the novel refresh action.
+                    dependencies.bookSourceFetcher.clearChapterCache(bookId: book.id, chapterIndex: state.currentChapterIndex)
+                    store.clearCachedChapter(bookId: book.id, chapterIndex: state.currentChapterIndex)
+                }
+                state.onReload?()
+            }
+        )
+    }
+
+    private func closeReader() {
+        sourceSwitchTask?.cancel()
+        state.onPrepareForExit?()
+        if let readerNavigator {
+            readerNavigator.close()
+        } else {
+            presentationMode.wrappedValue.dismiss()
+        }
+    }
+
+    private func switchSource(to origin: BookOrigin) {
+        guard !isSwitchingSource,
+              let before = currentBook, before.isOnline,
+              before.resolvedPipelineKind == .manga else { return }
+        guard let source = BookSourceStore.shared.source(id: origin.sourceId), source.enabled,
+              origin.inferredContentKind() == .manga else {
+            state.errorMessage = localized("找不到來源配置")
+            return
+        }
+        guard before.bookSourceId != origin.sourceId || before.bookInfoURL != origin.bookUrl else { return }
+        state.onSetSourceChangeSuspended?(true)
+        isSwitchingSource = true
+        sourceSwitchTask = Task { @MainActor in
+            defer {
+                if !Task.isCancelled {
+                    isSwitchingSource = false
+                    sourceSwitchTask = nil
+                }
+            }
+            do {
+                let search = ChangeSourceSearch(fetcher: dependencies.bookSourceFetcher)
+                let toc = try await search.prepareTOCPackage(for: origin)
+                try Task.checkCancellation()
+                // A candidate may be removed/disabled while its TOC is loading. Also never
+                // rebind a removed book or overwrite another switch that won the race.
+                guard let live = currentBook, live.isOnline,
+                      live.bookSourceId == before.bookSourceId,
+                      live.bookInfoURL == before.bookInfoURL,
+                      let selected = BookSourceStore.shared.source(id: origin.sourceId), selected.enabled,
+                      origin.inferredContentKind() == .manga else {
+                    throw NSError(domain: "FixedPageSourceChange", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: localized("找不到來源配置")])
+                }
+                await dependencies.chapterFetcher.cancelAll(for: bookId, includingDownloads: true)
+                try Task.checkCancellation()
+                try await OnlineBookSourceSwitch(store: store, dependencies: dependencies)
+                    .commit(bookId: bookId, origin: origin, toc: toc)
+                // Finish the source/position commit even if exit cancelled its caller.
+                // Only the now-stale presentation work is suppressed.
+                guard !Task.isCancelled else { return }
+                // The old controller stays suspended: its disappearance must not save its
+                // old chapter over the mapped position. The new one reads the same book ID.
+                state.errorMessage = nil
+                state.isLoading = true
+                sourceGeneration = UUID()
+            } catch {
+                // Cancellation on exit must not resume the departing controller.
+                guard !Task.isCancelled else { return }
+                state.onSetSourceChangeSuspended?(false)
+                if !(error is CancellationError) { state.errorMessage = error.localizedDescription }
+            }
+        }
     }
 
     private var currentBook: ReadingBook? {
         store.readingBook(id: bookId)
+    }
+
+    private func offlineCacheSupported(_ book: ReadingBook) -> Bool {
+        guard book.isInBookshelf, book.isOnline, book.remoteSource == nil,
+              book.resolvedPipelineKind == .manga, let sourceID = book.bookSourceId else { return false }
+        return BookSourceStore.shared.source(id: sourceID)?.enabled == true
+    }
+
+    private func offlineCacheChapterIndex(for book: ReadingBook) -> Int? {
+        let index = state.currentChapterIndex
+        guard state.chapterListItems.indices.contains(index), let chapters = book.onlineChapters,
+              !chapters.isEmpty else { return nil }
+        let chapterID = state.chapterListItems[index].id
+        // The reader holds its TOC snapshot. Resolve its row against the shelf TOC the queue uses.
+        if chapters.indices.contains(index), chapters[index].id == chapterID { return index }
+        return chapters.firstIndex { $0.id == chapterID }
+    }
+
+    private func openDownloadOptions() {
+        guard !isSwitchingSource, let book = currentBook, offlineCacheSupported(book),
+              offlineCacheChapterIndex(for: book) != nil else { return }
+        state.onStopAutoScroll?()
+        showDownloadOptions = true
+    }
+
+    private func downloadOptions(for book: ReadingBook) -> some View {
+        let manager = dependencies.offlineDownloadManager
+        let chapters = book.onlineChapters ?? []
+        return ReaderDownloadOptionsView(
+            bookId: book.id,
+            bookTitle: book.title,
+            currentChapterIndex: offlineCacheChapterIndex(for: book) ?? 0,
+            totalChapters: chapters.count,
+            onStart: { start, count in
+                guard !isSwitchingSource, let latest = currentBook, offlineCacheSupported(latest),
+                      latest.bookSourceId == book.bookSourceId, latest.bookInfoURL == book.bookInfoURL,
+                      chapters.indices.contains(start), count > 0 else { return }
+                let end = start + min(count, chapters.count - start) - 1
+                guard let latestChapters = latest.onlineChapters, latestChapters.indices.contains(end),
+                      (start...end).allSatisfy({ latestChapters[$0].id == chapters[$0].id }) else {
+                    showDownloadOptions = false
+                    return
+                }
+                Task { await manager.start(book: latest, selection: .range(start...end), store: store) }
+            },
+            onPause: { Task { await manager.pause(bookId: book.id, store: store) } },
+            onResume: {
+                guard let latest = currentBook, offlineCacheSupported(latest) else { return }
+                Task {
+                    if latest.offlineDownloadState == .partial || latest.offlineDownloadState == .failed {
+                        await manager.retryFailed(book: latest, store: store)
+                    } else {
+                        await manager.resume(book: latest, store: store)
+                    }
+                }
+            },
+            onSkipFailed: { Task { await manager.skipFailed(bookId: book.id, store: store) } },
+            onRemove: {
+                Task {
+                    do { try await manager.remove(bookId: book.id, store: store) }
+                    catch { AppLogger.error("Failed to remove offline download", error: error) }
+                }
+            },
+            onClose: { showDownloadOptions = false }
+        )
     }
 
     private func beginReadingStatsSession() {
@@ -271,6 +467,10 @@ private struct FixedPageReaderRepresentable: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: FixedPageReaderViewController, context: Context) {}
+
+    static func dismantleUIViewController(_ controller: FixedPageReaderViewController, coordinator: ()) {
+        controller.prepareForExit()
+    }
 }
 
 // MARK: - Controls overlay
@@ -280,6 +480,10 @@ struct FixedPageReaderControlsOverlay: View {
     var isModal = true
     var onClose: () -> Void
     var onOpenTouchZoneEditor: () -> Void
+    var onChangeSource: (() -> Void)? = nil
+    var onOfflineCache: (() -> Void)? = nil
+    var offlineCacheEnabled = false
+    var onRefresh: (() -> Void)? = nil
     @State private var showSettings = false
     @State private var pendingTouchZoneEditor = false
     /// iOS 17: the paywall a locked setting asked for, presented once settings is gone.
@@ -288,9 +492,23 @@ struct FixedPageReaderControlsOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Color.clear
-                .allowsHitTesting(false)
+            ZStack(alignment: .top) {
+                Color.clear.allowsHitTesting(false)
+                if state.isManga {
+                    MangaReaderTopBar(
+                        chapterTitle: state.chapterTitle, isModal: isModal,
+                        isLoading: state.isLoading, hasChapters: !state.chapterListItems.isEmpty,
+                        onClose: onClose,
+                        onContents: { state.onStopAutoScroll?(); state.showChapterList = true },
+                        onRefresh: { if let onRefresh { onRefresh() } else { state.onReload?() } },
+                        onSettings: { state.onStopAutoScroll?(); showSettings = true },
+                        onOfflineCache: onOfflineCache, onChangeSource: onChangeSource,
+                        offlineCacheEnabled: offlineCacheEnabled
+                    )
+                }
+            }
                 .toolbar {
+                    if !state.isManga {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: onClose) {
                             Label(localized(isModal ? "關閉" : "返回"), systemImage: isModal ? "xmark" : "chevron.left")
@@ -308,6 +526,37 @@ struct FixedPageReaderControlsOverlay: View {
                             }
                         }
                     }
+                    ToolbarItem(placement: .topBarLeading) {
+                        if let onOfflineCache, !state.chapterListItems.isEmpty {
+                            Button(action: onOfflineCache) {
+                                Label(localized("离线缓存"), systemImage: "arrow.down.circle")
+                                    .labelStyle(.iconOnly)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(minWidth: 44, minHeight: 44)
+                            // Give VoiceOver and toolbar-hosted accessibility elements
+                            // the same enabled, exactly-once action as a direct tap.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(localized("离线缓存"))
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityIdentifier("manga.offlineCache")
+                            .accessibilityAction {
+                                guard offlineCacheEnabled else { return }
+                                onOfflineCache()
+                            }
+                            .disabled(!offlineCacheEnabled)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if let onChangeSource {
+                            Button(action: onChangeSource) {
+                                Label(localized("換源"), systemImage: "arrow.left.and.right")
+                                    .labelStyle(.iconOnly)
+                            }
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             state.onStopAutoScroll?()
@@ -316,6 +565,7 @@ struct FixedPageReaderControlsOverlay: View {
                             Label(localized("閱讀設定"), systemImage: "slider.horizontal.3")
                                 .labelStyle(.iconOnly)
                         }
+                    }
                     }
                     ToolbarItem(placement: .bottomBar) {
                         // Like Aidoku, the progress control lives in the native toolbar.
@@ -634,63 +884,94 @@ struct FixedPageReaderSettingsView: View {
 
 struct FixedPageChapterListView: View {
     @ObservedObject var state: FixedPageReaderState
-    /// Whose 正序／倒序 to read and save.
+    @Environment(\.colorScheme) private var colorScheme
+    // Retained call-site identity only; manga TOC no longer reads/writes sort preferences.
     let bookID: UUID?
-    /// Closes this sheet; not `@Environment(\.dismiss)`, for the reason on
-    /// `FixedPageReaderSettingsView.onClose`.
+    /// Stable owner closure, matching the existing fixed-page sheet lifecycle.
     var onClose: () -> Void
-    @State private var chosenOrder: ChapterListOrder?
+    @State private var edgeRequest: ReaderTOCEdgeRequest?
+    @State private var latestRowFrame: CGRect?
+    @State private var viewportFrame: CGRect = .zero
 
-    private var orderBinding: Binding<ChapterListOrder> {
-        ChapterListOrder.binding(chosen: $chosenOrder, for: bookID)
+    private var isAtLatest: Bool {
+        ReaderTOCEdgeVisibility.isAtLatest(row: latestRowFrame, viewport: viewportFrame,
+                                         verticalColumns: false)
+    }
+
+    private var edgeActionTitle: String { localized(isAtLatest ? "回頂部" : "去底部") }
+
+    private func jumpToOtherEdge() {
+        guard !state.chapterListItems.isEmpty else { return }
+        edgeRequest = ReaderTOCEdgeRequest(destination: isAtLatest ? .first : .latest)
     }
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-                List(orderBinding.wrappedValue.arranged(state.chapterListItems)) { item in
-                    Button {
-                        state.onSelectChapter?(item.index)
-                    } label: {
-                        HStack {
-                            Text(item.title)
-                                .foregroundColor(.primary)
-                                .font(DSFont.subheadline)
-                            Spacer()
-                            if item.index == state.currentChapterIndex {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.accentColor)
+                List {
+                    let first = ReaderTOCEdge.first.target(in: state.chapterListItems, index: \.index, title: \.title)
+                    let latest = ReaderTOCEdge.latest.target(in: state.chapterListItems, index: \.index, title: \.title)
+                    ForEach(state.chapterListItems) { item in
+                        Button {
+                            state.onSelectChapter?(item.index)
+                        } label: {
+                            HStack {
+                                Text(item.title)
+                                    .foregroundColor(.primary)
+                                    .font(DSFont.subheadline)
+                                Spacer()
+                                if item.index == state.currentChapterIndex {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.accentColor)
+                                }
                             }
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
+                        .interfaceSectionSurface()
+                        .id(item.index)
+                        .reportTOCEdges(index: item.index, first: first, latest: latest)
                     }
-                    .interfaceSectionSurface()
-                    .id(item.index)
                 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { viewportFrame = $0 }
+                .onPreferenceChange(ReaderTOCEdgeFramesKey.self) { latestRowFrame = $0[.latest] }
                 .softScrollEdges()
-                // Rows need their own transparent surface too — `scrollContentBackground`
-                // only clears the list container. docs/design.md §4.1.
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 0, for: .scrollContent)
+                .accessibilityIdentifier("manga.toc.list")
                 .onAppear {
+                    // Open at the current chapter, just as the novel TOC does.
+                    guard state.chapterListItems.contains(where: { $0.index == state.currentChapterIndex }) else { return }
                     proxy.scrollTo(state.currentChapterIndex, anchor: .center)
                 }
-                // Rows are `.id`'d by chapter index, so the current one is found in either order.
-                .onChange(of: orderBinding.wrappedValue) {
-                    proxy.scrollTo(state.currentChapterIndex, anchor: .center)
+                .onChange(of: edgeRequest, initial: true) { _, request in
+                    guard let request,
+                          let row = request.destination.target(in: state.chapterListItems, index: \.index, title: \.title)
+                    else { return }
+                    proxy.scrollTo(row, anchor: request.destination.anchor(verticalColumns: false))
                 }
             }
             .background(PageBackgroundView(scope: .settings).ignoresSafeArea())
             .pageBackgroundToolbar(for: .settings)
             .navigationTitle(localized("目錄"))
             .toolbarTitleDisplayMode(.inline)
+            // The black reader supplies white chrome. Its light TOC sheet needs its
+            // own adaptive tint/bar scheme instead of inheriting white-on-white buttons.
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
+            .tint(DSColor.textPrimary)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onClose) {
                         Label(localized("關閉"), systemImage: "xmark").labelStyle(.iconOnly)
+                            .foregroundStyle(DSColor.textPrimary)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    ChapterListOrderMenu(order: orderBinding)
+                    Button(action: jumpToOtherEdge) {
+                        Text(edgeActionTitle).foregroundStyle(DSColor.textPrimary)
+                    }
+                        .disabled(state.chapterListItems.isEmpty)
+                        .accessibilityLabel(edgeActionTitle)
+                        .accessibilityIdentifier("toc.latest")
                 }
             }
         }
@@ -718,14 +999,13 @@ struct FixedPageChapterListView: View {
     }
 }
 
-#Preview("目錄・倒序") {
+#Preview("目錄・首尾跳轉") {
     let state = FixedPageReaderState()
     state.chapterListItems = FixedPageChapterListItem.items(
         from: (0..<12).map { OnlineChapterRef(index: $0, title: "第 \($0 + 1) 話", url: "") }
     )
     state.currentChapterIndex = 4
     let bookID = UUID()
-    ChapterListOrder.store(.descending, for: bookID)
     return FixedPageChapterListView(state: state, bookID: bookID, onClose: {})
 }
 

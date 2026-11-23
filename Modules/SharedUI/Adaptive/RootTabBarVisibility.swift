@@ -18,6 +18,16 @@ final class RootTabBarVisibility: ObservableObject {
     @Published private(set) var isTabBarHidden = false
     private var hidingRequests: Set<UUID> = []
 
+    /// Replacing the native bar is presentation policy, never a screen's hiding
+    /// request. Registering it as a request would also hide the floating bar forever.
+    func hidesSystemTabBar(isFloating: Bool = false) -> Bool {
+        isFloating || isTabBarHidden
+    }
+
+    func showsFloatingTabBar(isFloating: Bool, keyboardVisible: Bool) -> Bool {
+        isFloating && !isTabBarHidden && !keyboardVisible
+    }
+
     func setRequest(_ id: UUID, hidesTabBar: Bool) {
         if hidesTabBar {
             hidingRequests.insert(id)
@@ -51,9 +61,10 @@ extension EnvironmentValues {
 /// reset the tab's navigation stack.
 struct RootTabBarHider: View {
     @ObservedObject var visibility: RootTabBarVisibility
+    var isFloating = false
 
     var body: some View {
-        if visibility.isTabBarHidden {
+        if visibility.hidesSystemTabBar(isFloating: isFloating) {
             Color.clear
                 .toolbar(.hidden, for: .tabBar)
                 .accessibilityHidden(true)

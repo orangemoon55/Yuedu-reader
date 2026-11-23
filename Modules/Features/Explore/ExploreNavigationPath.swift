@@ -25,6 +25,8 @@ enum ExploreNavigationRoute: Hashable {
     case module(id: String)
     /// A module row's 查看全部 (Phase 6f-2), with the section's values frozen in the route.
     case moduleList(ModuleListRoute)
+    case genres
+    case moduleStore(ModuleStoreRoute)
     /// 官方模組's AI 推薦 page (AI 推薦 plan 8d).
     case aiRecommendations
     /// 模組 (M6), from 設定 → 資源: 官方模組, the repositories and 匯入的模組.
@@ -60,6 +62,8 @@ enum ExploreNavigationRoute: Hashable {
             return lhsID == rhsID
         case (.moduleList(let lhsRoute), .moduleList(let rhsRoute)):
             return lhsRoute == rhsRoute
+        case (.genres, .genres): return true
+        case (.moduleStore(let lhs), .moduleStore(let rhs)): return lhs == rhs
         default:
             return false
         }
@@ -96,6 +100,11 @@ enum ExploreNavigationRoute: Hashable {
             hasher.combine(id)
         case .moduleList(let route):
             hasher.combine(13)
+            hasher.combine(route)
+        case .genres:
+            hasher.combine(18)
+        case .moduleStore(let route):
+            hasher.combine(19)
             hasher.combine(route)
         case .aiRecommendations:
             hasher.combine(14)

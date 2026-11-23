@@ -86,11 +86,19 @@ struct ExploreSourcePage: View {
                 if let onSearch, let onSwitchSource {
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: DSSpacing.xs) {
-                            Button(localized("搜索"), action: onSearch)
-                                .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                            Button(action: onSearch) {
+                                Text(localized("搜索"))
+                                    .padding(.horizontal, DSSpacing.md)
+                                    .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                                    .background { NavigationGlassCapsule(tint: DSColor.accent) }
+                            }
                                 .accessibilityLabel(localized("源內搜索"))
-                            Button(localized("切換"), action: onSwitchSource)
-                                .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                            Button(action: onSwitchSource) {
+                                Text(localized("切換"))
+                                    .padding(.horizontal, DSSpacing.md)
+                                    .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                                    .background { NavigationGlassCapsule(tint: DSColor.accent) }
+                            }
                                 .accessibilityLabel(localized("切換來源配置"))
                         }
                         .font(DSFont.body.weight(.medium))
@@ -107,7 +115,11 @@ struct ExploreSourcePage: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "ellipsis").accessibilityHidden(true)
+                            Label(localized("更多"), systemImage: "ellipsis")
+                                .labelStyle(.iconOnly)
+                                .font(.system(size: 20))
+                                .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
+                                .background { NavigationGlassCapsule(tint: DSColor.accent) }
                         }
                         .accessibilityLabel(localized("更多"))
                     }

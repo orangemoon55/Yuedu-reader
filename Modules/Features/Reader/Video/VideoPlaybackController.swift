@@ -298,6 +298,12 @@ final class VideoPlaybackController {
 
     // MARK: Transport
 
+    /// The centre buttons are transport, not episode navigation. Do not seek through a load,
+    /// failure, or the replay state; the timeline's existing scrubbing path stays independent.
+    var canSkip: Bool {
+        seekableRange != nil && currentTime.isFinite && (phase == .playing || phase == .paused)
+    }
+
     func togglePlayPause() {
         switch phase {
         case .playing: pause()
@@ -316,6 +322,22 @@ final class VideoPlaybackController {
     }
 
     func resume() {
+        // A transport jump to the finite end holds this episode paused, rather than advancing.
+        // Replay from that boundary waits for a seek to zero before resuming this same item.
+        if phase == .paused, duration > 0, currentTime >= duration {
+            let item = player.currentItem.map(ObjectIdentifier.init)
+            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                guard finished else { return }
+                Task { @MainActor [weak self] in
+                    guard let self, self.phase == .paused,
+                          self.player.currentItem.map(ObjectIdentifier.init) == item else { return }
+                    self.currentTime = 0
+                    self.player.playImmediately(atRate: self.isLongPressing ? Self.longPressRate : self.rate)
+                    self.phase = .playing
+                }
+            }
+            return
+        }
         player.playImmediately(atRate: isLongPressing ? Self.longPressRate : rate)
         phase = .playing
     }
@@ -327,8 +349,7 @@ final class VideoPlaybackController {
 
     /// Does nothing while nothing is seekable: a live stream with no window, or one still loading.
     func seek(to seconds: Double) {
-        guard let range = seekableRange else { return }
-        let target = min(max(seconds, range.lowerBound), range.upperBound)
+        guard let target = VideoSeek.target(seconds, in: seekableRange) else { return }
         currentTime = target
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { finished in
@@ -339,7 +360,12 @@ final class VideoPlaybackController {
     }
 
     func skip(by seconds: Double) {
-        seek(to: currentTime + seconds)
+        guard canSkip,
+              let target = VideoSeek.target(from: currentTime, by: seconds, in: seekableRange) else { return }
+        // Seeking to a finite end while playing can emit didPlayToEndTime and open the next
+        // episode. A transport button must stay in this one, even when its target is the end.
+        if duration > 0, target >= duration { pause() }
+        seek(to: target)
     }
 
     func setRate(_ rate: Float) {
@@ -382,6 +408,8 @@ final class VideoPlaybackController {
     }
 
     private func episodeEnded() {
+        // Ignore end notifications from an explicit seek while paused, including +15 at the end.
+        guard phase == .playing else { return }
         if let next = guide.episode(after: chapterIndex) {
             play(chapterIndex: next)
         } else {

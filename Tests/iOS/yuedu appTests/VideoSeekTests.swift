@@ -12,6 +12,61 @@ struct VideoSeekTests {
                     end: CMTime(seconds: end, preferredTimescale: 600))
     }
 
+    @Test("the centre transport moves fifteen seconds in this episode")
+    func transportMovesFifteenSeconds() {
+        #expect(VideoSeek.transportSeconds == 15)
+        #expect(VideoSeek.target(from: 30, by: -VideoSeek.transportSeconds, in: 0...90) == 15)
+        #expect(VideoSeek.target(from: 30, by: VideoSeek.transportSeconds, in: 0...90) == 45)
+    }
+
+    @Test("transport and absolute seeks clamp to a finite duration")
+    func transportClampsKnownDuration() {
+        let range = VideoTimeline(duration: 60, seekable: []).seekableRange
+        #expect(VideoSeek.target(from: 5, by: -15, in: range) == 0)
+        #expect(VideoSeek.target(from: 55, by: 15, in: range) == 60)
+        #expect(VideoSeek.target(-20, in: range) == 0)
+        #expect(VideoSeek.target(90, in: range) == 60)
+    }
+
+    @Test("unknown duration uses a live window or safely does nothing")
+    func transportUnknownDuration() {
+        let live = VideoTimeline(duration: .nan, seekable: [span(100, 130)])
+        #expect(VideoSeek.target(from: 120, by: -15, in: live.seekableRange) == 105)
+        #expect(VideoSeek.target(from: 120, by: 15, in: live.seekableRange) == 130)
+        #expect(VideoSeek.target(from: 120, by: 15,
+                                 in: VideoTimeline(duration: .nan, seekable: []).seekableRange) == nil)
+        #expect(VideoSeek.target(from: 0, by: -15, in: nil) == nil)
+    }
+
+    @Test("relative transport starts at the live window's edge, like scrubbing")
+    func transportOutsideWindow() {
+        #expect(VideoSeek.target(from: 147, by: -15, in: 100...130) == 115)
+        #expect(VideoSeek.target(from: 80, by: 15, in: 100...130) == 115)
+    }
+
+    @Test("non-finite media positions and invalid ranges never reach AVPlayer")
+    func transportRejectsInvalidTargets() {
+        #expect(VideoSeek.target(.nan, in: 0...60) == nil)
+        #expect(VideoSeek.target(.infinity, in: 0...60) == nil)
+        #expect(VideoSeek.target(from: .nan, by: 15, in: 0...60) == nil)
+        #expect(VideoSeek.target(from: 30, by: .infinity, in: 0...60) == nil)
+        #expect(VideoSeek.target(from: 30, by: .nan, in: 0...60) == nil)
+        #expect(VideoSeek.target(from: 30, by: 15, in: 0...Double.infinity) == nil)
+        #expect(VideoSeek.target(from: 30, by: 15, in: 30...30) == nil)
+        #expect(VideoSeek.target(from: 30, by: .greatestFiniteMagnitude, in: 0...60) == 60)
+    }
+
+    @Test("repeated transport taps accumulate from the latest seek target")
+    func repeatedTransportTargets() throws {
+        var time = 20.0
+        for _ in 0..<4 {
+            time = try #require(VideoSeek.target(from: time, by: 15, in: 0...60))
+        }
+        #expect(time == 60)
+        time = try #require(VideoSeek.target(from: time, by: -15, in: 0...60))
+        #expect(time == 45)
+    }
+
     @Test("a known duration is the timeline")
     func knownDuration() {
         let timeline = VideoTimeline(duration: 60, seekable: [span(0, 60)])

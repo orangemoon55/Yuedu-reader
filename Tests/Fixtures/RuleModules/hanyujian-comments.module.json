@@ -1,0 +1,169 @@
+{
+  "id": "local.hanyujian.comments",
+  "title": "含遇见 · 段评模块",
+  "description": "独立正文评论模块：匹配正在读的作品与章节，提供段评气泡、段落热评、本章说与作者说，不提供正文、不替换书源。阅读时会将书名、作者（或ISBN）发送到含遇见服务；章名和正文不上传。段落按返回原文在本机匹配，无法唯一对应时不显示。要求支持comments接口的App 3.0.2。服务使用HTTP；可在模块设置填入可选的含遇见Reader Token。",
+  "author": "自用适配",
+  "site": "http://210.16.175.40:11451",
+  "version": "1.0.0",
+  "requiredVersion": "3.0.2",
+  "hosts": [
+    "210.16.175.40",
+    "qidian.qpic.cn"
+  ],
+  "rateLimit": "1/500",
+  "globalParams": [
+    {
+      "name": "readerToken",
+      "title": "含遇见 Reader Token（可选）",
+      "type": "input",
+      "value": "",
+      "description": "服务要求登录时填写本服务自己的Reader Token；不读取其他书源登录态。请勿填写起点密码或Cookie。"
+    }
+  ],
+  "modules": [],
+  "search": {
+    "request": {
+      "url": "http://210.16.175.40:11451/search",
+      "method": "POST",
+      "bodyEncoding": "json",
+      "body": "{\"keyword\":\"{{keyword}}\",\"page\":1,\"page_size\":20}",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-Reader-Token": "{{readerToken}}"
+      }
+    },
+    "list": {
+      "items": "$.books[*]",
+      "id": "$.book_id",
+      "title": "$.name",
+      "author": "$.author",
+      "intro": "$.intro",
+      "kind": "$.category",
+      "cover": "https://qidian.qpic.cn/qdbimg/349573/{{$.book_id}}/600",
+      "url": "http://210.16.175.40:11451/books/{{$.book_id}}"
+    }
+  },
+  "comments": {
+    "cacheDuration": 3600,
+    "chapters": {
+      "request": {
+        "url": "http://210.16.175.40:11451/books/{{id}}/chapters",
+        "headers": {
+          "Accept": "application/json",
+          "X-Reader-Token": "{{readerToken}}"
+        }
+      },
+      "list": {
+        "items": "$.Data.Chapters[*]",
+        "id": "$.C",
+        "title": "$.N"
+      }
+    },
+    "chapter": {
+      "request": {
+        "url": "http://210.16.175.40:11451/reviews/list?bookId={{id}}&chapterId={{chapterId}}&page={{page}}&size=20&type=all&sort={{sort}}",
+        "headers": {
+          "Accept": "application/json",
+          "X-Reader-Token": "{{readerToken}}"
+        }
+      },
+      "sorts": [
+        {
+          "title": "默认",
+          "value": "default"
+        },
+        {
+          "title": "热门",
+          "value": "hot"
+        },
+        {
+          "title": "最新",
+          "value": "new"
+        }
+      ],
+      "total": "$.data.total",
+      "list": {
+        "items": "$.data.comments[*]",
+        "text": "$.content",
+        "author": "$.nickname",
+        "date": "$.createTime",
+        "likes": "$.likeCount"
+      }
+    },
+    "counts": {
+      "request": {
+        "url": "http://210.16.175.40:11451/reviews/list?bookId={{id}}&chapterId={{chapterId}}&page=1&size=20&type=all&sort=default",
+        "headers": {
+          "Accept": "application/json",
+          "X-Reader-Token": "{{readerToken}}"
+        }
+      },
+      "list": {
+        "items": "$.data.segments[?(@.paragraphId>0)]",
+        "count": "$.reviewCount",
+        "quote": "$.quote",
+        "id": "$.paragraphId"
+      }
+    },
+    "paragraph": {
+      "request": {
+        "url": "http://210.16.175.40:11451/reviews/list?bookId={{id}}&chapterId={{chapterId}}&paragraphId={{paragraphId}}&page={{page}}&size=20&type=all&sort={{sort}}",
+        "headers": {
+          "Accept": "application/json",
+          "X-Reader-Token": "{{readerToken}}"
+        }
+      },
+      "sorts": [
+        {
+          "title": "默认",
+          "value": "default"
+        },
+        {
+          "title": "热门",
+          "value": "hot"
+        },
+        {
+          "title": "最新",
+          "value": "new"
+        }
+      ],
+      "total": "$.data.total",
+      "list": {
+        "items": "$.data.comments[*]",
+        "text": "$.content",
+        "author": "$.nickname",
+        "date": "$.createTime",
+        "likes": "$.likeCount"
+      }
+    },
+    "hot": {
+      "request": {
+        "url": "http://210.16.175.40:11451/reviews/list?bookId={{id}}&chapterId={{chapterId}}&page=1&size=20&type=all&sort=default",
+        "headers": {
+          "Accept": "application/json",
+          "X-Reader-Token": "{{readerToken}}"
+        }
+      },
+      "list": {
+        "items": "$.data.segments[?(@.paragraphId>0)]",
+        "text": "$.comments[0].content",
+        "author": "$.comments[0].nickname",
+        "likes": "$.comments[0].likeCount",
+        "quote": "$.quote",
+        "id": "$.paragraphId"
+      }
+    },
+    "authorSay": {
+      "request": {
+        "url": "http://210.16.175.40:11451/reviews/list?bookId={{id}}&chapterId={{chapterId}}&paragraphId=-10&page=1&size=20&type=all&sort=default",
+        "headers": {
+          "Accept": "application/json",
+          "X-Reader-Token": "{{readerToken}}"
+        }
+      },
+      "text": "$.data.authorActivity.content",
+      "author": "$.data.authorActivity.authorName"
+    }
+  }
+}

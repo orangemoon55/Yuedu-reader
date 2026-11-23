@@ -47,6 +47,7 @@ struct ChapterTitleStyleSettingsView: View {
             }
             actionSection
         }
+        .accessibilityIdentifier("reader.chapterTitleStyle.form")
         .softScrollEdges()
         .navigationTitle(localized("章節標題樣式"))
         .toolbarTitleDisplayMode(.inline)
@@ -95,6 +96,7 @@ struct ChapterTitleStyleSettingsView: View {
         Section {
             Toggle(localized("高級 CSS 樣式"), isOn: binding(\ChapterTitleStyle.advancedCSSEnabled))
                 .font(DSFont.body)
+                .accessibilityIdentifier("reader.chapterTitleStyle.advancedCSS")
             if style.advancedCSSEnabled {
                 Button(action: openDesigner) {
                     Label(localized("編輯設計"), systemImage: "slider.horizontal.3")

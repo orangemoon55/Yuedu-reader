@@ -26,36 +26,142 @@ struct LoginFormGrid: View {
     let labels: [String: String]
     var onValueChange: ((LoginField, String) -> Void)?
     var onAction: ((LoginField) -> Void)?
+    @State private var form: LoginFormRows
+
+    init(
+        fields: [LoginField],
+        values: Binding<[String: String]>,
+        labels: [String: String],
+        onValueChange: ((LoginField, String) -> Void)? = nil,
+        onAction: ((LoginField) -> Void)? = nil
+    ) {
+        self.init(form: LoginFormRows(fields: fields), values: values, labels: labels,
+                  onValueChange: onValueChange, onAction: onAction)
+    }
+
+    /// A long source's host already owns this snapshot; passing it avoids repacking
+    /// all fields each time a value or resolved label invalidates the host's body.
+    init(
+        form: LoginFormRows,
+        values: Binding<[String: String]>,
+        labels: [String: String],
+        onValueChange: ((LoginField, String) -> Void)? = nil,
+        onAction: ((LoginField) -> Void)? = nil
+    ) {
+        self.fields = form.fields
+        self._values = values
+        self.labels = labels
+        self.onValueChange = onValueChange
+        self.onAction = onAction
+        _form = State(initialValue: form)
+    }
+
+    var body: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(form.bands) { band in
+                LoginFormBand(
+                    band: band,
+                    values: $values,
+                    labels: labels,
+                    onValueChange: onValueChange,
+                    onAction: onAction
+                )
+            }
+        }
+        .onChange(of: fields) { _, newFields in
+            form = LoginFormRows(fields: newFields)
+        }
+    }
+}
+
+/// A snapshot of the source's layout, rebuilt only when its field definition is loaded.
+/// A band contains whole rows that cannot be separated without breaking a row span.
+struct LoginFormRows {
+    struct Control: Identifiable {
+        struct ID: Hashable {
+            let name: String
+            let occurrence: Int
+        }
+
+        let id: ID
+        let field: LoginField
+    }
+
+    struct Band: Identifiable {
+        let controls: [Control]
+        let cells: [LoginGridCell]
+        let accessibilityCells: [LoginGridCell]
+
+        var id: Control.ID { controls[0].id }
+    }
+
+    let fields: [LoginField]
+    let hasButtons: Bool
+    let bands: [Band]
+
+    init(fields: [LoginField]) {
+        self.fields = fields
+        hasButtons = fields.contains { $0.type == .button }
+        let packed = LoginGridPacker.pack(specs: fields.map(\.gridSpec))
+        var occurrences: [String: Int] = [:]
+        let controls = fields.map { field in
+            let occurrence = occurrences[field.name, default: 0]
+            occurrences[field.name] = occurrence + 1
+            return Control(id: .init(name: field.name, occurrence: occurrence), field: field)
+        }
+
+        var bands: [Band] = []
+        var start = 0
+        while start < packed.count {
+            let firstRow = packed[start].row
+            var endRow = firstRow + packed[start].rowSpan
+            var end = start + 1
+            while end < packed.count, packed[end].row < endRow {
+                endRow = max(endRow, packed[end].row + packed[end].rowSpan)
+                end += 1
+            }
+            let bandControls = Array(controls[start..<end])
+            bands.append(Band(
+                controls: bandControls,
+                cells: packed[start..<end].map { cell in
+                    LoginGridCell(row: cell.row - firstRow, column: cell.column,
+                                  rowSpan: cell.rowSpan, colSpan: cell.colSpan)
+                },
+                // Same view identity at all text sizes; only the cells' positions change.
+                accessibilityCells: bandControls.indices.map { row in
+                    LoginGridCell(row: row, column: 0, rowSpan: 1, colSpan: LoginGridSpec.columnCount)
+                }
+            ))
+            start = end
+        }
+        self.bands = bands
+    }
+}
+
+struct LoginFormBand: View {
+    let band: LoginFormRows.Band
+    @Binding var values: [String: String]
+    let labels: [String: String]
+    let onValueChange: ((LoginField, String) -> Void)?
+    let onAction: ((LoginField) -> Void)?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         LoginGridLayout(
-            specs: fields.map { $0.gridSpec(accessibilityLayout: dynamicTypeSize.isAccessibilitySize) },
+            cells: dynamicTypeSize.isAccessibilitySize ? band.accessibilityCells : band.cells,
             horizontalSpacing: DSSpacing.md
         ) {
-            ForEach(fields) { field in
+            ForEach(band.controls) { control in
                 LoginFieldCell(
-                    field: field,
-                    label: labels[field.name] ?? field.name,
-                    value: valueBinding(for: field),
+                    field: control.field,
+                    label: labels[control.field.name] ?? control.field.name,
+                    values: $values,
+                    onValueChange: onValueChange,
                     onAction: onAction
                 )
             }
         }
-    }
-
-    /// The shared value binding: a stored value wins, then the source-declared default.
-    /// The setter routes through `onValueChange` so hosts keep their own persistence
-    /// rules (book sources persist select changes immediately, TTS saves on 儲存).
-    private func valueBinding(for field: LoginField) -> Binding<String> {
-        Binding(
-            get: { values[field.name] ?? field.defaultValue ?? "" },
-            set: { newValue in
-                values[field.name] = newValue
-                onValueChange?(field, newValue)
-            }
-        )
     }
 }
 
@@ -66,6 +172,26 @@ private struct LoginFieldCell: View {
     let label: String
     @Binding var value: String
     let onAction: ((LoginField) -> Void)?
+
+    init(
+        field: LoginField,
+        label: String,
+        values: Binding<[String: String]>,
+        onValueChange: ((LoginField, String) -> Void)?,
+        onAction: ((LoginField) -> Void)?
+    ) {
+        self.field = field
+        self.label = label
+        self.onAction = onAction
+        // Stored value first, source default second. Keep the host's existing edit callback.
+        _value = Binding(
+            get: { values.wrappedValue[field.name] ?? field.defaultValue ?? "" },
+            set: { newValue in
+                values.wrappedValue[field.name] = newValue
+                onValueChange?(field, newValue)
+            }
+        )
+    }
 
     var body: some View {
         content
@@ -381,8 +507,17 @@ private enum LoginPillAlignment: Equatable {
 /// Places the login cells on the 12-column packing produced by `LoginGridPacker`.
 /// A port of Legado-upstream's `GridPackLayout` (row-span support included).
 struct LoginGridLayout: Layout {
-    let specs: [LoginGridSpec]
+    let cells: [LoginGridCell]
     let horizontalSpacing: CGFloat
+
+    init(specs: [LoginGridSpec], horizontalSpacing: CGFloat) {
+        self.init(cells: LoginGridPacker.pack(specs: specs), horizontalSpacing: horizontalSpacing)
+    }
+
+    init(cells: [LoginGridCell], horizontalSpacing: CGFloat) {
+        self.cells = cells
+        self.horizontalSpacing = horizontalSpacing
+    }
 
     struct Cache {
         var width: CGFloat = -1
@@ -428,10 +563,8 @@ struct LoginGridLayout: Layout {
     }
 
     private func placements(width: CGFloat, subviews: Subviews) -> Placements {
-        let count = min(specs.count, subviews.count)
+        let count = min(cells.count, subviews.count)
         guard count > 0, width > 0 else { return Placements() }
-
-        let cells = LoginGridPacker.pack(specs: Array(specs.prefix(count)))
 
         func columnX(_ column: Int) -> CGFloat {
             (width + horizontalSpacing) * CGFloat(column) / CGFloat(LoginGridSpec.columnCount)
@@ -450,15 +583,17 @@ struct LoginGridLayout: Layout {
             naturalHeights[index] = max(measured, DSLayout.minimumTapTarget)
         }
 
-        let rowCount = cells.map { $0.row + $0.rowSpan }.max() ?? 0
-        guard rowCount > 0 else { return Placements() }
+        let rowCount = cells.prefix(count).reduce(0) { max($0, $1.row + $1.rowSpan) }
         var rowY = [CGFloat](repeating: 0, count: rowCount + 1)
-        for row in 1...rowCount {
-            var boundary = rowY[row - 1]
-            for index in 0..<count where cells[index].row + cells[index].rowSpan == row {
-                boundary = max(boundary, rowY[cells[index].row] + naturalHeights[index])
+        var next = 0
+        for row in 0...rowCount {
+            if row > 0 { rowY[row] = max(rowY[row], rowY[row - 1]) }
+            // Packed start rows are ordered; each cell constrains its end boundary once.
+            while next < count, cells[next].row == row {
+                let end = row + cells[next].rowSpan
+                rowY[end] = max(rowY[end], rowY[row] + naturalHeights[next])
+                next += 1
             }
-            rowY[row] = boundary
         }
 
         let frames = (0..<count).map { index -> CGRect in

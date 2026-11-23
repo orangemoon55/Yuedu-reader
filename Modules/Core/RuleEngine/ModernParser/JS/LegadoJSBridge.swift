@@ -2025,9 +2025,7 @@ struct LegadoHTTPResult {
     /// evaluation (a detail page's 簡介 button) restores the previous one as soon as the
     /// script returns, usually before this delivery.
     func toast(_ msg: String) {
-        #if DEBUG
-        print("[JSBridge toast] \(msg)")
-        #endif
+        // Source messages may contain account/token data; never echo them to logs.
         let handler = toastHandler
         DispatchQueue.main.async { handler?(msg) }
     }

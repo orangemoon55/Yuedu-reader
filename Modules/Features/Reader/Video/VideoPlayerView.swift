@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The video player, laid out as Swiftfin and plezy lay theirs out (maintainer, 2026-11-01:
 /// 「照開源的emby player」, 「plezy 這個也算吧」): the picture full screen, and over it a top
-/// bar (close, title, actions), previous / play-pause / next in the centre (plezy), and the
+/// bar (close, title, actions), rewind 15 s / play-pause / forward 15 s in the centre, and the
 /// timeline at the bottom. A tap shows and hides them; the episodes open in a sheet.
 ///
 /// On an iPhone it opens in landscape and turns to portrait for a portrait picture, as the
@@ -344,21 +344,17 @@ struct VideoPlayerView: View {
 
     private func centerControls(_ controller: VideoPlaybackController) -> some View {
         HStack(spacing: DSSpacing.xxl) {
-            Button(action: { controller.playPrevious(); touched() }) {
-                Image(systemName: "backward.end.fill")
-                    .font(DSFont.title2)
-                    .frame(width: DSLayout.videoCenterControlSide, height: DSLayout.videoCenterControlSide)
+            VideoSkipButton(direction: .backward) { seconds in
+                controller.skip(by: seconds)
+                touched()
             }
-            .disabled(!controller.hasPrevious)
-            .accessibilityLabel(localized("上一集"))
+            .disabled(!controller.canSkip || scrubTime != nil || pan != nil)
             playPauseButton(controller)
-            Button(action: { controller.playNext(); touched() }) {
-                Image(systemName: "forward.end.fill")
-                    .font(DSFont.title2)
-                    .frame(width: DSLayout.videoCenterControlSide, height: DSLayout.videoCenterControlSide)
+            VideoSkipButton(direction: .forward) { seconds in
+                controller.skip(by: seconds)
+                touched()
             }
-            .disabled(!controller.hasNext)
-            .accessibilityLabel(localized("下一集"))
+            .disabled(!controller.canSkip || scrubTime != nil || pan != nil)
         }
     }
 
@@ -382,10 +378,15 @@ struct VideoPlayerView: View {
         default:
             Button(action: { controller.togglePlayPause(); touched() }) {
                 Image(systemName: playSymbol(controller.phase))
-                    .font(DSFont.largeTitle)
-                    .frame(width: DSLayout.videoCenterControlSide, height: DSLayout.videoCenterControlSide)
+                    .font(.system(size: VideoTransportLayout.primaryGlyphSize))
+                    .frame(width: VideoTransportLayout.primaryVisibleSide, height: VideoTransportLayout.primaryVisibleSide)
+                    .readccGlassSurface(cornerRadius: VideoTransportLayout.primaryVisibleSide / 2, onDark: true)
+                    .frame(width: VideoTransportLayout.primaryHitSide, height: VideoTransportLayout.primaryHitSide)
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(controller.phase == .playing ? localized("暫停") : localized("播放"))
+            .accessibilityIdentifier("video.playPause")
         }
     }
 
@@ -416,6 +417,54 @@ struct VideoPlayerView: View {
                 touched()
             }
         )
+    }
+}
+
+// MARK: - Transport button
+
+enum VideoTransportLayout {
+    static let skipVisibleSide: CGFloat = 46
+    static let skipHitSide: CGFloat = 58
+    static let skipGlyphSize: CGFloat = 22
+    static let primaryVisibleSide: CGFloat = 48
+    static let primaryHitSide: CGFloat = 56
+    static let primaryGlyphSize: CGFloat = 26
+}
+
+/// A local, testable transport button. Episode selection remains in the top bar and its sheet.
+struct VideoSkipButton: View {
+    enum Direction: Equatable {
+        case backward
+        case forward
+
+        var seconds: Double { self == .backward ? -VideoSeek.transportSeconds : VideoSeek.transportSeconds }
+        var symbol: String { self == .backward ? "gobackward.15" : "goforward.15" }
+        var label: String { self == .backward ? localized("快退15秒") : localized("快进15秒") }
+        var identifier: String { self == .backward ? "video.seekBackward15" : "video.seekForward15" }
+    }
+
+    let direction: Direction
+    let onSkip: (Double) -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button { onSkip(direction.seconds) } label: {
+            Image(systemName: direction.symbol)
+                .font(.system(size: VideoTransportLayout.skipGlyphSize, weight: .semibold))
+                .frame(width: VideoTransportLayout.skipVisibleSide, height: VideoTransportLayout.skipVisibleSide)
+                .readccGlassSurface(cornerRadius: VideoTransportLayout.skipVisibleSide / 2, onDark: true)
+                .frame(width: VideoTransportLayout.skipHitSide, height: VideoTransportLayout.skipHitSide)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(direction.label)
+        .accessibilityIdentifier(direction.identifier)
+        .accessibilityAction {
+            guard isEnabled else { return }
+            onSkip(direction.seconds)
+        }
     }
 }
 

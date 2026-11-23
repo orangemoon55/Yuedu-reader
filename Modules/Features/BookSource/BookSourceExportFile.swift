@@ -1,53 +1,64 @@
-import CoreTransferable
 import Foundation
-import UniformTypeIdentifiers
 
-/// Legado-format `.json` payload handed to `ShareLink` for 匯出書源（儲存到「檔案」、AirDrop…）.
-///
-/// Shared through `ShareLink` rather than `.fileExporter` on purpose: a document picker opened
-/// from a SwiftUI `Menu` action hits the iOS 17 menu-dismissal race documented in
-/// `Technotes/iOS17MenuModalPresentation.md`. The app sequences that boundary from the real
-/// chooser dismissal instead of guessing a delay. 「儲存到檔案」 is also one tap inside the
-/// share sheet.
-///
-/// `ShareLink` does NOT escape that race, though — this comment used to claim UIKit ownership
-/// removed the boundary, and 匯出書源 was reported dead on iOS 17.7 because of it. The share
-/// sheet is a second presentation like any other, so the link has to be a direct page or sheet
-/// control: `BookSourceExportShareLink` hands this payload to `BookSourceListView`'s
-/// first-level `ShareExportSheet` before iOS 18. See `MenuShareLinkPresentationPolicy`.
-///
-/// Carries the sources as a snapshot and encodes only when a share actually completes: `Menu`
-/// content is built eagerly with its parent row, so encoding at construction time would
-/// re-serialize every visible source on every layout pass. The snapshot also keeps the encode
-/// off `BookSourceStore`, which is main-actor state the transfer closure must not reach into.
-struct BookSourceExportFile: Transferable {
-    /// Filename including the `.json` extension. Build it with `filename(for:)`.
+/// The chosen source configuration snapshot, not the stores that hold logins,
+/// cookies or rule runtime state. Resolve the snapshot only when the menu row is tapped.
+struct BookSourceExportRequest: Identifiable, Sendable {
+    let id = UUID()
+    let title: String
     let filename: String
     let sources: [BookSource]
 
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .json) { file in
-            // Pretty-printed because this copy is meant to be opened and read; the
-            // clipboard export stays compact for pasting into a chat.
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
-            let data = try encoder.encode(file.sources)
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(file.filename)
-            try data.write(to: url, options: .atomic)
-            return SentTransferredFile(url)
-        }
+    init(title: String, filenameLabel: String, sources: [BookSource]) {
+        self.title = title
+        self.filename = BookSourceExportFile.filename(for: filenameLabel)
+        self.sources = sources
+    }
+}
+
+/// Owns one real, atomically written JSON file. A unique parent directory preserves
+/// the display filename without colliding with a second export of the same name.
+final class BookSourceExportFile: Sendable {
+    let url: URL
+    private let directory: URL
+
+    private init(url: URL, directory: URL) {
+        self.url = url
+        self.directory = directory
     }
 
-    /// Turns a user-facing label (書源名稱, 分組名, 「全部書源」…) into a safe `.json` filename.
-    /// Group and source names come from imported JSON, so they can contain path separators and
-    /// newlines that would otherwise produce an unwritable URL.
+    static func write(
+        _ request: BookSourceExportRequest,
+        in temporaryDirectory: URL = FileManager.default.temporaryDirectory
+    ) throws -> BookSourceExportFile {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
+        let data = try encoder.encode(request.sources)
+        let directory = temporaryDirectory.appendingPathComponent(
+            "book-source-export-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent(request.filename, isDirectory: false)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let file = BookSourceExportFile(url: url, directory: directory)
+        // If the atomic write throws, `file` releases its directory on unwind.
+        try data.write(to: url, options: .atomic)
+        return file
+    }
+
+    // Called after the activity completes/cancels. deinit also handles failed presentation.
+    func remove() { try? FileManager.default.removeItem(at: directory) }
+    deinit { remove() }
+
+    /// Imported group/source names can contain characters invalid in a filename.
     static func filename(for label: String) -> String {
-        let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|").union(.newlines)
-        let cleaned = label
-            .components(separatedBy: invalid)
-            .joined(separator: "-")
+        let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
+            .union(.newlines).union(.controlCharacters)
+        let cleaned = label.components(separatedBy: invalid).joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = cleaned.isEmpty ? "book-sources" : String(cleaned.prefix(60))
-        return "\(base).json"
+        var base = ""
+        for character in cleaned.prefix(60) {
+            // 60 graphemes need not fit within the filesystem's component byte limit.
+            guard base.utf8.count + String(character).utf8.count <= 240 else { break }
+            base.append(character)
+        }
+        return "\(base.isEmpty ? "book-sources" : base).json"
     }
 }

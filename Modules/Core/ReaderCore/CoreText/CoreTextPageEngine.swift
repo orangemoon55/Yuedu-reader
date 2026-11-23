@@ -1254,7 +1254,7 @@ final class CoreTextPageEngine: PageRenderingProvider, LinkNavigationProviding, 
                     return abort
                 }
                 var paginatedFirstPage = firstPageResult.layout
-                paginatedFirstPage.translation = buildResult.translation
+                paginatedFirstPage.translation = buildResult.translation?.removingHotCommentDisplayRanges(paginatedFirstPage.hotCommentElisions)
                 guard let firstPageLayout = await layoutWithCurrentAppearance(
                     paginatedFirstPage, isStillWanted: { abortReason(generation: generation) == nil }
                 ) else {
@@ -1302,7 +1302,7 @@ final class CoreTextPageEngine: PageRenderingProvider, LinkNavigationProviding, 
 
         let fullLayoutStart = ProcessInfo.processInfo.systemUptime
         var layout = await paginationManager.paginate(request).layout
-        layout.translation = buildResult.translation
+        layout.translation = buildResult.translation?.removingHotCommentDisplayRanges(layout.hotCommentElisions)
         if let abort = abortReason(generation: generation) { return abort }
         SourcePerfTrace.record(
             "coreText.fullLayout",

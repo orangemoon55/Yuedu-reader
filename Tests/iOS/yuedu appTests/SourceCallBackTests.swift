@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 @testable import yuedu_app
 
 /// legado-E / MD3 `SourceCallBack` (requested 2026-10-10 for 📚书山聚合): a source with
@@ -115,4 +116,28 @@ struct SourceCallBackTests {
         #expect(!encoded.contains("customButton"))
         #expect(!encoded.contains("callBackJs"))
     }
+
+    @Test("author-name fallback carries a session-all flag without changing ordinary source requests")
+    func authorSearchIsSessionAllSources() throws {
+        let observed = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
+        let token = NotificationCenter.default.addObserver(
+            forName: .bookSourceRequestedSearch, object: nil, queue: nil
+        ) { note in
+            observed.withLock { value in
+                value = ["keyword": note.userInfo?["keyword"] as? String ?? "",
+                         "sourceURL": note.userInfo?["sourceURL"] as? String ?? "",
+                         "all": String(note.userInfo?["authorNameSearch"] as? Bool ?? false)]
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        SourceCallBackService.requestAuthorSearch(keyword: "  Author name  ")
+        #expect(observed.withLock { $0 } == ["keyword": "Author name", "sourceURL": "", "all": "true"])
+        SourceCallBackService.requestSearch(keyword: "genre", sourceURL: "https://a.fixture")
+        #expect(observed.withLock { $0 } == ["keyword": "genre", "sourceURL": "https://a.fixture", "all": "false"])
+        var a = BookSource(bookSourceUrl: "https://a.fixture", bookSourceName: "A")
+        var b = BookSource(bookSourceUrl: "https://b.fixture", bookSourceName: "B")
+        a.enabled = true; b.enabled = false
+        #expect(SearchSourceScope.all.resolvedSources(from: [a, b]).map(\.id) == [a.id])
+    }
+
 }

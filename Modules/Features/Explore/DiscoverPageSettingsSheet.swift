@@ -104,6 +104,7 @@ struct DiscoverPageSettingsSheet: View {
                     Button { dismiss() } label: {
                         Label(localized("關閉"), systemImage: "xmark")
                     }
+                    .accessibilityIdentifier("discover.settings.close")
                 }
                 // How every source's page lays out and loads (decision 31).
                 ToolbarItem(placement: .topBarTrailing) {
@@ -147,6 +148,7 @@ struct DiscoverPageSettingsSheet: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(showsAll ? .isSelected : [])
+            .accessibilityIdentifier("discover.settings.showAll")
             ForEach(discover.quickActions) { action in
                 controlChip(action)
             }
@@ -243,6 +245,7 @@ private struct DiscoverCategoryCard: View, Equatable {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier("discover.settings.category.\(item.title)")
             }
         }
     }

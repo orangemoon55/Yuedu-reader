@@ -97,6 +97,21 @@ final class HomeModel: ObservableObject {
         }, firstPages: firstPages)
     }
 
+    /// The one-section form prepares only the chosen source, not every imported provider.
+    func syncPreview(with page: HomePage, hiddenFromLatest: Set<SourceInstanceKey> = [],
+                     sources: BookSourceStore = .shared) async {
+        guard page.sections.count == 1, let section = page.sections.first,
+              case .bookSource(let url) = section.binding.contentOwner else {
+            await sync(with: page, hiddenFromLatest: hiddenFromLatest)
+            return
+        }
+        let source = await HomeRankSourceLookup.source(url: url, store: sources)
+        guard !Task.isCancelled else { return }
+        var available: [any HomeSectionProviding] = []
+        if let source { available.append(BookSourceProvider(source: source, firstPages: firstPages ?? DiscoverFirstPages())) }
+        _ = build(page, hiddenFromLatest: hiddenFromLatest, available: available)
+    }
+
     // MARK: - Building
 
     /// Builds the rows for `page` as it now stands.
@@ -111,6 +126,7 @@ final class HomeModel: ObservableObject {
     ///   of its list would be: a card of 最新 a row per library.
     func sync(with page: HomePage, hiddenFromLatest: Set<SourceInstanceKey> = []) async {
         await waitForSources()
+        guard !Task.isCancelled else { return }
         // Timed on the main thread, where a stall during it is named: every sync makes a provider
         // for each explore source, and a library can hold thousands (16883 at install 0DCE3CDE).
         // `cpu=` and the stages tell main-thread work from a frozen process: Crashlytics 09195e35
@@ -123,8 +139,8 @@ final class HomeModel: ObservableObject {
     }
 
     /// `sync` once the library is read; returns how many providers were offered.
-    private func build(_ page: HomePage, hiddenFromLatest: Set<SourceInstanceKey>) -> Int {
-        let available = SourcePerfTrace.span("home.sync.providers", thresholdMs: 16, measuresCPU: true) { makeProviders() }
+    private func build(_ page: HomePage, hiddenFromLatest: Set<SourceInstanceKey>, available supplied: [any HomeSectionProviding]? = nil) -> Int {
+        let available = supplied ?? SourcePerfTrace.span("home.sync.providers", thresholdMs: 16, measuresCPU: true) { makeProviders() }
         let existing = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var built: [Row] = []
         var restarted: [String] = []
@@ -298,7 +314,7 @@ final class HomeModel: ObservableObject {
             ])
             guard isCurrent(row) else { return }
             // Offline, or the site down: the saved page stays, as it would have without this load.
-            guard !showsSaved.contains(rowID) else { return }
+            guard !keepsShown, !showsSaved.contains(rowID) else { return }
             setState(.failed(error.localizedDescription), of: rowID)
         }
     }

@@ -132,6 +132,7 @@ struct PageBackgroundView: View {
 
 private struct ThemedAppSurfaceModifier: ViewModifier {
     let scope: AppearancePageBackgroundScope
+    var showsArtwork = true
     @Bindable private var gs = GlobalSettings.shared
     @ObservedObject private var subscriptionStore = SubscriptionStore.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -147,7 +148,7 @@ private struct ThemedAppSurfaceModifier: ViewModifier {
     /// screen it had pushed. Branch inside `.background` instead.
     /// (The two theme-less branches this replaced were already byte-identical.)
     func body(content: Content) -> some View {
-        let slice = self.slice
+        let slice = showsArtwork ? self.slice : nil
         return content
             .scrollContentBackground(.hidden)
             .background {
@@ -203,8 +204,8 @@ extension View {
     /// hidden so the background shows through the nav-bar region. A no-op when
     /// no theme is active and no page background is configured. Apply directly
     /// on the `Form`/`List`.
-    func themedAppSurface(for scope: AppearancePageBackgroundScope = .global) -> some View {
-        modifier(ThemedAppSurfaceModifier(scope: scope))
+    func themedAppSurface(for scope: AppearancePageBackgroundScope = .global, showsArtwork: Bool = true) -> some View {
+        modifier(ThemedAppSurfaceModifier(scope: scope, showsArtwork: showsArtwork))
     }
 
     /// Hides the navigation bar's default material when a page background or app
@@ -236,11 +237,10 @@ struct DSCard<Content: View>: View {
 }
 
 /// The capsule every chip, filter and quick action in a bar is drawn as. Unselected it
-/// sits on the app's floating surface — glass with 外觀主題 › 界面效果 › 毛玻璃 on, its
-/// fill without — so it matches the controls floating over the page; selected it is the
-/// accent with `DSColor.textOnAccent` text. The label is subheadline at medium weight: a semantic text
-/// style, so it scales with Dynamic Type and keeps the system's tracking, with the
-/// weight rather than the size setting it apart from body text.
+/// sits on the shared floating surface. Selected it uses the same quiet selection wash
+/// as floating navigation and a primary-color label; on a glass card its unselected
+/// state stays a plain fill so it never layers glass on glass. The label remains
+/// subheadline at medium weight and keeps the existing Dynamic Type and hit size.
 struct DSCapsuleLabel: View {
     let title: String
     /// A symbol before the title.
@@ -262,6 +262,17 @@ struct DSCapsuleLabel: View {
     /// otherwise make a capsule narrower than it is tall.
     var minWidth: CGFloat? = nil
 
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var selectionFill: Color {
+        NavigationGlassCapsule.selectionFill(
+            tint: DSColor.accent,
+            scheme: colorScheme,
+            contrast: contrast
+        )
+    }
+
     var body: some View {
         HStack(spacing: DSSpacing.xs) {
             if let systemImage {
@@ -275,7 +286,7 @@ struct DSCapsuleLabel: View {
             if let detail {
                 Text(detail)
                     .fontWeight(.regular)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textSecondary))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DSColor.textSecondary))
                     .lineLimit(1)
             }
             if let trailingSystemImage {
@@ -285,17 +296,20 @@ struct DSCapsuleLabel: View {
             }
         }
         .font(DSFont.subheadline.weight(.medium))
-        .foregroundStyle(isSelected ? AnyShapeStyle(DSColor.textOnAccent) : AnyShapeStyle(DSColor.textPrimary))
+        .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(DSColor.textPrimary))
         .padding(.horizontal, fillsWidth ? DSSpacing.sm : DSSpacing.md)
         .padding(.vertical, fillsWidth ? DSSpacing.xs : 0)
         .frame(minWidth: minWidth, maxWidth: fillsWidth ? .infinity : nil, minHeight: DSLayout.capsuleControlHeight)
         .background {
             if isSelected {
-                Capsule().fill(DSColor.accent)
+                // Only the material changes; the chip's label/frame stays intact.
+                ReadccGlassSelection(shape: Capsule(style: .continuous), tint: DSColor.accent,
+                                     samplesBackdrop: !onCard)
             } else if onCard {
-                Capsule().fill(DSColor.neutralControlFill)
+                // A card already owns its surface: never stack another glass layer.
+                Capsule(style: .continuous).fill(DSColor.neutralControlFill)
             } else {
-                Color.clear.floatingSurfaceBackground(in: Capsule())
+                NavigationGlassCapsule(tint: DSColor.accent)
             }
         }
         .contentShape(Capsule())
@@ -314,7 +328,7 @@ struct DSChip: View {
         Button(action: action) {
             DSCapsuleLabel(title: title, isSelected: isSelected, minWidth: minWidth)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ReadccGlassPressStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

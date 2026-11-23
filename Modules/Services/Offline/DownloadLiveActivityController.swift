@@ -3,19 +3,9 @@
 @preconcurrency import ActivityKit
 import Foundation
 
-/// Drives the offline-download Live Activity from the one place download state is written,
-/// `BookStore.replaceOfflineDownloadTask`.
-///
-/// Hooking the single write funnel rather than observing `@Published var books` matters:
-/// the array republishes for every unrelated edit, and a Live Activity update is a cross-
-/// process message. It is also why updates are coalesced — a download completing a chapter a
-/// second would otherwise push once per chapter.
-///
-/// Progress is pushed by this process only. There is no ActivityKit push token and no
-/// `aps-environment` entitlement, so while iOS has the app suspended the activity holds its
-/// last value and catches up when the app runs again. That is the deliberate trade recorded
-/// in `Technotes/OfflineDownloadContract.md`: a push backend would keep the number live at a
-/// cost far out of proportion to a progress bar.
+/// Download progress stays in the app: offline caching must not occupy the Dynamic Island.
+/// Keeps the existing download-write hooks solely to dismiss activities left by older builds.
+/// This controller never changes download jobs, their progress, or cached chapter files.
 @MainActor
 final class DownloadLiveActivityController {
     static let shared = DownloadLiveActivityController()
@@ -32,11 +22,36 @@ final class DownloadLiveActivityController {
     /// catches up every 1.5 seconds still reads as continuous.
     private static let minimumUpdateInterval: TimeInterval = 1.5
 
-    private init() {
-        // ActivityKit keeps Live Activities alive when the app process is reclaimed. Reattach
-        // on the next launch; otherwise `apply` requests a second activity while the stale one
-        // the user is looking at never receives the pause state.
-        activity = Activity<DownloadActivityAttributes>.activities.first
+    /// Narrow injectable handle: cleanup can be tested without requesting a real activity.
+    struct ExistingDownloadActivity {
+        let endImmediately: @MainActor () async -> Void
+    }
+
+    private let existingActivities: @MainActor () -> [ExistingDownloadActivity]
+
+    init(existingActivities: @escaping @MainActor () -> [ExistingDownloadActivity] = {
+        // Deliberately typed: TTS, reading and timer activities are not enumerated or ended.
+        Activity<DownloadActivityAttributes>.activities.map { activity in
+            ExistingDownloadActivity {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+    }) {
+        self.existingActivities = existingActivities
+    }
+
+    /// Pure publication policy, independent of authorization, progress, and pause state.
+    nonisolated static func shouldPublish(
+        _ state: DownloadActivityAttributes.ContentState?
+    ) -> Bool {
+        false
+    }
+
+    /// Enumerate every time, not only a remembered first activity from this process.
+    func cleanupExistingActivities() async {
+        for activity in existingActivities() {
+            await activity.endImmediately()
+        }
     }
 
     /// Recomputes the activity from the shelf. Safe to call on every download write.
@@ -44,6 +59,12 @@ final class DownloadLiveActivityController {
     /// `BookStore` is not actor-isolated, so the snapshot is built where the call happens and
     /// only the small `Sendable` result crosses to the main actor — `[ReadingBook]` never does.
     nonisolated static func refresh(books: [ReadingBook]) {
+        // No payload/cover work on the progress path when publication is disabled.
+        guard shouldPublish(nil) else {
+            // Startup/foreground hooks end all legacy activities. Progress writes do
+            // no ActivityKit enumeration, cover work, or main-queue task allocation.
+            return
+        }
         let active = books.filter(isActiveDownload)
         // Only checks which thumbnails already exist — cheap enough for the progress path.
         let covers = DownloadActivityCoverStore.publishedFilenames(for: active.map(\.id))
@@ -127,6 +148,10 @@ final class DownloadLiveActivityController {
     }
 
     func apply(_ state: DownloadActivityAttributes.ContentState?) {
+        guard Self.shouldPublish(state) else {
+            end()
+            return
+        }
         guard let state else {
             end()
             return
@@ -148,16 +173,14 @@ final class DownloadLiveActivityController {
         pendingState = nil
         lastPushedState = nil
         lastPushedAt = .distantPast
-        guard let activity else { return }
         self.activity = nil
-        Task {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
+        Task { await cleanupExistingActivities() }
     }
 
     // MARK: - Private
 
     private func start(with state: DownloadActivityAttributes.ContentState) {
+        guard Self.shouldPublish(state) else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         do {
             activity = try Activity.request(

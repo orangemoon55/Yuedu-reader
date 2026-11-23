@@ -90,6 +90,7 @@ extension GlobalSettings {
     /// invariant "a custom theme is selected ⟹ a baseline exists" holds even for
     /// themes saved before write-back existed. Cheap and idempotent.
     func synchronizeAppearanceThemeExtras() {
+        guard !isApplyingAppearanceExtras else { return }
         // Every write below lands in a `didSet` that would otherwise write straight
         // back into the theme being applied — restoring the baseline would overwrite
         // the very extras this call is installing.

@@ -135,11 +135,11 @@ struct HomeCardContent: Identifiable {
 
     /// A book in 呈現方式's previews (`HomeLayoutSample`): its bundled cover, its title and author
     /// as its edition has them, and nothing to open (a preview is not touched).
-    init(sample title: String, author: String, kind: ContentKind, cover: CoverReference?) {
+    init(sample title: String, author: String, kind: ContentKind, cover: CoverReference?, blurb: String? = nil) {
         id = SourceItemKey(instance: SourceInstanceKey(type: .library, id: "layoutSample"), item: title)
         self.title = title
         self.author = author
-        blurb = nil
+        self.blurb = blurb
         category = nil
         series = nil
         self.cover = .reference(cover, session: nil)

@@ -174,6 +174,8 @@ extension ReaderRenderSettings {
             || translation != old.translation
             // 底部對齊 moves line origins, which pagination stores in each page.
             || bottomJustify != old.bottomJustify
+            // Paragraph default alignment changes the attributed text and page geometry.
+            || textAlignment != old.textAlignment
             // 套用書本間距 decides each paragraph's line height and spacing while the string is built.
             || usesBookSpacing != old.usesBookSpacing
             || regexRefresh == .relayout

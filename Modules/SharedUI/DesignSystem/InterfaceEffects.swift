@@ -2,6 +2,17 @@ import SwiftUI
 
 // MARK: - Design System: 界面效果 (Interface Effects)
 
+/// Pure accessibility gate shared by the glass surfaces and their tests.
+enum InterfaceGlassPolicy {
+    static func shouldUseGlass(
+        isEnabled: Bool,
+        systemReduceTransparency: Bool,
+        override: Bool? = nil
+    ) -> Bool {
+        isEnabled && !(override ?? systemReduceTransparency)
+    }
+}
+
 /// The surface every floating element in the app sits on — the mini player, the
 /// reader's toolbars, control bars and quick panels. One entry point so the two
 /// knobs in 外觀主題 › 界面效果 reach all of them:
@@ -45,9 +56,15 @@ extension View {
     /// accent-tinted, reads as a focused field, and its placeholder loses contrast.
     func floatingSurfaceBackground<SurfaceShape: Shape>(
         in shape: SurfaceShape,
-        fill: Color = DSColor.surface
+        fill: Color = DSColor.surface,
+        reduceTransparencyOverride: Bool? = nil
     ) -> some View {
-        modifier(InterfaceSurfaceModifier(shape: shape, fill: fill, glassAllowed: true))
+        modifier(InterfaceSurfaceModifier(
+            shape: shape,
+            fill: fill,
+            glassAllowed: true,
+            reduceTransparencyOverride: reduceTransparencyOverride
+        ))
     }
 
     /// The 光暈 alone, for elements that already own their background and only need
@@ -98,19 +115,24 @@ extension View {
 private struct InterfaceSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     let shape: SurfaceShape
     let fill: Color
-    /// The caller's own gate. Floating chrome passes `true` — it is the functional
-    /// layer, where the system design puts glass unconditionally. Content-layer
-    /// cards pass 分組卡片, which is opt-in.
+    /// Content-layer cards pass 分組卡片; only those explicitly gated surfaces use it.
     let glassAllowed: Bool
+    /// Scrolling rows/cards share the visual wash but never allocate a live backdrop per row.
+    var isScrollingContent = false
+    /// Explicit environment override used by navigation controls in deterministic hosts.
+    var reduceTransparencyOverride: Bool? = nil
 
     @Bindable private var settings = GlobalSettings.shared
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Reduce Transparency is a system-level request for solid surfaces; it outranks
-    /// a cosmetic preference, so it forces the opaque fill regardless of the toggle.
+    /// Reduce Transparency outranks the cosmetic preference and requests a solid fill.
     private var usesFrostedGlass: Bool {
-        glassAllowed && settings.interfaceFrostedGlass && !reduceTransparency
+        InterfaceGlassPolicy.shouldUseGlass(
+            isEnabled: glassAllowed && settings.interfaceFrostedGlass,
+            systemReduceTransparency: reduceTransparency,
+            override: reduceTransparencyOverride
+        )
     }
 
     /// The active theme's card artwork for this appearance, or nil for the plain fill.
@@ -129,7 +151,20 @@ private struct InterfaceSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if usesFrostedGlass {
+        if usesFrostedGlass && isScrollingContent {
+            // List owns clipping and reuse. Painting a translucent material wash is
+            // cheap; a live blur + clip + shadow per row forces backdrop recomposition
+            // for every scroll frame, even when SwiftUI does not re-run body.
+            content.background {
+                shape.fill(fill.opacity(0.76))
+                if let cardLayer {
+                    AppearanceCardArtwork(layer: cardLayer, paintOpacity: paintOpacity)
+                        .clipShape(shape)
+                } else {
+                    shape.fill(fill.opacity(paintOpacity))
+                }
+            }
+        } else if usesFrostedGlass {
             // Card artwork is the card's *paint*, not what the card is made of. It used
             // to replace the whole surface, so a pack carrying a plain white card
             // background (山风 - 春水漾) left 分組卡片 and every floating control opaque
@@ -230,7 +265,8 @@ private struct InterfaceCardSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
             InterfaceSurfaceModifier(
                 shape: shape,
                 fill: fill,
-                glassAllowed: settings.interfaceGlassCards
+                glassAllowed: settings.interfaceGlassCards,
+                isScrollingContent: true
             )
         )
     }
@@ -256,7 +292,8 @@ private struct InterfaceSectionSurfaceModifier: ViewModifier {
                 InterfaceSurfaceModifier(
                     shape: Rectangle(),
                     fill: fill,
-                    glassAllowed: settings.interfaceGlassCards
+                    glassAllowed: settings.interfaceGlassCards,
+                isScrollingContent: true
                 )
             )
         )
@@ -277,26 +314,13 @@ private struct FloatingSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     }
 }
 
-/// iOS 26 has the real thing — `glassEffect`, the same material the system
-/// toolbars are made of, so a panel and the toolbar above it match without either
-/// being hand-painted. Older systems have no glass; `.regularMaterial` is the
-/// closest they offer.
-///
-/// The `#if compiler` guard mirrors `RSSFeedSearchBar`: the iOS 26 API only exists
-/// in the Xcode 26 SDK, and the project still has to compile on older toolchains.
+/// The same backdrop/rim renderer is used on iOS17 and newer. Availability of
+/// Apple's Liquid Glass never decides whether this app's glass effect is visible.
 private struct FrostedGlassBackground<SurfaceShape: Shape>: ViewModifier {
     let shape: SurfaceShape
 
     func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: shape)
-        } else {
-            content.background(.regularMaterial, in: shape)
-        }
-        #else
-        content.background(.regularMaterial, in: shape)
-        #endif
+        content.background { ReadccLegacyGlassSurface(shape: shape) }
     }
 }
 

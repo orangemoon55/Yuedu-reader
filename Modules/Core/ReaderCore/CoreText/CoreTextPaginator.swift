@@ -221,6 +221,8 @@ final class CoreTextPaginator: Sendable {
         @LayoutShared var framesetter: CTFramesetter
         /// UTF-16 character range per page (total length == attributedString.length)
         let pageRanges: [CFRange]
+        /// Removed display-only module hot cards, in the original document display coordinates.
+        var hotCommentElisions: [NSRange] = []
         /// Final per-page frames shared by metadata extraction and drawing.
         var pageArtifacts: [PageLayoutArtifact] = []
         /// pageIndex → inline attachments
@@ -581,6 +583,7 @@ final class CoreTextPaginator: Sendable {
                 attributedString: updated,
                 framesetter: newFramesetter,
                 pageRanges: pageRanges,
+                hotCommentElisions: hotCommentElisions,
                 pageArtifacts: updatedArtifacts,
                 inlineAttachments: inlineAttachments,
                 inlineAnnotations: inlineAnnotations,
@@ -737,6 +740,7 @@ final class CoreTextPaginator: Sendable {
         attributedString.enumerateAttributes(in: fullRange, options: []) { attrs, range, _ in
             hasher.combine(range.location)
             hasher.combine(range.length)
+            hasher.combine(attrs[ReaderHotCommentPageLimit.attribute] as? String)
 
             if let font = attrs[.font] as? UIFont {
                 hasher.combine(font.fontName)
@@ -1052,6 +1056,46 @@ final class CoreTextPaginator: Sendable {
         maxPages: Int? = nil,
         centresSinglePage: Bool = false
     ) -> ChapterLayout {
+        let candidates = ReaderHotCommentPageLimit.candidates(in: attrStr)
+        var current = attrStr
+        var removed = Set<String>()
+        // No screen estimate: adding/removing a card changes page breaks. Repack until the
+        // final page ranges satisfy the limit. Each pass removes at least one bounded candidate.
+        // This runs inside the existing detached layout task, never on the reader's main actor.
+        while true {
+            var layout = computeUnrestrictedLayout(spineIndex: spineIndex, attrStr: current,
+                imagePage: imagePage, pageBackgroundImage: pageBackgroundImage,
+                pageBackgroundColor: pageBackgroundColor, darkPageBackgroundColor: darkPageBackgroundColor,
+                anchorOffsets: anchorOffsets, renderSize: renderSize, fontSize: fontSize,
+                contentInsets: contentInsets, writingMode: writingMode, bottomJustify: bottomJustify,
+                maxPages: maxPages, centresSinglePage: centresSinglePage)
+            let duplicates = ReaderHotCommentPageLimit.duplicateIDs(in: layout.attributedString, pages: layout.pageRanges)
+            guard !duplicates.isEmpty else {
+                layout.hotCommentElisions = candidates.filter { removed.contains($0.id) }.map(\.range)
+                return layout
+            }
+            removed.formUnion(duplicates)
+            let ranges = candidates.filter { removed.contains($0.id) }.map(\.range)
+            current = ReaderHotCommentPageLimit.removing(ranges, from: attrStr)
+        }
+    }
+
+    private static func computeUnrestrictedLayout(
+        spineIndex: Int,
+        attrStr: NSAttributedString,
+        imagePage: HTMLAttributedStringBuilder.ImagePage?,
+        pageBackgroundImage: UIImage?,
+        pageBackgroundColor: UIColor?,
+        darkPageBackgroundColor: UIColor?,
+        anchorOffsets: [String: Int],
+        renderSize: CGSize,
+        fontSize: CGFloat,
+        contentInsets: UIEdgeInsets,
+        writingMode: ReaderWritingMode,
+        bottomJustify: Bool,
+        maxPages: Int? = nil,
+        centresSinglePage: Bool = false
+    ) -> ChapterLayout {
         // The string as given, before vertical preparation: a centred page is laid out again from it.
         let sourceAttrStr = attrStr
         let contentRect = uiContentRect(
@@ -1095,7 +1139,12 @@ final class CoreTextPaginator: Sendable {
                 maxInlineAnnotationAdvance: maxInlineAnnotationAdvance
             )
         }
-        let attrStr = preparedAttrStr
+        let attrStr: NSAttributedString
+        if !writingMode.isVertical, imagePage == nil, Self.floatMarkers(in: preparedAttrStr).isEmpty {
+            attrStr = CJKParagraphTailFit.fitting(preparedAttrStr, lineWidth: contentPathRect.width)
+        } else {
+            attrStr = preparedAttrStr
+        }
         if writingMode.isVertical {
             debugVerticalLog("computeLayout spine=\(spineIndex) renderSize=\(renderSize) fontSize=\(fontSize) contentInsets=\(contentInsets) ctPathRect=\(contentPathRect) maxAnnotationAdvance=\(maxInlineAnnotationAdvance ?? 0) attrLen=\(attrStr.length)", verbose: true)
             debugAttributedPrefix(attrStr, label: "computeLayout.attrPrefix", limit: 24)
@@ -1417,7 +1466,7 @@ final class CoreTextPaginator: Sendable {
                 moved.top += shift
                 moved.bottom -= shift
             }
-            return computeLayout(
+            return computeUnrestrictedLayout(
                 spineIndex: spineIndex, attrStr: sourceAttrStr, imagePage: imagePage,
                 pageBackgroundImage: pageBackgroundImage, pageBackgroundColor: pageBackgroundColor,
                 darkPageBackgroundColor: darkPageBackgroundColor, anchorOffsets: anchorOffsets,

@@ -168,22 +168,28 @@ private struct VerticalTOCView: View {
     let pageOffsets: [UUID: Int]
     let showsPageNumbers: Bool
     let uncachedChapterIndexes: Set<Int>
-    let order: ChapterListOrder
+    let edgeRequest: ReaderTOCEdgeRequest?
+    let onViewportChange: (CGRect) -> Void
+    let onEdgeFramesChange: ([ReaderTOCEdge: CGRect]) -> Void
     let onSelectChapter: (BookChapter) -> Void
 
     @State private var didInitialTOCScroll = false
 
-    /// Right to left: the columns run the other way from `chapters`, which is already in the
-    /// reader's 正序／倒序.
-    private var reversedChapters: [BookChapter] {
-        Array(chapters.reversed())
+    private var latestChapterIndex: Int? {
+        ReaderTOCScrollTarget.latest(in: chapters)
     }
+
+    /// RTL column placement starts at the right edge; this is visual flow only,
+    /// and does not change the reader's stored chapter ordering.
+    private var rightToLeftChapters: [BookChapter] { Array(chapters.reversed()) }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: VerticalTOCLayout.columnSpacing) {
-                    ForEach(Array(reversedChapters.enumerated()), id: \.element.id) { _, chapter in
+                    let first = ReaderTOCScrollTarget.first(in: chapters)
+                    let latest = latestChapterIndex
+                    ForEach(Array(rightToLeftChapters.enumerated()), id: \.element.id) { _, chapter in
                         let pageNumber: Int = {
                             if let offset = pageOffsets[chapter.id] {
                                 return offset + 1
@@ -199,6 +205,9 @@ private struct VerticalTOCView: View {
                         ) {
                             onSelectChapter(chapter)
                         }
+                        .reportTOCEdges(for: chapter,
+                                        first: first,
+                                        latest: latest)
                         .id(chapter.index)
                     }
                 }
@@ -213,11 +222,11 @@ private struct VerticalTOCView: View {
                     proxy.scrollTo(row, anchor: .trailing)
                 }
             }
-            // Switching 正序／倒序 moves the current chapter to the other end; follow it.
-            .onChange(of: order) {
-                if let row = ReaderTOCScrollTarget.row(currentIndex: currentIndex, in: chapters) {
-                    proxy.scrollTo(row, anchor: .trailing)
-                }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onViewportChange($0) }
+            .onPreferenceChange(ReaderTOCEdgeFramesKey.self, perform: onEdgeFramesChange)
+            .onChange(of: edgeRequest, initial: true) { _, request in
+                guard let request, let row = request.destination.target(in: chapters) else { return }
+                proxy.scrollTo(row, anchor: request.destination.anchor(verticalColumns: true))
             }
         }
     }
@@ -230,6 +239,21 @@ enum ReaderTOCScrollTarget {
     static func row(currentIndex: Int, in shown: [BookChapter]) -> Int? {
         shown.contains(where: { $0.index == currentIndex }) ? currentIndex : nil
     }
+
+    /// Reader TOC headings (volume markers) have no content of their own. Jump to the
+    /// last readable chapter in the displayed order; fall back to the last entry for
+    /// synthetic or heading-only lists.
+    static func latest(in chapters: [BookChapter]) -> Int? {
+        chapters.last(where: { !isVolumeHeading($0.title) })?.index ?? chapters.last?.index
+    }
+
+    static func first(in chapters: [BookChapter]) -> Int? {
+        chapters.first(where: { !isVolumeHeading($0.title) })?.index ?? chapters.first?.index
+    }
+
+    static func isVolumeHeading(_ title: String) -> Bool {
+        OnlineChapterRef.isVolumeSeparatorTitle(title)
+    }
 }
 
 /// 閱讀器目錄面板。
@@ -240,8 +264,6 @@ enum ReaderTOCScrollTarget {
 struct ReaderTOCView: View {
     let chapters: [BookChapter]
     let bookTitle: String
-    /// Whose 正序／倒序 to read and save.
-    let bookID: UUID?
     let currentPage: Int
     let totalPages: Int
     let tocLayoutMode: TOCLayoutMode
@@ -257,13 +279,18 @@ struct ReaderTOCView: View {
     @Binding var isPresented: Bool
 
     @State private var searchText = ""
-    @State private var chosenOrder: ChapterListOrder?
+    @State private var edgeRequest: ReaderTOCEdgeRequest?
+    @State private var pendingEdge: ReaderTOCEdge?
+    @State private var latestRowFrame: CGRect?
+    @State private var viewportFrame: CGRect = .zero
 
-    private var orderBinding: Binding<ChapterListOrder> {
-        ChapterListOrder.binding(chosen: $chosenOrder, for: bookID)
+    private var isAtLatest: Bool {
+        !isSearching && ReaderTOCEdgeVisibility.isAtLatest(
+            row: latestRowFrame, viewport: viewportFrame,
+            verticalColumns: tocLayoutMode == .verticalRTLColumns)
     }
 
-    private var order: ChapterListOrder { orderBinding.wrappedValue }
+    private var edgeActionTitle: String { localized(isAtLatest ? "回頂部" : "去底部") }
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -271,10 +298,20 @@ struct ReaderTOCView: View {
 
     private var filteredChapters: [BookChapter] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ordered = order.arranged(chapters, level: \.level)
-        guard !query.isEmpty else { return ordered }
-        return ordered.filter {
+        guard !query.isEmpty else { return chapters }
+        return chapters.filter {
             $0.title.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func jumpToOtherEdge() {
+        guard !chapters.isEmpty else { return }
+        let destination: ReaderTOCEdge = isAtLatest ? .first : .latest
+        if isSearching {
+            pendingEdge = destination
+            searchText = ""
+        } else {
+            edgeRequest = ReaderTOCEdgeRequest(destination: destination)
         }
     }
 
@@ -286,7 +323,12 @@ struct ReaderTOCView: View {
                 .toolbarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        ChapterListOrderMenu(order: orderBinding)
+                        Button(action: jumpToOtherEdge) {
+                            Text(edgeActionTitle)
+                        }
+                        .disabled(chapters.isEmpty)
+                        .accessibilityLabel(edgeActionTitle)
+                        .accessibilityIdentifier("toc.latest")
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -306,6 +348,11 @@ struct ReaderTOCView: View {
                     prompt: localized("搜索章節")
                 )
                 .background(PageBackgroundView(scope: .settings).ignoresSafeArea())
+                .onChange(of: isSearching) { _, searching in
+                    guard !searching, let destination = pendingEdge else { return }
+                    pendingEdge = nil
+                    edgeRequest = ReaderTOCEdgeRequest(destination: destination)
+                }
                 .pageBackgroundToolbar(for: .settings)
         }
     }
@@ -337,7 +384,9 @@ struct ReaderTOCView: View {
                     pageOffsets: pageOffsets,
                     showsPageNumbers: showsPageNumbers,
                     uncachedChapterIndexes: uncachedChapterIndexes,
-                    order: order,
+                    edgeRequest: edgeRequest,
+                    onViewportChange: { viewportFrame = $0 },
+                    onEdgeFramesChange: { latestRowFrame = $0[.latest] },
                     onSelectChapter: { chapter in
                         onSelectChapter(chapter)
                         isPresented = false
@@ -385,10 +434,15 @@ struct ReaderTOCView: View {
                         .listRowSeparator(.hidden)
                 }
 
+                let first = ReaderTOCScrollTarget.first(in: filteredChapters)
+                let latest = ReaderTOCScrollTarget.latest(in: filteredChapters)
                 ForEach(filteredChapters) { chapter in
                     chapterRow(chapter)
+                        .reportTOCEdges(for: chapter, first: first, latest: latest)
                 }
             }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { viewportFrame = $0 }
+            .onPreferenceChange(ReaderTOCEdgeFramesKey.self) { latestRowFrame = $0[.latest] }
             .softScrollEdges()
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -403,11 +457,9 @@ struct ReaderTOCView: View {
                 // on record.
                 proxy.scrollTo(row, anchor: .center)
             }
-            // Switching 正序／倒序 moves the current chapter to the other end; follow it.
-            .onChange(of: order) {
-                guard let row = ReaderTOCScrollTarget.row(currentIndex: currentIndex, in: filteredChapters)
-                else { return }
-                proxy.scrollTo(row, anchor: .center)
+            .onChange(of: edgeRequest, initial: true) { _, request in
+                guard let request, let row = request.destination.target(in: filteredChapters) else { return }
+                proxy.scrollTo(row, anchor: request.destination.anchor(verticalColumns: false))
             }
         }
     }
@@ -457,7 +509,7 @@ struct ReaderTOCView: View {
             }
             // A minimum, not a height: a two-line title over an update time needs more.
             .frame(minHeight: 48)
-            .padding(.horizontal, 30)
+            .padding(.horizontal, 20)
             .background {
                 if chapter.id == currentChapterID {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -484,7 +536,6 @@ struct ReaderTOCView: View {
             BookChapter(index: 2, title: "第三章 抉擇", content: ""),
         ],
         bookTitle: "範例書名",
-        bookID: nil,
         currentPage: 1,
         totalPages: 240,
         tocLayoutMode: .horizontalList,
@@ -508,7 +559,6 @@ struct ReaderTOCView: View {
             BookChapter(index: 3, title: "第三章 抉擇", content: ""),
         ],
         bookTitle: "範例書名",
-        bookID: nil,
         currentPage: 0,
         totalPages: 0,
         tocLayoutMode: .horizontalList,
@@ -531,7 +581,6 @@ struct ReaderTOCView: View {
             BookChapter(index: 3, title: "第四章 歸途", content: ""),
         ],
         bookTitle: "範例書名",
-        bookID: nil,
         currentPage: 0,
         totalPages: 0,
         tocLayoutMode: .verticalRTLColumns,
@@ -545,11 +594,9 @@ struct ReaderTOCView: View {
     )
 }
 
-/// 倒序 with volumes: each volume stays above its own chapters, the volumes run last to first.
-#Preview("目錄・倒序分卷") {
-    let bookID = UUID()
-    ChapterListOrder.store(.descending, for: bookID)
-    return ReaderTOCView(
+/// Volumes retain their source order in the reader's TOC.
+#Preview("目錄・分卷") {
+    ReaderTOCView(
         chapters: [
             BookChapter(index: 0, title: "第一卷 風起", content: ""),
             BookChapter(index: 1, title: "第一章 序幕", content: "", level: 1),
@@ -559,7 +606,6 @@ struct ReaderTOCView: View {
             BookChapter(index: 5, title: "第四章 歸途", content: "", level: 1),
         ],
         bookTitle: "範例書名",
-        bookID: bookID,
         currentPage: 0,
         totalPages: 0,
         tocLayoutMode: .horizontalList,
