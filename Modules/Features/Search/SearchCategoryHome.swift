@@ -31,8 +31,7 @@ struct SearchCategoryHome: View {
                 .padding(.top, DSSpacing.xxs)
             DiscoverySourceCategoryPage(model: categories,
                 configuration: pageStore.selectedConfiguration.rawValue,
-                page: pageStore.page, sources: sources,
-                onAllTypes: { navigation?.path.append(ExploreNavigationRoute.genres) })
+                page: pageStore.page, sources: sources)
         }
             .rootTabTitle(localized("搜索"), onScroll: .fadesTitle)
             .pageBackgroundToolbar(for: .explore)

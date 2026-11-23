@@ -5,7 +5,6 @@ struct DiscoverySourceCategoryPage: View {
     let configuration: String
     let page: HomePage?
     let sources: [BookSource]
-    var onAllTypes: (() -> Void)? = nil
     @State private var showsSources = false
 
     private var active: BookSource? {
@@ -68,10 +67,6 @@ struct DiscoverySourceCategoryPage: View {
                 Button(localized("切換來源配置")) { showsSources = true }
                     .disabled(sources.isEmpty)
                     .accessibilityIdentifier("discovery.category.changeEmpty")
-                if let onAllTypes {
-                    Button(localized("所有類型"), action: onAllTypes)
-                        .accessibilityIdentifier("search.allTypes")
-                }
             }
         }
     }

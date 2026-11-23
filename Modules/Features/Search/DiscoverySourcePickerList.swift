@@ -33,11 +33,11 @@ struct DiscoverySourcePickerList: View {
         // Filtering runs on data/query/pin changes, never for a scroll-frame preference.
         let allowed = Set(sources.map(\.id))
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        displayedSources = pins.orderedBookSources(snapshot.filter {
+        displayedSources = snapshot.filter {
             allowed.contains($0.id) && (term.isEmpty
                 || $0.bookSourceName.localizedStandardContains(term)
                 || $0.bookSourceUrl.localizedStandardContains(term))
-        })
+        }
     }
 
     private var initialLocationTarget: UUID? {
@@ -108,7 +108,7 @@ struct DiscoverySourcePickerList: View {
             .onReceive(store.sourcesPublisher) { rebuildRows(from: $0) }
             .onChange(of: sources.map(\.id)) { _, _ in rebuildRows(from: store.sources) }
             .onChange(of: query) { _, _ in rebuildRows(from: store.sources) }
-            .onChange(of: pins.pinnedIDs) { _, _ in rebuildRows(from: store.sources) }
+
             .task(id: initialLocationTarget) {
                 guard let target = initialLocationTarget else { return }
                 for _ in 0..<5 {
@@ -158,7 +158,7 @@ struct DiscoverySourcePickerList: View {
         let selected = source.bookSourceUrl == selectedURL
         return Button { choose(source) } label: {
             HStack {
-                if pins.isPinned(source.id) {
+                if store.pinRecord(for: source.id)?.position == .top {
                     Image(systemName: "pin.fill")
                         .foregroundStyle(DSColor.accent)
                         .accessibilityHidden(true)
@@ -174,17 +174,22 @@ struct DiscoverySourcePickerList: View {
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .accessibilityIdentifier("discovery.source.choose.\(source.bookSourceUrl)")
-        .accessibilityValue(pins.isPinned(source.id) ? localized("已置頂") : "")
+        .accessibilityValue((store.pinRecord(for: source.id)?.position == .top) ? localized("已置頂") : "")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) { delete(source) } label: {
                 Label(localized("刪除"), systemImage: "trash")
             }
             .accessibilityIdentifier("discovery.source.delete.\(source.id)")
             Button {
-                pins.togglePin(source.id, availableIDs: Set(store.sources.map(\.id)))
+                if store.pinRecord(for: source.id)?.position == .top {
+                    store.unpin(id: source.id)
+                } else {
+                    store.pinToTop(id: source.id)
+                }
+                rebuildRows(from: store.sources)
             } label: {
-                Label(localized(pins.isPinned(source.id) ? "取消置頂" : "置頂"),
-                      systemImage: pins.isPinned(source.id) ? "pin.slash" : "pin")
+                Label(localized((store.pinRecord(for: source.id)?.position == .top) ? "取消置頂" : "置頂"),
+                      systemImage: (store.pinRecord(for: source.id)?.position == .top) ? "pin.slash" : "pin")
             }
             .tint(DSColor.accent)
         }
