@@ -3,8 +3,10 @@ import SwiftUI
 struct CatVodMoviePage: View {
     let sourceID: String, siteKey: String, videoID: String, title: String
     @State private var detail: CatVodVideo?
-    @State private var failure: String?, playFailure: String?
-    @State private var selectedRoute = "", playingTitle = ""
+    @State private var failure: String?
+    @State private var playFailure: String?
+    @State private var selectedRoute = ""
+    @State private var playingTitle = ""
     @State private var retry = 0
     @State private var pending: Task<Void, Never>?
     @State private var player: CatVodPlayTicket?

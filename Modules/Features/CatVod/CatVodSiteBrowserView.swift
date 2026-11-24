@@ -82,10 +82,13 @@ struct CatVodPoster: View {
 
 private struct CatVodSearchPage: View {
     let sourceID: String, site: CatVodSite
-    @State private var draft = "", submitted = ""
+    @State private var draft = ""
+    @State private var submitted = ""
     @State private var results: [CatVodVideo] = []
-    @State private var page = 0, requestedPage = 1
-    @State private var more = false, loading = false
+    @State private var page = 0
+    @State private var requestedPage = 1
+    @State private var more = false
+    @State private var loading = false
     @State private var failure: String?
     @State private var generation = UUID()
     var body: some View {
