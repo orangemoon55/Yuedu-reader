@@ -66,6 +66,9 @@ final class CatVodRuntime: ObservableObject {
     private var ready: Ready?
     private var nodeStarted = false
     private var nodeExit: Int32?
+    private var activation = UUID()
+    private(set) var bundleOrigin: URL?
+    private(set) var allowedLoopbackPorts: Set<Int> = []
 
     private let root: URL
     private let hostURL: URL
@@ -90,12 +93,11 @@ final class CatVodRuntime: ObservableObject {
         guard nodeStarted || Self.frameworkAvailable else { throw CatVodRuntimeError.frameworkMissing }
         isStarting = true
         defer { isStarting = false }
-        let manager = FileManager.default
-        try manager.createDirectory(at: root, withIntermediateDirectories: true)
-        try CatVodHostScript.source.write(to: hostURL, atomically: true, encoding: .utf8)
-        try? manager.removeItem(at: readyURL)
-
         if !nodeStarted {
+            let manager = FileManager.default
+            try manager.createDirectory(at: root, withIntermediateDirectories: true)
+            try CatVodHostScript.source.write(to: hostURL, atomically: true, encoding: .utf8)
+            try? manager.removeItem(at: readyURL)
             guard let nodeStart = Self.nodeStartBox else { throw CatVodRuntimeError.frameworkMissing }
             nodeStarted = true
             let hostPath = hostURL.path
@@ -131,6 +133,7 @@ final class CatVodRuntime: ObservableObject {
     private func noteNodeExit(_ status: Int32) {
         nodeExit = status
         ready = nil
+        deactivate()
     }
 
     /// Whether this run can reach NodeMobile. The framework is shipped inside the app
@@ -158,18 +161,79 @@ final class CatVodRuntime: ObservableObject {
 
     @discardableResult
     func activate(source: Md5Source, bundleURL: URL, dataDirectory: URL) async throws -> [CatVodSite] {
+        let generation = UUID()
+        activation = generation
+        // Calls from the old screen must fail while a different source is loading.
+        activeSourceID = nil
+        sites = []
+        bundleOrigin = nil
+        allowedLoopbackPorts = []
         try await startNodeIfNeeded()
+        guard activation == generation else { throw CatVodRuntimeError.notLoaded }
         let result = try await control("/load", method: "POST",
-                                      body: ["path": bundleURL.path, "data": dataDirectory.path])
+                                      body: ["sourceID": source.id, "path": bundleURL.path, "data": dataDirectory.path])
+        guard activation == generation else { throw CatVodRuntimeError.notLoaded }
         let parsed = try parseSites(result)
+        guard let object = try JSONSerialization.jsonObject(with: result) as? [String: Any],
+              object["sourceID"] as? String == source.id,
+              let port = object["port"] as? Int, (1...65535).contains(port),
+              let ports = object["ports"] as? [Int], ports.contains(port),
+              ports.allSatisfy({ (1...65535).contains($0) }),
+              let originText = object["origin"] as? String,
+              originText == "http://127.0.0.1:\(port)", let origin = URL(string: originText) else {
+            throw CatVodRuntimeError.badResponse("source origin")
+        }
         activeSourceID = source.id
+        bundleOrigin = origin
+        allowedLoopbackPorts = Set(ports)
         sites = parsed
         return parsed
     }
 
     func deactivate() {
+        activation = UUID()
         activeSourceID = nil
         sites = []
+        bundleOrigin = nil
+        allowedLoopbackPorts = []
+    }
+
+    /// Resolve bundle-relative media and authenticate only this source's owned loopback ports.
+    /// Use the returned URL for AsyncImage/URLRequest/AVURLAsset; HLS children are rewritten by Node.
+    func mediaURL(_ text: String, sourceID: String) throws -> URL {
+        guard activeSourceID == sourceID, let ready, let bundleOrigin else { throw CatVodRuntimeError.notLoaded }
+        guard let input = URL(string: text, relativeTo: bundleOrigin)?.absoluteURL,
+              var components = URLComponents(url: input, resolvingAgainstBaseURL: true),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let rawHost = components.host?.lowercased(), components.user == nil, components.password == nil else {
+            throw CatVodRuntimeError.badResponse("media URL")
+        }
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let local = ["localhost", "127.0.0.1", "::1"].contains(host)
+        if !local {
+            guard !host.hasPrefix("127."), host != "0.0.0.0", host != "::", !host.hasSuffix(".localhost") else {
+                throw CatVodRuntimeError.badResponse("unowned loopback URL")
+            }
+            // Never append a host credential to a remote URL or change its signed query string.
+            return input
+        }
+        guard scheme == "http", let port = components.port, allowedLoopbackPorts.contains(port) else {
+            throw CatVodRuntimeError.badResponse("unowned loopback port")
+        }
+        components.host = "127.0.0.1"
+        var query = (components.queryItems ?? []).filter { !["x-readcc-token", "readcc-source"].contains($0.name) }
+        query.append(URLQueryItem(name: "x-readcc-token", value: ready.token))
+        query.append(URLQueryItem(name: "readcc-source", value: sourceID))
+        components.queryItems = query
+        guard let url = components.url else { throw CatVodRuntimeError.badResponse("media URL") }
+        return url
+    }
+
+    /// Optional main-request header. Never attach this header to a remote URL.
+    func mediaHeaders(for text: String, sourceID: String) throws -> [String: String] {
+        let url = try mediaURL(text, sourceID: sourceID)
+        guard url.host == "127.0.0.1", let port = url.port, allowedLoopbackPorts.contains(port), let ready else { return [:] }
+        return ["x-readcc-token": ready.token]
     }
 
     private func parseSites(_ data: Data) throws -> [CatVodSite] {
@@ -197,20 +261,39 @@ final class CatVodRuntime: ObservableObject {
     /// One site action: `home`, `category`, `search`, `detail`, `play` — args are the bundle's
     /// own (`{"filter":true}`, `{"wd":"…","pg":"1"}`, `{"ids":"…"}`, `{"flag":"…","id":"…"}`).
     func invoke(_ site: CatVodSite, action: String, arguments: [String: Any] = [:]) async throws -> Data {
-        guard activeSourceID != nil else { throw CatVodRuntimeError.notLoaded }
+        guard let sourceID = activeSourceID else { throw CatVodRuntimeError.notLoaded }
+        return try await invoke(sourceID: sourceID, site: site, action: action, arguments: arguments)
+    }
+
+    func invoke(sourceID: String, site: CatVodSite, action: String, arguments: [String: Any] = [:]) async throws -> Data {
+        guard activeSourceID == sourceID, sites.contains(where: { $0.key == site.key && $0.api == site.api }) else {
+            throw CatVodRuntimeError.notLoaded
+        }
+        let generation = activation
         let result = try await control("/invoke", method: "POST",
-                                      body: ["api": site.api, "action": action, "arguments": arguments])
+                                      body: ["sourceID": sourceID, "site": site.key, "api": site.api, "action": action, "arguments": arguments])
+        guard activeSourceID == sourceID, activation == generation else { throw CatVodRuntimeError.notLoaded }
         guard let object = try? JSONSerialization.jsonObject(with: result) as? [String: Any],
               let body = object["body"] as? String else {
             throw CatVodRuntimeError.badResponse("invoke")
         }
-        return Data(body.utf8)
+        var data = Data(body.utf8)
+        if action == "play", var play = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let text = play["url"] as? String {
+            let tokenHeaders = try mediaHeaders(for: text, sourceID: sourceID)
+            var headers = play["headers"] as? [String: String] ?? play["header"] as? [String: String] ?? [:]
+            headers = headers.filter { $0.key.lowercased() != "x-readcc-token" }
+            headers.merge(tokenHeaders) { _, value in value }
+            play["headers"] = headers
+            data = try JSONSerialization.data(withJSONObject: play)
+        }
+        return data
     }
 
     func credentials() async throws -> CatVodCredentials {
-        guard activeSourceID != nil else { throw CatVodRuntimeError.notLoaded }
+        guard let sourceID = activeSourceID else { throw CatVodRuntimeError.notLoaded }
         let result = try await control("/proxy", method: "POST",
-                                      body: ["path": "/website/api/credentials", "method": "GET"])
+                                      body: ["sourceID": sourceID, "path": "/website/api/credentials", "method": "GET"])
         guard let object = try? JSONSerialization.jsonObject(with: result) as? [String: Any],
               let body = object["body"] as? String,
               let payload = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any] else {
@@ -228,16 +311,16 @@ final class CatVodRuntime: ObservableObject {
     /// `PUT /website/api/credential/<provider>/<field>` with `{"value": …}` — the same route the
     /// bundle's 配置中心 page uses for every pan cookie and token.
     func saveCredential(provider: String, field: String = "cookie", value: String) async throws {
-        guard activeSourceID != nil else { throw CatVodRuntimeError.notLoaded }
+        guard let sourceID = activeSourceID else { throw CatVodRuntimeError.notLoaded }
         let escaped = "/website/api/credential/\(provider)/\(field)"
         _ = try await control("/proxy", method: "POST",
-                              body: ["path": escaped, "method": "PUT", "body": ["value": value]])
+                              body: ["sourceID": sourceID, "path": escaped, "method": "PUT", "body": ["value": value]])
     }
 
     func clearCredential(provider: String, field: String = "cookie") async throws {
-        guard activeSourceID != nil else { throw CatVodRuntimeError.notLoaded }
+        guard let sourceID = activeSourceID else { throw CatVodRuntimeError.notLoaded }
         _ = try await control("/proxy", method: "POST",
-                              body: ["path": "/website/api/credential/\(provider)/\(field)", "method": "DELETE"])
+                              body: ["sourceID": sourceID, "path": "/website/api/credential/\(provider)/\(field)", "method": "DELETE"])
     }
 
     private func control(_ path: String, method: String, body: [String: Any]? = nil) async throws -> Data {
@@ -253,6 +336,11 @@ final class CatVodRuntime: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw CatVodRuntimeError.badResponse("HTTP \(http.statusCode)")
+        }
+        if ["/invoke", "/proxy"].contains(path) {
+            guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let status = envelope["status"] as? Int else { throw CatVodRuntimeError.badResponse("missing upstream status") }
+            guard (200..<300).contains(status) else { throw CatVodRuntimeError.badResponse("upstream HTTP \(status)") }
         }
         return data
     }

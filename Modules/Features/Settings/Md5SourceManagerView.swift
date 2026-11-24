@@ -289,15 +289,19 @@ struct Md5SourceDetailView: View {
             if case .loaded(let sites) = state, !sites.isEmpty {
                 Section {
                     ForEach(sites) { site in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(site.name).foregroundStyle(DSColor.textPrimary)
-                                Text(site.key).font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(DSColor.textSecondary)
-                            }
-                            Spacer()
-                            if site.searchable {
-                                Text(localized("可搜尋")).font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
+                        NavigationLink {
+                            CatVodSiteBrowserView(session: CatVodSession(sourceID: source.id, site: site))
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(site.name).foregroundStyle(DSColor.textPrimary)
+                                    Text(site.key).font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(DSColor.textSecondary)
+                                }
+                                Spacer()
+                                if site.searchable {
+                                    Text(localized("可搜尋")).font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
+                                }
                             }
                         }
                     }
