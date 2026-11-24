@@ -14,6 +14,13 @@ struct Md5SourceTests {
         #expect(targets.checksum?.absoluteString == "https://host/cat/index.js.md5")
     }
 
+    @Test("the bundle address keeps no trailing dot and keeps Basic auth")
+    func bundleAddressKeepsUserInfo() throws {
+        let targets = try #require(Md5SourceImportModel.targets(for: "https://u:p@host/cat/index.js.md5"))
+        #expect(targets.bundle.absoluteString == "https://u:p@host/cat/index.js")
+        #expect(targets.bundle.lastPathComponent == "index.js")
+    }
+
     @Test("a .js address looks for a checksum beside it")
     func jsAddress() throws {
         let targets = try #require(Md5SourceImportModel.targets(for: "https://host/cat/index.js"))

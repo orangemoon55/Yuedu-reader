@@ -126,7 +126,8 @@ final class Md5SourceImportModel: ObservableObject {
         let path = url.path.lowercased()
         if path.hasSuffix(".js.md5") {
             let md5 = url
-            url = URL(string: String(url.absoluteString.dropLast(3))) ?? url
+            // ".md5" is four characters: dropping three leaves the trailing dot and the server 404s.
+            url = URL(string: String(url.absoluteString.dropLast(4))) ?? url
             return Targets(address: text, bundle: url, checksum: md5)
         }
         if path.hasSuffix(".md5") {

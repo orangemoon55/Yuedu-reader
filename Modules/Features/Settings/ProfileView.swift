@@ -118,16 +118,6 @@ struct SettingsView: View {
                         )
                         .accessibilityIdentifier("settings_modules")
 
-                        // MD5 源: CatVod JS bundles, kept apart from JSON 模組 (maintainer, 2026-11-23).
-                        NavigationLink {
-                            Md5SourceManagerView()
-                        } label: {
-                            Label(localized("MD5 源"), systemImage: "curlybraces")
-                                .foregroundColor(DSColor.textPrimary)
-                                .labelStyle(IconConsistentLabelStyle())
-                        }
-                        .accessibilityIdentifier("settings_md5_sources")
-
                         NavigationLink {
                             RemoteLibrarySettingsView()
                         } label: {
