@@ -67,17 +67,29 @@ struct CatVodContentTests {
         let result = try CatVodContentParser.page(data(CatVodFixtures.pageTwo), requestedPage: 1)
         #expect(result.page == 2)
         #expect(result.pageCount == 3)
+        #expect(result.videos.count == 1)
         #expect(result.hasMore)
     }
     @Test func unknownPaginationStops() throws {
-        #expect(try !CatVodContentParser.page(data(CatVodFixtures.unknownPagination), requestedPage: 2).hasMore)
+        let result = try CatVodContentParser.page(data(CatVodFixtures.unknownPagination), requestedPage: 2)
+        #expect(result.videos.count == 1)
+        #expect(!result.hasMore)
     }
     @Test func totalAndLimitPagination() throws {
-        #expect(try CatVodContentParser.page(data(CatVodFixtures.totalHasMore), requestedPage: 2).hasMore)
+        let result = try CatVodContentParser.page(data(CatVodFixtures.totalHasMore), requestedPage: 2)
+        #expect(result.videos.count == 1)
+        #expect(result.hasMore)
         #expect(try !CatVodContentParser.page(data(CatVodFixtures.totalHasMore), requestedPage: 3).hasMore)
     }
     @Test func nextPageNumber() throws {
-        #expect(try CatVodContentParser.page(data(CatVodFixtures.nextNumber), requestedPage: 2).hasMore)
+        let result = try CatVodContentParser.page(data(CatVodFixtures.nextNumber), requestedPage: 2)
+        #expect(result.videos.count == 1)
+        #expect(result.hasMore)
+    }
+    @Test func malformedOnlyPageStopsDespiteAdvertisedNext() throws {
+        let result = try CatVodContentParser.page(data(#"{"page":2,"pagecount":3,"list":[{"vod_id":2}]}"#), requestedPage: 2)
+        #expect(result.videos.isEmpty)
+        #expect(!result.hasMore)
     }
     @Test func outerErrorNotHiddenByData() {
         #expect(throws: CatVodContentError.self) { try CatVodContentParser.home(data(CatVodFixtures.hiddenOuterError)) }

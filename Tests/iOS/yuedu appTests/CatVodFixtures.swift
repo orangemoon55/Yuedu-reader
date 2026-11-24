@@ -17,9 +17,9 @@ enum CatVodFixtures {
     static let qualityURLs = #"{"url":["坏","ftp://e.test/a","高清","https://e.test/hd","标清","https://e.test/sd"],"header":{"X-Test":"yes"}}"#
     static let missingURL = #"{"parse":0}"#
     static let relativeURL = #"{"url":"/proxy/video.m3u8"}"#
-    static let pageTwo = #"{"page":"2","pagecount":"3","list":[{"vod_id":2}]}"#
-    static let unknownPagination = #"{"list":[{"vod_id":1}]}"#
-    static let totalHasMore = #"{"total":25,"limit":10,"list":[{"vod_id":1}]}"#
-    static let nextNumber = #"{"next":3,"list":[{"vod_id":1}]}"#
+    static let pageTwo = #"{"page":"2","pagecount":"3","list":[{"vod_id":2,"vod_name":"第二页影片"}]}"#
+    static let unknownPagination = #"{"list":[{"vod_id":1,"vod_name":"未知分页影片"}]}"#
+    static let totalHasMore = #"{"total":25,"limit":10,"list":[{"vod_id":1,"vod_name":"总数分页影片"}]}"#
+    static let nextNumber = #"{"next":3,"list":[{"vod_id":1,"vod_name":"下一页影片"}]}"#
     static let hiddenOuterError = #"{"code":500,"data":{"list":[]}}"#
 }
