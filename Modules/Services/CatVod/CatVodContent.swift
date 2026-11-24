@@ -1,7 +1,7 @@
 import Foundation
 
 // Foundation-only value types shared by the Readcc50 UI and data layer.
-struct CatVodCategory: Sendable, Hashable {
+struct CatVodCategory: Identifiable, Sendable, Hashable {
     let id: String
     let name: String
 }

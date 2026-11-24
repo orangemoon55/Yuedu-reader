@@ -10,7 +10,7 @@ final class CatVodSession: ObservableObject {
     let site: CatVodSite
 
     @Published private(set) var categories: [CatVodCategory] = []
-    @Published private(set) var filters: [CatVodFilter] = []
+    @Published private(set) var filters: [String: [CatVodFilter]] = [:]
     @Published private(set) var selectedCategoryID: String = ""
     @Published private(set) var selectedFilters: [String: String] = [:]
     @Published private(set) var videos: [CatVodVideo] = []
