@@ -34,7 +34,7 @@ struct VersionReadingCopy {
         case .gutenberg, .opdsEntry, .webDAVFile:
             guard let item, let format, format.isSupported else { return nil }
             return { [dependencies, store] in try dependencies.remoteLibrary.readingCopy(item: item, format: format, store: store) }
-        case .onlineBook, .bibliographic:
+        case .onlineBook, .catVodMovie, .bibliographic:
             return nil
         }
     }
@@ -58,7 +58,7 @@ struct VersionReadingCopy {
             return RemoteLibraryBookRoute(entry: entry, connectionID: connectionID).item
         case .gutenberg(let book):
             return try await GutenbergBookDetail.load(book).item
-        case .copy, .aozora, .moduleBook, .onlineBook, .bibliographic:
+        case .copy, .aozora, .moduleBook, .onlineBook, .catVodMovie, .bibliographic:
             return nil
         }
     }
@@ -76,7 +76,7 @@ struct VersionReadingCopy {
                 in: RemoteLibraryBookRoute(entry: entry, connectionID: connectionID).item)?.isSupported == true
         case .gutenberg, .aozora, .moduleBook:
             return true
-        case .copy, .onlineBook, .bibliographic:
+        case .copy, .onlineBook, .catVodMovie, .bibliographic:
             return false
         }
     }

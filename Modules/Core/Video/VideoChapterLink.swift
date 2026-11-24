@@ -4,6 +4,8 @@ import Foundation
 struct VideoStream: Equatable, Sendable {
     let url: URL
     let headers: [String: String]
+    /// Stable local key for an ephemeral signed/proxy stream. Defaults to the legacy per-link behavior.
+    var resumeKey: URL? = nil
 }
 
 enum VideoChapterLinkError: LocalizedError, Equatable {

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import CatVodContent
+@testable import yuedu_app
 
 struct CatVodContentTests {
     private func data(_ text: String) -> Data { Data(text.utf8) }
@@ -60,8 +60,8 @@ struct CatVodContentTests {
     @Test func missingURLThrows() {
         #expect(throws: CatVodContentError.self) { try CatVodContentParser.playback(data(CatVodFixtures.missingURL)) }
     }
-    @Test func relativeURLNotGuessed() {
-        #expect(throws: CatVodContentError.self) { try CatVodContentParser.playback(data(CatVodFixtures.relativeURL)) }
+    @Test func relativeURLPreservesPathUntilSourceResolution() throws {
+        #expect(try CatVodContentParser.playback(data(CatVodFixtures.relativeURL)).url == "/proxy/video.m3u8")
     }
     @Test func pageTwo() throws {
         let result = try CatVodContentParser.page(data(CatVodFixtures.pageTwo), requestedPage: 1)

@@ -290,7 +290,7 @@ struct Md5SourceDetailView: View {
                 Section {
                     ForEach(sites) { site in
                         NavigationLink {
-                            CatVodSiteBrowserView(session: CatVodSession(sourceID: source.id, site: site))
+                            CatVodSiteBrowserView(sourceID: source.id, site: site)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {

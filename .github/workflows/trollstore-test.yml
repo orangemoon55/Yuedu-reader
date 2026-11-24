@@ -38,6 +38,7 @@ on:
           - ui-polish
           - module-compat
           - md5-import
+          - catvod-home
           - ranked-home
           - discovery-glass
           - reader-comments

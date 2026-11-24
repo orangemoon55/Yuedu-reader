@@ -37,7 +37,9 @@ private struct RemoteLibraryDestinations: ViewModifier {
                 WebDAVDirectoryView(route: route)
             }
             .navigationDestination(for: WorkDetailRoute.self) { route in
-                WorkDetailView(route: route)
+                if case .catVodMovie(let ref) = route.opening {
+                    CatVodMoviePage(sourceID: ref.sourceID, siteKey: ref.siteKey, videoID: ref.videoID, title: ref.title)
+                } else { WorkDetailView(route: route) }
             }
     }
 }

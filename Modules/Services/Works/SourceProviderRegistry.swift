@@ -117,6 +117,7 @@ final class SourceProviderRegistry {
         providers.append(aozoraProvider)
         providers += Self.moduleProviders(in: modules)
         providers.append(AIRecommendationProvider())
+        providers.append(CatVodHomeProvider())
         // Explicitly selected books also work for sources without discover categories.
         providers += sources.sources.filter(\.enabled).map { BookSourceProvider(source: $0, firstPages: firstPages) }
         return providers.filter { $0.availability != .hiddenInRegion }

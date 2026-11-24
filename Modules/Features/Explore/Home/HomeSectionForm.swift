@@ -914,6 +914,7 @@ extension HomeContentOwner {
     func name(sources: BookSourceStore, connections: RemoteLibraryConnectionStore,
               modules: RuleModuleLibrary? = nil) -> String {
         switch self {
+        case .catVod(let id): Md5SourceLibrary.shared.sources.first { $0.id == id }?.title ?? localized("貓源影視")
         case .module(let id): (modules ?? .shared).installed(id: id)?.module.title ?? id
         case .appData: localized("App 資料")
         case .official: localized("官方模組")

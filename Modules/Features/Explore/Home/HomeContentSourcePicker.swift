@@ -119,6 +119,17 @@ struct HomeContentSourcePicker: View {
             }
             .interfaceSectionSurface()
 
+            Section {
+                NavigationLink {
+                    CatVodHomeSourceChoices(current: current, choose: choose)
+                } label: {
+                    ownerLabel(localized("貓源影視"), systemImage: "film.stack",
+                               isCurrent: { if case .catVod = owner { true } else { false } }())
+                }
+                .accessibilityIdentifier("homePicker.catVod")
+            }
+            .interfaceSectionSurface()
+
             // As 資源庫 groups them (M2b): AI 推薦, 古騰堡, 青空文庫, then the bundled modules.
             Section {
                 ForEach(HomeSectionBinding.official, id: \.self) { binding in

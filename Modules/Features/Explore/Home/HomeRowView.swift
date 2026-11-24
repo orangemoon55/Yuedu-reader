@@ -12,6 +12,7 @@ extension HomeSection {
     func displayTitle(sourceName: String) -> String {
         if !title.isEmpty { return title }
         switch binding {
+        case .catVod(let ref): return ref.title
         case .continueReading: return localized("繼續閱讀")
         case .bookshelf: return localized("書架")
         case .sourceBook(let book): return book.title

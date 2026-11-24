@@ -94,6 +94,7 @@ final class HomeModel: ObservableObject {
         }, waitForSources: {
             await BookSourceStore.shared.waitUntilLoaded()
             await RuleModuleLibrary.shared.loadIfNeeded()
+            Md5SourceLibrary.shared.loadIfNeeded()
         }, firstPages: firstPages)
     }
 

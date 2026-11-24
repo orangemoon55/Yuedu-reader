@@ -1,9 +1,8 @@
 import Foundation
 
-/// The Node side of the CatVod bridge. It is the host the bundle expects (`catServerFactory`,
-/// `catDartServerPort`) and the only process that executes a downloaded source. Every route is
-/// bound to 127.0.0.1 and refused without the per-launch token, so another app on the device
-/// cannot drive a loaded source.
+/// Embedded loopback host. The controller, internal bundle transport and player are separate
+/// trust domains. A player can only read previously advertised media on the current source.
+/// This bridge is not a sandbox for executable Node bundles.
 enum CatVodHostScript {
     static let source = #"""
 'use strict';
@@ -11,297 +10,294 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-
-const readyPath = process.argv[2];
-const token = crypto.randomBytes(24).toString('hex');
 const { AsyncLocalStorage } = require('async_hooks');
+const { pipeline } = require('stream');
+const readyPath = path.resolve(process.argv[2]);
+const randomKey = () => crypto.randomBytes(24).toString('hex');
+const token = randomKey(); // control.json and authenticated control requests only
 const sourceContext = new AsyncLocalStorage();
-let active = null;
-let loadingSourceID = null;
-let loadQueue = Promise.resolve();
-
-function loopbackHost(hostname) {
-  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+const PREFIX = '/.readcc-media/';
+const JSON_LIMIT = 4 * 1024 * 1024, PLAYLIST_LIMIT = 1024 * 1024, GRANT_LIMIT = 16384;
+let active = null, loading = null, loadQueue = Promise.resolve();
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+function failure(status, message) { return Object.assign(new Error(message), { status, publicMessage: message }); }
+function log(event) { // Never log URLs, arguments, credential values or a bundle's error/stack.
+  try { fs.appendFileSync(path.join(path.dirname(readyPath), 'host.log'), event + '\n', { mode: 0o600 }); } catch (_) {}
 }
-function tokenizedLocalURL(value, base, allowedPorts) {
-  let target;
-  try { target = new URL(value, base); } catch (_) { return value; }
-  if (!['http:', 'https:'].includes(target.protocol)) return value;
-  if (!loopbackHost(target.hostname)) {
-    if (!target.searchParams.has('x-readcc-token')) return value;
-    target.searchParams.delete('x-readcc-token');
-    return target.href;
+process.exit = () => { throw Error('process.exit denied'); };
+process.on('uncaughtException', () => log('uncaught bundle exception'));
+process.on('unhandledRejection', () => log('unhandled bundle rejection'));
+globalThis.console = { log() {}, info() {}, warn() {}, error() {}, debug() {}, trace() {}, time() {}, timeEnd() {} };
+function send(res, status, value) {
+  if (res.destroyed || res.writableEnded) return;
+  if (res.headersSent) return res.destroy();
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+  res.end(JSON.stringify(value));
+}
+function ports(state) {
+  return state.servers.map(s => s.address()).filter(a => a && typeof a === 'object').map(a => a.port);
+}
+function description(state) {
+  return { sourceID: state.sourceID, port: state.port, ports: ports(state), mediaScope: state.mediaScope,
+    origin: 'http://127.0.0.1:' + state.port, sites: state.sites };
+}
+function localHost(host) { return ['localhost', '127.0.0.1', '[::1]'].includes(host); }
+const internalHeader = name => /^x-readcc-/i.test(name) || /^readcc-source$/i.test(name);
+const safeMediaPath = pathname => {
+  // Check decoded path components without altering the actual signed/encoded request target.
+  let decoded;
+  try { decoded = decodeURIComponent(pathname); } catch (_) { return false; }
+  if (!decoded.startsWith('/') || /[\\?#%;\x00-\x1f\x7f]/.test(decoded) || /\/\//.test(decoded)) return false;
+  const pieces = decoded.toLowerCase().split('/');
+  return !pieces.some(c => ['.', '..', '.readcc-media', 'admin', 'website', 'config', 'credential', 'credentials',
+    'management', 'site', 'sites', 'spider', 'load', 'invoke', 'ping'].includes(c));
+};
+function hasSecret(value, state) {
+  return value.includes(token) || value.includes(state.mediaScope) || value.includes(state.bridge);
+}
+function mediaTarget(state, value, base) {
+  if (typeof value !== 'string' || !value || value.length > 16384 || /[\x00-\x1f\x7f\\]/.test(value) || hasSecret(value, state)) return null;
+  let u; try { u = new URL(value, base); } catch (_) { return null; }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || [...u.searchParams.keys()].some(internalHeader)) return null;
+  if (!localHost(u.hostname)) {
+    if (/^127\.|^0\.0\.0\.0$|\.localhost\.?$|^localhost\.$|^\[::(?:ffff:.*)?\]$/.test(u.hostname)) return null;
+    return { remote: value }; // Do not serialize URL or URLSearchParams for a remote signed URI.
   }
-  const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
-  if (!allowedPorts.includes(port)) return null;
-  target.hostname = '127.0.0.1';
-  target.searchParams.set('x-readcc-token', token);
-  return target.href;
+  const port = Number(u.port), route = u.pathname + u.search;
+  if (u.protocol !== 'http:' || !ports(state).includes(port) || !safeMediaPath(u.pathname)) return null;
+  return { port, route, fragment: u.hash };
 }
-function rewritePlaylist(text, request, owner) {
-  const ports = description(owner).ports;
-  const base = 'http://127.0.0.1:' + request.socket.localPort + request.url;
-  return text.split(/(\r?\n)/).map(line => {
-    if (!line || /^\r?\n$/.test(line)) return line;
-    if (line.trim().startsWith('#')) {
-      return line.replace(/URI="([^"]+)"/g, (_, uri) =>
-        'URI="' + (tokenizedLocalURL(uri, base, ports) || 'about:blank') + '"');
+function grant(state, value, base) {
+  const target = mediaTarget(state, value, base);
+  if (!target) return null;
+  if ('remote' in target) return target.remote;
+  const {port, route, fragment} = target;
+  const key = port + ':' + route;
+  // Bound storage for long-running browsing/live video. Refresh on read or rediscovery.
+  state.grants.delete(key);
+  if (state.grants.size >= GRANT_LIMIT) state.grants.delete(state.grants.values().next().value);
+  state.grants.add(key);
+  return 'http://127.0.0.1:' + port + PREFIX + state.mediaScope + route + fragment;
+}
+// Register only poster fields and playback URL candidates from a successful site invocation.
+// The control payload (including stringified headers or nested envelopes) remains untouched.
+function registerResponse(state, action, text) {
+  let root; try { root = JSON.parse(text); } catch (_) { return; }
+  const base = 'http://127.0.0.1:' + state.port + '/';
+  function visit(v, depth, candidate) {
+    if (depth > 12 || v == null) return;
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if ((s[0] === '{' || s[0] === '[') && depth < 3) {
+        try { visit(JSON.parse(s), depth + 1, candidate); } catch (_) {}
+      } else if (candidate && s && (/^(?:https?:|\/|\.|\?)/i.test(s) || /[/.?]/.test(s))) grant(state, s, base);
+    } else if (Array.isArray(v)) {
+      for (const item of v) visit(item, depth + 1, candidate);
+    } else if (typeof v === 'object') {
+      for (const [k, item] of Object.entries(v)) {
+        if (k === 'data') visit(item, depth + 1, candidate);
+        else if (action === 'play' && ['url', 'play', 'play_url'].includes(k)) visit(item, depth + 1, true);
+        else if (action !== 'play' && ['list', 'videos'].includes(k)) visit(item, depth + 1, false);
+        else if (action !== 'play' && ['vod_pic', 'poster'].includes(k) && typeof item === 'string') grant(state, item.trim(), base);
+      }
     }
-    const trimmed = line.trim();
-    if (!trimmed) return line;
-    const rewritten = tokenizedLocalURL(trimmed, base, ports);
-    return rewritten ? line.replace(trimmed, rewritten) : 'about:blank';
+  }
+  visit(root, 0, action === 'play');
+}
+function rewritePlaylist(state, text, base) {
+  const rewrite = raw => grant(state, raw, base) || 'about:blank';
+  return text.split(/(\r?\n)/).map(line => {
+    const s = line.trim();
+    if (!s) return line;
+    if (s.startsWith('#')) return line.replace(/([:,](?:[A-Z0-9-]+-)?URI=")([^"]+)(")/g, (_, prefix, uri, end) => prefix + rewrite(uri) + end);
+    return line.replace(s, () => rewrite(s));
   }).join('');
 }
-function wrapPlaylistResponse(req, res, owner, handler) {
-  const chunks = [];
-  const originals = { writeHead: res.writeHead, write: res.write, end: res.end, flushHeaders: res.flushHeaders };
-  const isHLS = () => /\.m3u8?$/i.test(String(req.url).split('?')[0]) || /mpegurl|m3u/i.test(String(res.getHeader('content-type') || ''));
-  const restore = () => Object.assign(res, originals);
-  res.writeHead = function (status, reason, headers) {
-    res.statusCode = status;
-    if (typeof reason === 'string') res.statusMessage = reason;
-    else headers = reason;
-    if (Array.isArray(headers)) {
-      for (let i = 0; i < headers.length; i += 2) res.setHeader(headers[i], headers[i + 1]);
-    } else if (headers) {
-      for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
-    }
-    return res;
-  };
-  res.flushHeaders = function () { if (!isHLS()) { restore(); return res.flushHeaders(); } };
-  const collect = (chunk, encoding) => {
-    if (chunk != null) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, typeof encoding === 'string' ? encoding : undefined));
-  };
-  res.write = function (chunk, encoding, callback) {
-    if (!isHLS()) { restore(); return res.write(chunk, encoding, callback); }
-    collect(chunk, encoding);
-    if (typeof encoding === 'function') callback = encoding;
-    if (callback) process.nextTick(callback);
-    return true;
-  };
-  res.end = function (chunk, encoding, callback) {
-    if (typeof chunk === 'function') { callback = chunk; chunk = undefined; }
-    if (typeof encoding === 'function') callback = encoding;
-    collect(chunk, encoding);
-    let body = Buffer.concat(chunks);
-    if (isHLS() || body.toString('utf8', 0, Math.min(body.length, 64)).includes('#EXTM3U')) {
-      body = Buffer.from(rewritePlaylist(body.toString('utf8'), req, owner), 'utf8');
-      res.removeHeader('etag');
-      res.removeHeader('content-length');
-      res.setHeader('content-type', 'application/vnd.apple.mpegurl');
-      res.setHeader('content-length', body.length);
-      res.setHeader('cache-control', 'no-store');
-    }
-    restore();
-    return res.end(body, callback);
-  };
-  try {
-    const result = handler(req, res);
-    if (result && typeof result.catch === 'function') result.catch(error => {
-      writeLog('bundle: ' + error.message);
-      if (!res.headersSent) { res.statusCode = 500; res.end('bundle request failed'); }
-      else res.destroy(error);
-    });
-    return result;
-  } catch (error) {
-    writeLog('bundle: ' + error.message);
-    if (!res.headersSent) { res.statusCode = 500; res.end('bundle request failed'); }
-    else res.destroy(error);
+
+async function bounded(stream, limit, status) {
+  if (Number(stream.headers['content-length']) > limit) throw failure(status, 'body too large');
+  const chunks = []; let size = 0;
+  for await (const chunk of stream) {
+    size += chunk.length;
+    if (size > limit) throw failure(status, 'body too large');
+    chunks.push(chunk);
   }
+  return Buffer.concat(chunks, size);
 }
-
-const writeLog = (line) => {
-  try { fs.appendFileSync(path.join(path.dirname(readyPath), 'host.log'), String(line) + '\n'); } catch (e) {}
-};
-const hostProcess = process;
-hostProcess.exit = (code) => { writeLog('bundle requested exit ' + code); throw new Error('process.exit denied'); };
-
-process.on('uncaughtException', (error) => writeLog('uncaught: ' + (error && error.stack || error)));
-process.on('unhandledRejection', (error) => writeLog('rejected: ' + (error && error.stack || error)));
-
-globalThis.catDartServerPort = () => 0;
-globalThis.catServerFactory = (handler) => {
-  const owner = sourceContext.getStore() || active;
-  if (!owner) throw new Error('server outside source context');
-  const server = http.createServer((req, res) => {
-    const requestURL = new URL(req.url, 'http://127.0.0.1');
-    if (req.headers['x-readcc-token'] !== token && requestURL.searchParams.get('x-readcc-token') !== token) {
-      res.writeHead(401, { 'content-type': 'application/json' });
-      res.end('{"error":"unauthorized"}');
-      return;
-    }
-    if (active !== owner && loadingSourceID !== owner) {
-      res.writeHead(409, { 'content-type': 'application/json' });
-      return res.end('{"error":"source changed"}');
-    }
-    // Never expose the host secret to the bundle's route logic or upstream fetch URLs.
-    requestURL.searchParams.delete('x-readcc-token');
-    req.url = requestURL.pathname + requestURL.search;
-    delete req.headers['x-readcc-token'];
-    return sourceContext.run(owner, () => wrapPlaylistResponse(req, res, owner, handler));
+function internalRequest(state, port, route, method, headers, body, timeout) {
+  return http.request({ host: '127.0.0.1', port, path: route, method, headers: {
+    ...headers, 'x-readcc-bridge': state.bridge, ...(body ? { 'content-type': 'application/json', 'content-length': body.length } : {})
+  }, agent: false, timeout }).on('timeout', function () { this.destroy(Error('timeout')); });
+}
+async function proxy(state, port, route, method, body, timeout) {
+  const payload = body == null ? null : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+  const response = await new Promise((resolve, reject) => {
+    internalRequest(state, port, route, method, {}, payload, timeout).once('response', resolve).once('error', reject).end(payload);
   });
-  const listen = server.listen.bind(server);
-  server.listen = function (...values) {
-    const callback = values.find((value) => typeof value === 'function');
-    return listen(0, '127.0.0.1', callback);
-  };
-  owner.servers.push(server);
-  return server;
-};
-globalThis.console = { log() {}, info() {}, warn() {}, error() {}, debug() {}, trace() {}, time() {}, timeEnd() {} };
-
-function proxy(port, route, method, body, timeout) {
-  return new Promise((resolve, reject) => {
-    const payload = body === undefined ? null : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
-    const request = http.request({
-      host: '127.0.0.1', port, path: route, method: method || 'GET',
-      headers: Object.assign({ 'x-readcc-token': token },
-        payload ? { 'content-type': 'application/json', 'content-length': payload.length } : {})
-    }, (response) => {
-      const chunks = [];
-      response.on('data', (chunk) => chunks.push(chunk));
-      response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+  try { return { status: response.statusCode, body: (await bounded(response, JSON_LIMIT, 502)).toString('utf8') }; }
+  finally { response.destroy(); }
+}
+const hopHeader = name => /^(?:connection|keep-alive|te|trailer|transfer-encoding|upgrade|proxy-.*)$/i.test(name);
+async function media(state, req, res, port, route) {
+  const headers = {};
+  for (const [key, val] of Object.entries(req.headers)) {
+    if (!internalHeader(key) && !hopHeader(key) && !['host', 'content-length', 'expect', 'accept-encoding'].includes(key) && !hasSecret(String(val), state)) headers[key] = val;
+  }
+  headers['accept-encoding'] = 'identity';
+  const upstream = internalRequest(state, port, route, req.method, headers, null, 45000);
+  const cancel = () => upstream.destroy();
+  res.once('close', cancel);
+  try {
+    const incoming = await new Promise((resolve, reject) => upstream.once('response', resolve).once('error', reject).end());
+    if (active !== state) throw failure(409, 'source changed');
+    const status = incoming.statusCode, base = 'http://127.0.0.1:' + port + route;
+    const out = { 'referrer-policy': 'no-referrer', 'cache-control': 'no-store' };
+    // Never pass unreviewed Location, Link, Refresh, cookies or arbitrary response headers to the player.
+    for (const key of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'content-encoding', 'etag', 'last-modified']) {
+      const val = incoming.headers[key];
+      if (val != null && !hasSecret(String(val), state)) out[key] = val;
+    }
+    if ([301, 302, 303, 307, 308].includes(status)) {
+      const location = grant(state, incoming.headers.location, base);
+      if (!location) throw failure(502, 'invalid media redirect');
+      res.writeHead(status, { 'location': location, 'referrer-policy': 'no-referrer', 'cache-control': 'no-store', 'content-length': 0 });
+      return res.end(); // Discard upstream redirect body (may contain unfiltered links).
+    }
+    const isPlaylist = status === 200 && (/mpegurl/i.test(out['content-type'] || '') || /\.m3u8?$/i.test(new URL(base).pathname));
+    if (isPlaylist) {
+      if (out['content-encoding'] && out['content-encoding'] !== 'identity') throw failure(502, 'unsupported playlist encoding');
+      delete out['content-length']; delete out.etag; delete out['last-modified']; delete out['accept-ranges'];
+      out['content-type'] = 'application/vnd.apple.mpegurl';
+      if (req.method !== 'HEAD') {
+        const body = await bounded(incoming, PLAYLIST_LIMIT, 502);
+        const rewritten = Buffer.from(rewritePlaylist(state, body.toString('utf8'), base));
+        if (rewritten.length > PLAYLIST_LIMIT * 4) throw failure(502, 'playlist too large');
+        if (active !== state) throw failure(409, 'source changed');
+        out['content-length'] = rewritten.length;
+        res.writeHead(status, out); return res.end(rewritten);
+      }
+    }
+    res.writeHead(status, out);
+    if (req.method === 'HEAD' || status === 204 || status === 304) return res.end();
+    // Ordinary binary and partial responses stream with backpressure; no text conversion or buffering.
+    await new Promise((resolve, reject) => pipeline(incoming, res, err => err ? reject(err) : resolve()));
+  } finally { res.removeListener('close', cancel); upstream.destroy(); }
+}
+function bundleDispatch(owner, handler, req, res) {
+  if (owner !== active && owner !== loading) return send(res, 409, { error: 'source changed' });
+  if (req.headers['x-readcc-bridge'] === owner.bridge) {
+    // IncomingMessage exposes both normalized and raw headers; remove private transit metadata from both.
+    for (let i = req.rawHeaders.length - 2; i >= 0; i -= 2) {
+      if (internalHeader(req.rawHeaders[i])) req.rawHeaders.splice(i, 2);
+    }
+    for (const key of Object.keys(req.headers)) if (internalHeader(key)) delete req.headers[key];
+    return sourceContext.run(owner, async () => {
+      try { await handler(req, res); } catch (_) { send(res, 500, { error: 'bundle request failed' }); }
     });
-    request.setTimeout(timeout || 45000, () => request.destroy(new Error('timeout')));
-    request.on('error', reject);
-    if (payload) request.write(payload);
-    request.end();
-  });
+  }
+  const prefix = PREFIX + owner.mediaScope;
+  if (owner !== active || !['GET', 'HEAD'].includes(req.method) || !req.url.startsWith(prefix + '/')) return send(res, 401, { error: 'unauthorized' });
+  const port = req.socket.localPort, route = req.url.slice(prefix.length), key = port + ':' + route;
+  if (!owner.grants.has(key)) return send(res, 403, { error: 'not a media resource' });
+  owner.grants.delete(key); owner.grants.add(key);
+  return media(owner, req, res, port, route).catch(err => send(res, err.status || 502, { error: err.publicMessage || 'media unavailable' }));
 }
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function failure(status, message) { return Object.assign(new Error(message), { status }); }
-function description(state) {
-  const ports = state.servers.map(s => s.address()).filter(a => a && typeof a === 'object').map(a => a.port);
-  return { sourceID: state.sourceID, port: state.port, ports, origin: 'http://127.0.0.1:' + state.port, sites: state.sites };
-}
+globalThis.catDartServerPort = () => 0;
+globalThis.catServerFactory = handler => {
+  const owner = sourceContext.getStore();
+  if (!owner || (owner !== active && owner !== loading)) throw Error('server outside source context');
+  const server = http.createServer((req, res) => bundleDispatch(owner, handler, req, res));
+  const listen = server.listen.bind(server);
+  server.listen = (...args) => listen(0, '127.0.0.1', args.find(v => typeof v === 'function'));
+  owner.servers.push(server); return server;
+};
 async function stopState(state) {
   if (!state) return;
-  try { if (state.bundle && typeof state.bundle.stop === 'function') await state.bundle.stop(); } catch (_) {}
+  state.grants.clear();
   for (const server of state.servers) {
     try { server.close(); if (server.closeAllConnections) server.closeAllConnections(); } catch (_) {}
   }
+  try { if (state.bundle && typeof state.bundle.stop === 'function') await state.bundle.stop(); } catch (_) {}
 }
 async function loadBundle(config) {
   if (typeof config.sourceID !== 'string' || !config.sourceID) throw failure(400, 'missing sourceID');
   if (typeof config.path !== 'string' || !path.isAbsolute(config.path) || !fs.existsSync(config.path)) throw failure(400, 'missing bundle');
   if (typeof config.data !== 'string' || !path.isAbsolute(config.data)) throw failure(400, 'missing state folder');
-  const bundlePath = fs.realpathSync(config.path), dataPath = path.resolve(config.data);
-  if (active && active.sourceID === config.sourceID && active.path === bundlePath && active.data === dataPath) return description(active);
-  const previous = active;
-  active = null;
-  await stopState(previous);
-  const state = { sourceID: config.sourceID, path: bundlePath, data: dataPath, servers: [], port: 0, sites: [], bundle: null };
-  loadingSourceID = state;
+  const bundlePath = fs.realpathSync(config.path), data = path.resolve(config.data);
+  if (active && active.sourceID === config.sourceID && active.path === bundlePath && active.data === data) return description(active);
+  const previous = active; active = null; await stopState(previous);
+  const state = { sourceID: config.sourceID, path: bundlePath, data, servers: [], port: 0, sites: [],
+    bundle: null, mediaScope: randomKey(), bridge: randomKey(), grants: new Set() };
+  loading = state;
   try {
-    fs.mkdirSync(dataPath, { recursive: true });
-    process.chdir(dataPath);
+    fs.mkdirSync(data, { recursive: true }); process.chdir(data);
     await sourceContext.run(state, async () => {
-      delete require.cache[require.resolve(bundlePath)];
-      state.bundle = require(bundlePath);
-      if (typeof state.bundle.start !== 'function') throw new Error('bundle has no start');
+      delete require.cache[require.resolve(bundlePath)]; state.bundle = require(bundlePath);
+      if (typeof state.bundle.start !== 'function') throw Error('missing start');
       await state.bundle.start({ sites: { list: [] }, pans: { list: [] }, color: [] });
     });
     for (let attempt = 0; attempt < 200 && !state.port; attempt++) {
-      for (const server of state.servers) {
-        const address = server.address();
-        if (!address || typeof address !== 'object') continue;
+      for (const port of ports(state)) {
         try {
-          const result = await proxy(address.port, '/config', 'GET', undefined, 8000);
-          if (result.status === 200) {
-            const parsed = JSON.parse(result.body);
-            if (parsed.video && Array.isArray(parsed.video.sites)) {
-              state.port = address.port;
-              state.sites = parsed.video.sites
-                .filter(site => typeof site.api === 'string' && /^\/spider\/[A-Za-z0-9_./-]+$/.test(site.api) && !site.api.split('/').includes('..'))
-                .map(site => ({ key: String(site.key || site.api), name: String(site.name || site.key || ''), api: site.api,
-                  type: Number(site.type || 0), searchable: site.searchable === 1 || site.searchable === true,
-                  filterable: site.filterable === 1 || site.filterable === true, indexs: site.indexs === 1 || site.indexs === true }));
-              break;
-            }
-          }
+          const result = await proxy(state, port, '/config', 'GET', undefined, 8000);
+          if (result.status !== 200) continue;
+          const parsed = JSON.parse(result.body);
+          if (!parsed.video || !Array.isArray(parsed.video.sites)) continue;
+          state.port = port;
+          state.sites = parsed.video.sites.filter(s => typeof s.api === 'string' && /^\/spider\/[A-Za-z0-9_./-]+$/.test(s.api) && !s.api.split('/').includes('..'))
+            .map(s => ({ key: String(s.key || s.api), name: String(s.name || s.key || ''), api: s.api,
+              type: Number(s.type || 0), searchable: s.searchable === 1 || s.searchable === true,
+              filterable: s.filterable === 1 || s.filterable === true, indexs: s.indexs === 1 || s.indexs === true }));
+          break;
         } catch (_) {}
       }
       if (!state.port) await delay(150);
     }
-    if (!state.port) throw new Error('no video configuration');
-    active = state;
-    return description(state);
-  } catch (error) { await stopState(state); throw error; }
-  finally { loadingSourceID = null; }
+    if (!state.port) throw failure(502, 'no video configuration');
+    active = state; return description(state);
+  } catch (err) { await stopState(state); throw err; } finally { loading = null; }
 }
 function serial(operation) {
-  const result = loadQueue.then(operation);
-  loadQueue = result.catch(() => {});
-  return result;
+  const result = loadQueue.then(operation); loadQueue = result.catch(() => {}); return result;
 }
 function requireSource(body) {
-  if (!active) throw failure(409, 'no source loaded');
-  if (body.sourceID !== active.sourceID) throw failure(409, 'source changed');
+  if (!active || body.sourceID !== active.sourceID) throw failure(409, 'source changed');
   return active;
 }
-
-async function readBody(req, limit) {
-  return new Promise((resolve, reject) => {
-    let size = 0; const chunks = [];
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > (limit || 65536)) { reject(new Error('body too large')); req.destroy(); return; }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
-
 const control = http.createServer(async (req, res) => {
-  const send = (status, value) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)); };
-  if (req.headers['x-readcc-token'] !== token) return send(401, { error: 'unauthorized' });
-  const url = new URL(req.url, 'http://127.0.0.1');
+  if (req.headers['x-readcc-token'] !== token) return send(res, 401, { error: 'unauthorized' });
   try {
-    if (url.pathname === '/ping') return send(200, { ok: true });
-    if (url.pathname === '/load' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req) || '{}');
-      const result = await serial(() => loadBundle(body));
-      return send(200, Object.assign({ ok: true }, result));
-    }
-    if (url.pathname === '/invoke' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req) || '{}');
-      return await serial(async () => {
-        const state = requireSource(body);
-        const site = state.sites.find(site => site.api === body.api && site.key === body.site);
+    if (req.url === '/ping' && req.method === 'GET') return send(res, 200, { ok: true });
+    if (req.method !== 'POST' || !['/load', '/invoke', '/proxy'].includes(req.url)) return send(res, 404, { error: 'not found' });
+    const body = JSON.parse((await bounded(req, 65536, 413)).toString('utf8') || '{}');
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw failure(400, 'invalid body');
+    const result = await serial(async () => {
+      if (req.url === '/load') return { ok: true, ...await loadBundle(body) };
+      const state = requireSource(body);
+      if (req.url === '/invoke') {
+        const site = state.sites.find(s => s.api === body.api && s.key === body.site);
         if (!site) throw failure(400, 'unknown site');
-        const action = String(body.action || '');
+        const action = body.action;
         if (!['home', 'category', 'search', 'detail', 'play'].includes(action)) throw failure(400, 'unsupported action');
         if (body.arguments != null && (typeof body.arguments !== 'object' || Array.isArray(body.arguments))) throw failure(400, 'invalid arguments');
-        const result = await proxy(state.port, site.api + '/' + action, 'POST', body.arguments || {}, 60000);
-        return send(200, result);
-      });
-    }
-    if (url.pathname === '/proxy' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req) || '{}');
-      return await serial(async () => {
-        const state = requireSource(body);
-        const method = String(body.method || 'GET').toUpperCase();
-        const route = String(body.path || '');
-        const readCredentials = method === 'GET' && route === '/website/api/credentials';
-        const editCredential = ['PUT', 'DELETE'].includes(method) && /^\/website\/api\/credential\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(route);
-        if (!readCredentials && !editCredential) throw failure(400, 'unsupported credential route');
-        const result = await proxy(state.port, route, method, body.body, 30000);
-        return send(200, result);
-      });
-    }
-    return send(404, { error: 'not found' });
-  } catch (error) {
-    writeLog('control: ' + (error && error.stack || error));
-    return send(error.status || (error instanceof SyntaxError ? 400 : 500), { error: String(error && error.message || error) });
+        const reply = await proxy(state, state.port, site.api + '/' + action, 'POST', body.arguments || {}, 60000);
+        if (reply.status >= 200 && reply.status < 300) registerResponse(state, action, reply.body);
+        return reply;
+      }
+      const method = String(body.method || 'GET').toUpperCase(), route = String(body.path || '');
+      const read = method === 'GET' && route === '/website/api/credentials';
+      const edit = ['PUT', 'DELETE'].includes(method) && /^\/website\/api\/credential\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(route);
+      if (!read && !edit) throw failure(400, 'unsupported credential route');
+      return proxy(state, state.port, route, method, body.body, 30000);
+    });
+    send(res, 200, result);
+  } catch (err) {
+    log('control request failed');
+    send(res, err.status || (err instanceof SyntaxError ? 400 : 500), { error: err.publicMessage || 'control request failed' });
   }
 });
 control.listen(0, '127.0.0.1', () => {
-  fs.writeFileSync(readyPath + '.tmp', JSON.stringify({ port: control.address().port, token }));
+  fs.writeFileSync(readyPath + '.tmp', JSON.stringify({ port: control.address().port, token }), { mode: 0o600 });
   fs.renameSync(readyPath + '.tmp', readyPath);
 });
 """#

@@ -39,7 +39,12 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == catvod-home ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/CatVodContentTests'
+    -only-testing:'yuedu appTests/CatVodHomeFlowTests'
+  )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/SourcePickerManagementTests'
     -only-testing:'yuedu appTests/SourcePickerLayoutTests'

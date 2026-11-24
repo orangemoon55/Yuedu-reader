@@ -93,11 +93,12 @@ enum CatVodContentParser {
         }
 
         let categoryValues = (object["class"] as? [Any]) ?? (object["type"] as? [Any]) ?? []
+        var seenCategories = Set<String>()
         let categories = categoryValues.compactMap { value -> CatVodCategory? in
             guard let item = value as? [String: Any] else { return nil }
             let id = string(item["type_id"] ?? item["id"])
             let name = string(item["type_name"] ?? item["name"])
-            guard !id.isEmpty || !name.isEmpty else { return nil }
+            guard !id.isEmpty, !name.isEmpty, seenCategories.insert(id).inserted else { return nil }
             return CatVodCategory(id: id, name: name)
         }
 
@@ -257,9 +258,11 @@ enum CatVodContentParser {
     }
 
     private static func parseVideos(_ values: [Any]) -> [CatVodVideo] {
-        values.compactMap { value in
+        var seen = Set<String>()
+        return values.compactMap { value in
             guard let item = value as? [String: Any] else { return nil }
-            return parseVideo(item, includeRoutes: false)
+            let video = parseVideo(item, includeRoutes: false)
+            guard !video.id.isEmpty, !video.title.isEmpty, seen.insert(video.id).inserted else { return nil }; return video
         }
     }
 
@@ -324,7 +327,7 @@ enum CatVodContentParser {
         let groupValues = string(item["vod_play_url"]).components(separatedBy: "$$$")
         let groupCount = max(flags.count, groupValues.count)
         guard groupCount > 0 else { return [] }
-        return (0..<groupCount).map { groupIndex in
+        return (0..<groupCount).compactMap { groupIndex -> CatVodRoute? in
             let flag = groupIndex < flags.count ? flags[groupIndex].trimmingCharacters(in: .whitespacesAndNewlines) : ""
             let routeName = flag.isEmpty ? "线路 \(groupIndex + 1)" : flag
             let rawGroup = groupIndex < groupValues.count ? groupValues[groupIndex] : ""
@@ -334,10 +337,12 @@ enum CatVodContentParser {
                 if let separator = segment.firstIndex(of: "$") {
                     let title = String(segment[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
                     let playID = String(segment[segment.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !playID.isEmpty else { return nil }
                     return CatVodEpisode(id: "route-\(groupIndex + 1)-episode-\(offset + 1)", title: title.isEmpty ? "第\(offset + 1)集" : title, playID: playID)
                 }
                 return CatVodEpisode(id: "route-\(groupIndex + 1)-episode-\(offset + 1)", title: "第\(offset + 1)集", playID: segment)
             }
+            guard !episodes.isEmpty else { return nil }
             return CatVodRoute(id: "route-\(groupIndex + 1)", flag: flag, name: routeName, episodes: episodes)
         }
     }
@@ -411,6 +416,7 @@ enum CatVodContentParser {
     }
 
     private static func isHTTPMediaURL(_ text: String) -> Bool {
+        if text.hasPrefix("/"), !text.hasPrefix("//"), !text.contains("\\") { return true } // resolve only against the activated bundle
         guard let components = URLComponents(string: text),
               let scheme = components.scheme?.lowercased(),
               ["http", "https"].contains(scheme),

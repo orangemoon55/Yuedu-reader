@@ -80,9 +80,9 @@ final class VideoPlaybackController {
     /// A script's link, opening where it was left (`VideoLinkPositions`).
     init(link: VideoStream, title: String) {
         var book = ReadingBook(title: title, author: "", contentFilename: "")
-        book.onlineChapters = [OnlineChapterRef(index: 0, title: title, url: link.url.absoluteString)]
+        book.onlineChapters = [OnlineChapterRef(index: 0, title: title, url: (link.resumeKey ?? link.url).absoluteString)]
         book.audioChapterIndex = 0
-        book.audioTimeSeconds = VideoLinkPositions.time(for: link.url) ?? 0
+        book.audioTimeSeconds = VideoLinkPositions.time(for: link.resumeKey ?? link.url) ?? 0
         self.book = book
         self.source = .link(link)
         self.guide = VideoEpisodeGuide(chapters: book.onlineChapters ?? [])
@@ -427,7 +427,7 @@ final class VideoPlaybackController {
         book.audioTimeSeconds = currentTime
         switch source {
         case .link(let stream):
-            VideoLinkPositions.save(currentTime, for: stream.url)
+            VideoLinkPositions.save(currentTime, for: stream.resumeKey ?? stream.url)
             return
         case .book(_, persists: false):
             return
