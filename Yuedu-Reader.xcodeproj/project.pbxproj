@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C55100000000000000000001 /* KSPlayer in Frameworks */ = {isa = PBXBuildFile; productRef = C55100000000000000000002 /* KSPlayer */; };
 		1C081706E1002E557584EDC6 /* YueduCoreTextTypography in Frameworks */ = {isa = PBXBuildFile; productRef = 3D3ACA9A6DDE978E3B91280C /* YueduCoreTextTypography */; };
 		1E90D290C84CF7DFB61183AB /* yuedu_app_Widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4E4E1DDA4EE35F67778097F0 /* yuedu_app_Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2EE60C00FD763A43CFCAC2A0 /* yuedu_app_ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 81F92752186D8D0E971A17B9 /* yuedu_app_ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -172,6 +173,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C55100000000000000000001 /* KSPlayer in Frameworks */,
 				8A11B0E32F9A1C7300A1B001 /* ReadiumFuzi in Frameworks */,
 				46A6AB6F2FCD4ED60071B397 /* FirebaseAuthCombine-Community in Frameworks */,
 				460274852F710D7500486947 /* ReadiumAdapterLCPSQLite in Frameworks */,
@@ -331,6 +333,7 @@
 			);
 			name = "yuedu app";
 			packageProductDependencies = (
+				C55100000000000000000002 /* KSPlayer */,
 				8A11B0E22F9A1C7300A1B001 /* ReadiumFuzi */,
 				7F41A49C749809CDAB632913 /* ReadiumZIPFoundation */,
 				489E6E08B47AA3AC9F140CAD /* SwiftSoup */,
@@ -477,6 +480,8 @@
 			mainGroup = 460D36502F51C5B8006E774C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				C55100000000000000000003 /* XCRemoteSwiftPackageReference "KSPlayer" */,
+				C55100000000000000000004 /* XCRemoteSwiftPackageReference "FFmpegKit" */,
 				46935AA62F52E48600662F9D /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				AAAA1111AAAA1111AAAA0003 /* XCRemoteSwiftPackageReference "Nuke" */,
 				8A11B0E12F9A1C7300A1B001 /* XCRemoteSwiftPackageReference "Fuzi" */,
@@ -1194,6 +1199,22 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C55100000000000000000003 /* XCRemoteSwiftPackageReference "KSPlayer" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kingslay/KSPlayer.git";
+			requirement = {
+				kind = revision;
+				revision = bdfa2da39bb18865b317c4ffd08cdef5f8efc043;
+			};
+		};
+		C55100000000000000000004 /* XCRemoteSwiftPackageReference "FFmpegKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kingslay/FFmpegKit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 6.1.3;
+			};
+		};
 		4503FB56A177080D0D9E31E4 /* XCRemoteSwiftPackageReference "YueduCoreText" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/CHANG-JUI-LIN/YueduCoreText";
@@ -1261,6 +1282,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C55100000000000000000002 /* KSPlayer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C55100000000000000000003 /* XCRemoteSwiftPackageReference "KSPlayer" */;
+			productName = KSPlayer;
+		};
 		3D3ACA9A6DDE978E3B91280C /* YueduCoreTextTypography */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4503FB56A177080D0D9E31E4 /* XCRemoteSwiftPackageReference "YueduCoreText" */;

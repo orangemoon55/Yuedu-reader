@@ -367,7 +367,7 @@ private struct ExploreHomeRoot: View {
         .background(PageBackgroundView(scope: .explore).ignoresSafeArea())
         .pageBackgroundToolbar(for: .explore)
         // While the home is edited the bar stays, for its 完成 (maintainer, 2026-10-17).
-        .rootTabTitle(localized("底部發現"), onScroll: isEditing ? .fadesTitle : .minimizesBar, overColor: barIsOverColor)
+        .rootTabTitle(localized("主頁"), onScroll: isEditing ? .fadesTitle : .minimizesBar, overColor: barIsOverColor)
         .navigationDestination(isPresented: $choosesCarousel) { carouselPicker }
         .animation(reduceMotion ? nil : DSAnimation.standard, value: groups.map(\.id))
     }

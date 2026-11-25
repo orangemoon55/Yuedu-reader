@@ -27,7 +27,13 @@ final class VideoPlaybackController {
     /// legado-E's long-press speed default (`longPressSpeed` 30 = 3.0×).
     static let longPressRate: Float = 3
 
+    /// AVFoundation is retained as a real fallback, not as a stand-in for KSPlayer.
     let player = AVPlayer()
+    @ObservationIgnored let ksKernel = NativeKSVideoKernel()
+    private(set) var usesKSPlayer = false
+    private(set) var kernelName = "KSPlayer · FFmpeg"
+    private var currentStream: VideoStream?
+    private var attemptedAVFallback = false
     let guide: VideoEpisodeGuide
     private(set) var book: ReadingBook
     private(set) var chapterIndex: Int
@@ -51,6 +57,7 @@ final class VideoPlaybackController {
     }
 
     private let source: Source
+    private let prefersKSPlayer: Bool
     private var loadTask: Task<Void, Never>?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
@@ -69,24 +76,32 @@ final class VideoPlaybackController {
     private let pictureInPictureDelegate = VideoPictureInPictureDelegate()
 
     /// `book` must carry its table of contents (`BookStore.readingBook(id:)`).
-    init(book: ReadingBook, store: BookStore, persists: Bool) {
+    init(book: ReadingBook, store: BookStore, persists: Bool, prefersKSPlayer: Bool = true) {
+        self.prefersKSPlayer = prefersKSPlayer
         self.book = book
         self.source = .book(store, persists: persists)
         self.guide = VideoEpisodeGuide(chapters: book.onlineChapters ?? [])
-        self.chapterIndex = guide.resumeEpisode(saved: book.audioChapterIndex) ?? 0
+        self.chapterIndex = (MediaPreferences.videoResumeEnabled
+                             ? guide.resumeEpisode(saved: book.audioChapterIndex) : guide.firstEpisode) ?? 0
+        self.rate = MediaPreferences.videoDefaultRate
+        player.defaultRate = rate
         player.automaticallyWaitsToMinimizeStalling = true
     }
 
     /// A script's link, opening where it was left (`VideoLinkPositions`).
-    init(link: VideoStream, title: String) {
+    init(link: VideoStream, title: String, prefersKSPlayer: Bool = true) {
+        self.prefersKSPlayer = prefersKSPlayer
         var book = ReadingBook(title: title, author: "", contentFilename: "")
         book.onlineChapters = [OnlineChapterRef(index: 0, title: title, url: (link.resumeKey ?? link.url).absoluteString)]
         book.audioChapterIndex = 0
-        book.audioTimeSeconds = VideoLinkPositions.time(for: link.resumeKey ?? link.url) ?? 0
+        book.audioTimeSeconds = MediaPreferences.videoResumeEnabled
+            ? (VideoLinkPositions.time(for: link.resumeKey ?? link.url) ?? 0) : 0
         self.book = book
         self.source = .link(link)
         self.guide = VideoEpisodeGuide(chapters: book.onlineChapters ?? [])
         self.chapterIndex = 0
+        self.rate = MediaPreferences.videoDefaultRate
+        player.defaultRate = rate
         player.automaticallyWaitsToMinimizeStalling = true
     }
 
@@ -113,7 +128,7 @@ final class VideoPlaybackController {
         AudioSessionActivator.activate(category: .playback, mode: .moviePlayback)
         NowPlayingHub.shared.yieldToVideo()
         observePlayer()
-        let resumesSaved = chapterIndex == book.audioChapterIndex
+        let resumesSaved = MediaPreferences.videoResumeEnabled && chapterIndex == book.audioChapterIndex
         play(chapterIndex: chapterIndex, at: resumesSaved ? book.audioTimeSeconds : 0)
     }
 
@@ -121,6 +136,7 @@ final class VideoPlaybackController {
     func close() {
         saveProgress(force: true)
         loadTask?.cancel()
+        ksKernel.stop()
         player.pause()
         player.replaceCurrentItem(with: nil)
         if let timeObserver { player.removeTimeObserver(timeObserver) }
@@ -168,6 +184,7 @@ final class VideoPlaybackController {
 
     private func load(at time: Double) {
         loadTask?.cancel()
+        ksKernel.stop()
         player.pause()
         player.replaceCurrentItem(with: nil)
         statusObservation = nil
@@ -225,6 +242,60 @@ final class VideoPlaybackController {
     }
 
     private func begin(_ stream: VideoStream) {
+        if !prefersKSPlayer {
+            usesKSPlayer = false
+            kernelName = "AVFoundation"
+            beginAVFallback(stream)
+            return
+        }
+        currentStream = stream
+        attemptedAVFallback = false
+        usesKSPlayer = true
+        kernelName = "KSPlayer · FFmpeg"
+        // The AVPlayer surface may have created a PiP controller for the prior episode.
+        pictureInPicture = nil
+        nowPlayingSession = nil
+        ksKernel.onTick = { [weak self] time, total, seekable, size in
+            guard let self, self.usesKSPlayer else { return }
+            self.duration = total
+            // Do not invent a live seek window when FFmpeg has not supplied one.
+            self.seekableRange = seekable && total > 0 ? 0...total : nil
+            if size.width > 0, size.height > 0 { self.pictureSize = size }
+            self.timeAdvanced(time)
+        }
+        ksKernel.onReady = { [weak self] in
+            guard let self, self.usesKSPlayer, self.phase == .loading else { return }
+            let seek = self.pendingSeek
+            self.pendingSeek = 0
+            if seek > 0, self.duration == 0 || seek < self.duration - 1 {
+                self.ksKernel.seek(to: seek) { [weak self] _ in
+                    guard let self, self.usesKSPlayer, self.phase == .loading else { return }
+                    self.resume()
+                }
+            } else {
+                self.resume()
+            }
+        }
+        ksKernel.onFinish = { [weak self] error in
+            guard let self, self.usesKSPlayer else { return }
+            if error != nil, !self.attemptedAVFallback, let stream = self.currentStream {
+                self.attemptedAVFallback = true
+                self.pendingSeek = self.currentTime
+                self.ksKernel.stop()
+                self.usesKSPlayer = false
+                self.kernelName = "AVFoundation"
+                self.phase = .loading
+                self.beginAVFallback(stream)
+            } else if let error {
+                self.phase = .failed(error.localizedDescription)
+            } else {
+                self.episodeEnded()
+            }
+        }
+        ksKernel.open(stream)
+    }
+
+    private func beginAVFallback(_ stream: VideoStream) {
         let item = AVPlayerItem(asset: HeaderedMediaAsset.make(url: stream.url, headers: stream.headers))
         item.externalMetadata = nowPlayingMetadata()
         let identity = ObjectIdentifier(item)
@@ -316,12 +387,28 @@ final class VideoPlaybackController {
 
     func pause() {
         guard phase == .playing else { return }
-        player.pause()
+        if usesKSPlayer { ksKernel.pause() } else { player.pause() }
         phase = .paused
         saveProgress(force: true)
     }
 
     func resume() {
+        if usesKSPlayer {
+            guard ksKernel.isReady else { return }
+            NowPlayingHub.shared.yieldToVideo()
+            if phase == .paused, duration > 0, currentTime >= duration {
+                ksKernel.seek(to: 0) { [weak self] finished in
+                    guard let self, finished, self.usesKSPlayer, self.phase == .paused else { return }
+                    self.currentTime = 0
+                    self.ksKernel.play(rate: self.isLongPressing ? Self.longPressRate : self.rate)
+                    self.phase = .playing
+                }
+            } else {
+                ksKernel.play(rate: isLongPressing ? Self.longPressRate : rate)
+                phase = .playing
+            }
+            return
+        }
         // A transport jump to the finite end holds this episode paused, rather than advancing.
         // Replay from that boundary waits for a seek to zero before resuming this same item.
         if phase == .paused, duration > 0, currentTime >= duration {
@@ -351,6 +438,18 @@ final class VideoPlaybackController {
     func seek(to seconds: Double) {
         guard let target = VideoSeek.target(seconds, in: seekableRange) else { return }
         currentTime = target
+        if usesKSPlayer {
+            let shouldResume = phase == .playing
+            ksKernel.seek(to: target) { [weak self] finished in
+                guard let self, self.usesKSPlayer, finished else { return }
+                if shouldResume, self.phase == .playing {
+                    self.ksKernel.play(rate: self.isLongPressing ? Self.longPressRate : self.rate)
+                } else if self.phase == .paused {
+                    self.ksKernel.pause()
+                }
+            }
+            return
+        }
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { finished in
             // A later seek or the next episode cuts one short; a seek that never lands while the
@@ -371,14 +470,19 @@ final class VideoPlaybackController {
     func setRate(_ rate: Float) {
         self.rate = rate
         player.defaultRate = rate
-        if phase == .playing, !isLongPressing { player.rate = rate }
+        if usesKSPlayer {
+            if phase == .playing, !isLongPressing { ksKernel.setRate(rate) }
+        } else if phase == .playing, !isLongPressing { player.rate = rate }
     }
 
     /// legado-E's long press: a faster speed while the finger stays down.
     func setLongPressing(_ pressing: Bool) {
         guard pressing != isLongPressing else { return }
         isLongPressing = pressing
-        if phase == .playing { player.rate = pressing ? Self.longPressRate : rate }
+        if phase == .playing {
+            let value = pressing ? Self.longPressRate : rate
+            if usesKSPlayer { ksKernel.setRate(value) } else { player.rate = value }
+        }
     }
 
     // MARK: Observation
@@ -388,7 +492,10 @@ final class VideoPlaybackController {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 1, preferredTimescale: 600), queue: .main
         ) { [weak self] time in
-            MainActor.assumeIsolated { self?.timeAdvanced(time.seconds) }
+            MainActor.assumeIsolated {
+                guard let self, !self.usesKSPlayer else { return }
+                self.timeAdvanced(time.seconds)
+            }
         }
         endObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main
@@ -422,6 +529,7 @@ final class VideoPlaybackController {
     // MARK: Progress
 
     func saveProgress(force: Bool) {
+        guard MediaPreferences.videoResumeEnabled else { return }
         lastSavedTime = currentTime
         book.audioChapterIndex = chapterIndex
         book.audioTimeSeconds = currentTime

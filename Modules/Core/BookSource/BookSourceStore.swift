@@ -994,55 +994,64 @@ class BookSourceStore: @MainActor ObservableObject {
             throw ImportError.invalidData
         }
         var results: [BookSource] = []
-        for (_, value) in root {
+        for (sourceKey, value) in root {
             guard let obj = value as? [String: Any] else { continue }
             var bs = BookSource()
-            bs.bookSourceName  = obj["siteName"] as? String ?? ""
-            bs.bookSourceUrl   = obj["host"] as? String ?? ""
-            bs.bookSourceType  = obj["siteType"] as? Int ?? 0
-            bs.enabled         = obj["enable"] as? Bool ?? true
-            bs.loginUrl        = obj["loginUrl"] as? String ?? ""
+            // Older YDS exports use the root dictionary key as the display name. Treat an
+            // empty/whitespace siteName as absent rather than letting it mask that fallback.
+            if let name = ydsString(obj["siteName"]),
+               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                bs.bookSourceName = name
+            } else {
+                bs.bookSourceName = sourceKey
+            }
+            bs.bookSourceUrl   = ydsString(obj["host"]) ?? ""
+            bs.bookSourceType  = ydsInt(obj["siteType"]) ?? 0
+            bs.enabled         = ydsBool(obj["enable"]) ?? true
+            bs.loginUrl        = ydsString(obj["loginUrl"]) ?? ""
 
             let host = bs.bookSourceUrl
 
             // ── searchRule ──────────────────────────────
             if let sr = obj["searchRule"] as? [String: Any] {
                 bs.searchUrl          = ydsResolveUrl(sr["requestUrl"], host: host)
-                bs.ruleSearch.bookList  = sr["list"]      as? String ?? ""
-                bs.ruleSearch.name      = sr["title"]     as? String ?? ""
-                bs.ruleSearch.author    = sr["author"]    as? String ?? ""
-                bs.ruleSearch.coverUrl  = sr["cover"]     as? String ?? ""
-                bs.ruleSearch.kind      = sr["tags"]      as? String ?? ""
-                bs.ruleSearch.intro     = sr["desc"]      as? String ?? ""
-                bs.ruleSearch.bookUrl   = sr["detailUrl"] as? String ?? ""
+                bs.ruleSearch.bookList  = ydsString(sr["list"])      ?? ""
+                bs.ruleSearch.name      = ydsString(sr["title"])     ?? ""
+                bs.ruleSearch.author    = ydsString(sr["author"])    ?? ""
+                bs.ruleSearch.coverUrl  = ydsString(sr["cover"])     ?? ""
+                bs.ruleSearch.kind      = ydsString(sr["tags"])      ?? ""
+                bs.ruleSearch.intro     = ydsString(sr["desc"])      ?? ""
+                bs.ruleSearch.bookUrl   = ydsString(sr["detailUrl"]) ?? ""
             }
 
             // ── detailRule → ruleBookInfo ────────────────
             if let dr = obj["detailRule"] as? [String: Any] {
-                bs.ruleBookInfo.initScript = dr["requestUrl"] as? String ?? ""
+                bs.ruleBookInfo.initScript = ydsString(dr["requestUrl"]) ?? ""
                 // detailRule.url is the identifier extracted from detail response
                 // chapterRule.requestUrl then builds the actual TOC URL from that
-                let chapterRequestUrl = (obj["chapterRule"] as? [String: Any])?["requestUrl"] as? String ?? ""
-                if !chapterRequestUrl.isEmpty {
+                let chapterRequestUrl = (obj["chapterRule"] as? [String: Any])?["requestUrl"]
+                if let chapterRequestUrl {
                     // Compose: extract detailRule.url, then pipe into chapterRule.requestUrl
-                    let detailUrl = dr["url"] as? String ?? ""
-                    bs.ruleBookInfo.tocUrl = ydsComposeTocUrl(detailUrl: detailUrl,
-                                                               chapterRequestUrl: chapterRequestUrl)
+                    let detailUrl = ydsString(dr["url"]) ?? ""
+                    bs.ruleBookInfo.tocUrl = ydsComposeTocUrl(
+                        detailUrl: detailUrl,
+                        chapterRequestUrl: ydsResolveUrl(chapterRequestUrl, host: host)
+                    )
                 }
             }
 
             // ── chapterRule → ruleToc ────────────────────
             if let cr = obj["chapterRule"] as? [String: Any] {
-                bs.ruleToc.chapterList = cr["list"]  as? String ?? ""
-                bs.ruleToc.chapterName = cr["title"] as? String ?? ""
-                bs.ruleToc.chapterUrl  = cr["url"]   as? String ?? ""
+                bs.ruleToc.chapterList = ydsString(cr["list"])  ?? ""
+                bs.ruleToc.chapterName = ydsString(cr["title"]) ?? ""
+                bs.ruleToc.chapterUrl  = ydsString(cr["url"])   ?? ""
             }
 
             // ── contentRule → ruleContent ────────────────
             if let cont = obj["contentRule"] as? [String: Any] {
-                bs.ruleContent.content = cont["content"] as? String ?? ""
+                bs.ruleContent.content = ydsString(cont["content"]) ?? ""
                 // contentRule.requestUrl: store as a init/preUpdate comment
-                if let reqUrl = cont["requestUrl"] as? String, !reqUrl.isEmpty {
+                if let reqUrl = ydsString(cont["requestUrl"]), !reqUrl.isEmpty {
                     bs.ruleContent.webJs = reqUrl
                 }
             }
@@ -1054,30 +1063,90 @@ class BookSourceStore: @MainActor ObservableObject {
         return results
     }
 
+    private nonisolated func ydsString(_ value: Any?) -> String? {
+        if let value = value as? String { return value }
+        if let value = value as? NSNumber { return value.stringValue }
+        return nil
+    }
+
+    private nonisolated func ydsInt(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return nil
+    }
+
+    private nonisolated func ydsBool(_ value: Any?) -> Bool? {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        if let value = value as? String {
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "1": return true
+            case "false", "0": return false
+            default: return nil
+            }
+        }
+        return nil
+    }
+
+    private nonisolated func ydsRequestURL(_ raw: Any?) -> String? {
+        if let string = ydsString(raw) { return string }
+        if let dict = raw as? [String: Any] { return ydsString(dict["url"]) }
+        return nil
+    }
+
     /// Resolve a .yds `requestUrl` to the actual URL string used in Legado.
     /// The requestUrl is either:
     ///   - A JSON string like `{"url": "/path?$keyWord..."}` → combine with host
+    ///   - An already-decoded object with a `url` key → combine with host
     ///   - A `@js:` expression → use as-is
     ///   - A plain URL → use as-is
     private nonisolated func ydsResolveUrl(_ raw: Any?, host: String) -> String {
-        guard let raw else { return "" }
-        let s: String
-        if let str = raw as? String { s = str.trimmingCharacters(in: .whitespacesAndNewlines) }
-        else { return "" }
-
+        guard let rawString = ydsRequestURL(raw) else { return "" }
+        let s = rawString.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("@js:") || s.hasPrefix("@JS:") { return s }
 
-        // Try JSON object with "url" key
+        // Try JSON object with "url" key.  Some YDS writers emit the object directly,
+        // while others double-encode it as a string.
         if s.hasPrefix("{"), let d = s.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-           let path = dict["url"] as? String {
-            let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedPath.hasPrefix("http") { return trimmedPath }
-            return host + trimmedPath
+           let path = ydsString(dict["url"]) {
+            return ydsJoinURL(host: host, path: path)
         }
-        // Plain URL or template
-        if s.hasPrefix("http") { return s }
-        return host + s
+        return ydsJoinURL(host: host, path: s)
+    }
+
+    private nonisolated func ydsHasURLScheme(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+        guard let colon = bytes.firstIndex(of: 58), colon > 0 else { return false }
+        func isAlpha(_ byte: UInt8) -> Bool {
+            (65...90).contains(byte) || (97...122).contains(byte)
+        }
+        guard isAlpha(bytes[0]) else { return false }
+        return bytes[..<colon].dropFirst().allSatisfy { byte in
+            isAlpha(byte) || (48...57).contains(byte) || byte == 43 || byte == 45 || byte == 46
+        }
+    }
+
+    /// Join a YDS host and path without doubled slashes. Preserve URL schemes, resolve
+    /// protocol-relative paths against the host scheme, and keep templates byte-for-byte.
+    private nonisolated func ydsJoinURL(host: String, path: String) -> String {
+        let base = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else { return base }
+        if ydsHasURLScheme(target) { return target }
+        if target.hasPrefix("//") {
+            guard ydsHasURLScheme(base), let colon = base.firstIndex(of: ":") else { return target }
+            return String(base[..<colon]) + ":" + target
+        }
+        guard !base.isEmpty else { return target }
+        if base.hasSuffix("/") && target.hasPrefix("/") {
+            return String(base.dropLast()) + target
+        }
+        if !base.hasSuffix("/") && !target.hasPrefix("/") {
+            return base + "/" + target
+        }
+        return base + target
     }
 
     /// Compose a Legado `ruleBookInfo.tocUrl` from the .yds two-step chain:

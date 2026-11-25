@@ -149,6 +149,44 @@ struct SettingsView: View {
                     }
                     .interfaceSectionSurface()
 
+                    // ── 影視 ──
+                    Section {
+                        NavigationLink {
+                            MediaSettingsView(area: .video)
+                        } label: {
+                            Label(localized("影視設定"), systemImage: "play.rectangle.fill")
+                                .foregroundColor(DSColor.textPrimary)
+                                .labelStyle(IconConsistentLabelStyle())
+                        }
+                        .accessibilityIdentifier("settings.media.video")
+                    } header: {
+                        Text(localized("設定分組：影視"))
+                            .foregroundStyle(DSColor.textSecondary)
+                    } footer: {
+                        Text(localized("影片播放與首頁展示偏好；來源匯入、Cookie、網路與快取沿用既有設定頁。"))
+                            .dsSectionFooter()
+                    }
+                    .interfaceSectionSurface()
+
+                    // ── 音樂 ──
+                    Section {
+                        NavigationLink {
+                            MediaSettingsView(area: .music)
+                        } label: {
+                            Label(localized("音樂設定"), systemImage: "music.note")
+                                .foregroundColor(DSColor.textPrimary)
+                                .labelStyle(IconConsistentLabelStyle())
+                        }
+                        .accessibilityIdentifier("settings.media.music")
+                    } header: {
+                        Text(localized("設定分組：音樂"))
+                            .foregroundStyle(DSColor.textSecondary)
+                    } footer: {
+                        Text(localized("音樂播放與封面偏好；來源與中繼資料分開管理，不顯示未實作的服務選項。"))
+                            .dsSectionFooter()
+                    }
+                    .interfaceSectionSurface()
+
                     // ── 閱讀 ──
                     Section {
                         DSSettingsRow(

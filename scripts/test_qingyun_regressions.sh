@@ -38,8 +38,29 @@ trap finish EXIT
 python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
-DEST="$(bash scripts/sim.sh dest)"
-if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == catvod-home ]]; then
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
+  DEST="$(bash scripts/sim.sh dest iPad)"
+else
+  DEST="$(bash scripts/sim.sh dest)"
+fi
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
+  TEST_SELECTION=(
+    -only-testing:'yuedu appTests/NativeKSVideoKernelTests'
+    -only-testing:'yuedu appTests/CatVodPlaybackFlowTests'
+    -only-testing:'yuedu appTests/MusicImportServiceTests'
+    -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
+    -only-testing:'yuedu appTests/SourceImportPlanTests'
+    -only-testing:'yuedu appTests/MediaTabMenuTests'
+    -only-testing:'yuedu appTests/MediaHubPresentationTests'
+    -only-testing:'yuedu appTests/MediaPreferencesTests'
+    -only-testing:'yuedu appTests/RootTabCustomizationTests'
+    -only-testing:'yuedu appTests/ReadccBackdropBlurTests'
+    -only-testing:'yuedu appTests/VideoTransportTests'
+    -only-testing:'yuedu appTests/CatVodContentTests'
+    -only-testing:'yuedu appTests/CatVodHomeFlowTests'
+    -only-testing:'yuedu appUITests/MediaTabToolbarUITests'
+  )
+elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == catvod-home ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/CatVodContentTests'
     -only-testing:'yuedu appTests/CatVodHomeFlowTests'

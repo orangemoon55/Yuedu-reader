@@ -20,6 +20,7 @@ struct ContentView: View {
     /// screen's own (`RootTabBarVisibility`).
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @State private var selectedRootTab: RootTabItem = .explore
+    @State private var mediaHubRoute: MediaHubRoute?
     @State private var rootKeyboardVisible = false
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
@@ -322,7 +323,11 @@ struct ContentView: View {
     @ViewBuilder
     private var tabView: some View {
         if #available(iOS 18.0, *) {
-            visibleTabsTabView
+            if usesFloatingRootTabBar {
+                visibleTabsTabView
+            } else {
+                nativeMediaTabsTabView
+            }
         } else {
             // iOS 17's TabView keys each tab by its position, so showing or hiding a tab
             // rebuilds every tab after it — and a rebuilt NavigationStack gets a second
@@ -349,6 +354,7 @@ struct ContentView: View {
         } set: { tab in
             // Stamped as the tap lands: iOS 27 appears the tab's root before `onChange` runs.
             if tab == .library, selectedRootTab != .library { LibraryTabTiming.noteSelected() }
+            if tab == .explore || tab == .bookshelf { mediaHubRoute = nil }
             selectedRootTab = tab
         }
     }
@@ -370,36 +376,72 @@ struct ContentView: View {
                     pointSize: floatingRootTabIconSize,
                     displayScale: displayScale, settings: gs
                 )
-            }
+            },
+            mediaQuickAction: openMediaHub
         )
         .padding(.top, FloatingRootTabBarLayout.topSpacing)
         .padding(.bottom, FloatingRootTabBarLayout.bottomSpacing)
     }
 
+    private func openMediaHub(_ kind: MediaHubKind, _ isLibrary: Bool) {
+        // A menu action must not use rootTabSelection: ordinary taps clear the route.
+        mediaHubRoute = MediaHubRoute(kind: kind, isLibrary: isLibrary)
+        selectedRootTab = isLibrary ? .bookshelf : .explore
+    }
+
+    @available(iOS 18.0, *)
+    private var nativeMediaTabsTabView: some View {
+        TabView(selection: rootTabSelection) {
+            ForEach(gs.visibleRootTabs) { tab in
+                Tab(value: tab) {
+                    rootTabPage(for: tab)
+                } label: {
+                    rootTabItemLabel(for: tab)
+                }
+                // TabContent.contextMenu belongs on the Tab, not on its label.
+                // Apple's public API presents this menu in the native sidebar.
+                .contextMenu {
+                    RootTabMediaMenuItems(tab: tab, onSelect: openMediaHub)
+                }
+            }
+        }
+    }
+
     private var visibleTabsTabView: some View {
         TabView(selection: rootTabSelection) {
             ForEach(gs.visibleRootTabs) { tab in
-                rootTabContent(for: tab)
-                    .modifier(ThemedSurfaceBackground(
-                        scope: AppearancePageBackgroundScope(rawValue: tab.rawValue) ?? .global,
-                        isProActive: subscriptionStore.hasAccess(.readerThemePacks)
-                    ))
-                    .background {
-                        RootTabBarHider(visibility: rootTabBar, isFloating: usesFloatingRootTabBar)
-                    }
-                    // Keep navigation full-height: capsule overlays live content.
-                    // Only scroll-content margins reserve the reachable last row.
-                    .modifier(FloatingRootTabBarContainer(isPresented: rootTabBar.showsFloatingTabBar(
-                        isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
-                    )) {
-                        floatingRootTabBar
-                    })
+                rootTabPage(for: tab)
                     .tag(tab)
                     .tabItem {
                         rootTabItemLabel(for: tab)
                     }
             }
         }
+    }
+
+    private func rootTabPage(for tab: RootTabItem) -> some View {
+        rootTabContent(for: tab)
+            .toolbar {
+                // Keep the existing stacks, native tab layout and novel/comic roots.
+                // A visible Menu complements (not impersonates) sidebar long-press.
+                if !usesFloatingRootTabBar, selectedRootTab == tab, !rootTabBar.isTabBarHidden {
+                    RootTabMediaToolbar(tab: tab, onSelect: openMediaHub)
+                }
+            }
+            .modifier(ThemedSurfaceBackground(
+                scope: AppearancePageBackgroundScope(rawValue: tab.rawValue) ?? .global,
+                isProActive: subscriptionStore.hasAccess(.readerThemePacks)
+            ))
+            .background {
+                RootTabBarHider(visibility: rootTabBar, isFloating: usesFloatingRootTabBar)
+            }
+            // Keep navigation full-height: capsule overlays live content.
+            // Only scroll-content margins reserve the reachable last row.
+            .modifier(FloatingRootTabBarContainer(isPresented: rootTabBar.showsFloatingTabBar(
+                isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
+            )) {
+                floatingRootTabBar
+            })
     }
 
     private var shouldHideRootTabLabels: Bool {
@@ -414,9 +456,19 @@ struct ContentView: View {
     private func rootTabContent(for tab: RootTabItem) -> some View {
         switch tab {
         case .bookshelf:
-            HomeView()
+            if let route = mediaHubRoute, route.isLibrary {
+                MediaHubRootView(kind: route.kind, isLibrary: true, onClose: { mediaHubRoute = nil })
+                    .id(route.id)
+            } else {
+                HomeView()
+            }
         case .explore:
-            BrowserView(browser: browser)
+            if let route = mediaHubRoute, !route.isLibrary {
+                MediaHubRootView(kind: route.kind, isLibrary: false, onClose: { mediaHubRoute = nil })
+                    .id(route.id)
+            } else {
+                BrowserView(browser: browser)
+            }
         case .library:
             LibraryTabRoot(browser: browser)
         case .rss:

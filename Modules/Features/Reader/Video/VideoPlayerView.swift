@@ -47,10 +47,16 @@ struct VideoPlayerView: View {
         ZStack {
             DSColor.videoPlayerBackground.ignoresSafeArea()
             if let controller {
-                VideoPlayerLayerView(player: controller.player, fillsScreen: fillsScreen,
-                                     onLayer: controller.attachPictureInPicture(to:))
-                    .ignoresSafeArea()
-                    .accessibilityHidden(true)
+                Group {
+                    if controller.usesKSPlayer {
+                        KSVideoSurface(renderView: controller.ksKernel.view, fillsScreen: fillsScreen)
+                    } else {
+                        VideoPlayerLayerView(player: controller.player, fillsScreen: fillsScreen,
+                                             onLayer: controller.attachPictureInPicture(to:))
+                    }
+                }
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
                 gestureSurface(controller)
                 if showsControls {
                     controls(controller)
@@ -259,7 +265,7 @@ struct VideoPlayerView: View {
                 Text(controller.book.title)
                     .font(DSFont.headline)
                     .lineLimit(1)
-                Text(subtitle(controller))
+                Text(subtitle(controller) + " · " + controller.kernelName)
                     .font(DSFont.caption)
                     .opacity(DSLayout.cardSecondaryTextOpacity)
                     .lineLimit(1)

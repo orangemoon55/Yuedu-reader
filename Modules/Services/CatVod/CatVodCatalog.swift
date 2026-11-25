@@ -94,15 +94,10 @@ final class CatVodCatalog {
     func play(sourceID: String, siteKey: String, videoID: String, flag: String, episode: CatVodEpisode) async throws -> CatVodPlayTicket {
         try await perform {
             let data = try await self.request(sourceID, siteKey, "play", ["flag": flag, "id": episode.playID])
-            let result = try CatVodContentParser.playback(data)
-            guard !result.requiresWebParsing else { throw CatVodUseError.parsePage }
-            let url = try CatVodRuntime.shared.mediaURL(result.url, sourceID: sourceID)
-            guard url.pathExtension.lowercased() != "mpd" else { throw VideoChapterLinkError.dashManifest }
-            let allowed = Set(["user-agent", "referer", "origin", "accept", "accept-language"])
-            let headers = result.headers.filter { allowed.contains($0.key.lowercased()) && !$0.value.contains("\r") && !$0.value.contains("\n") }
-            let resumeBytes = try JSONEncoder().encode([sourceID, siteKey, videoID, flag, episode.id])
-            let digest = SHA256.hash(data: resumeBytes).map { String(format: "%02x", $0) }.joined()
-            let stream = VideoStream(url: url, headers: headers, resumeKey: URL(string: "readcc-catvod://episode/" + digest))
+            let stream = try CatVodPlaybackFactory.stream(data: data, sourceID: sourceID, siteKey: siteKey,
+                                                          videoID: videoID, flag: flag, episode: episode) {
+                try CatVodRuntime.shared.mediaURL($0, sourceID: sourceID)
+            }
             try Task.checkCancellation()
             let ticket = CatVodPlayTicket(id: UUID(), stream: stream)
             self.playing = (sourceID, ticket.id)
@@ -117,4 +112,25 @@ final class CatVodCatalog {
 struct CatVodPlayTicket: Identifiable, Sendable {
     let id: UUID
     let stream: VideoStream
+}
+
+/// The production JSON → stream path. URL ownership/authentication stays in the runtime:
+/// the catalog always supplies `CatVodRuntime.mediaURL`, while tests supply a local fixture.
+/// This does not activate a source, acquire a lease, sniff a page, or access the network.
+enum CatVodPlaybackFactory {
+    static func stream(data: Data, sourceID: String, siteKey: String, videoID: String,
+                       flag: String, episode: CatVodEpisode,
+                       resolveURL: (String) throws -> URL) throws -> VideoStream {
+        let result = try CatVodContentParser.playback(data)
+        guard !result.requiresWebParsing else { throw CatVodUseError.parsePage }
+        let url = try resolveURL(result.url)
+        guard url.pathExtension.lowercased() != "mpd" else { throw VideoChapterLinkError.dashManifest }
+        let allowed = Set(["user-agent", "referer", "origin", "accept", "accept-language"])
+        let headers = result.headers.filter {
+            allowed.contains($0.key.lowercased()) && !$0.value.contains("\r") && !$0.value.contains("\n")
+        }
+        let resumeBytes = try JSONEncoder().encode([sourceID, siteKey, videoID, flag, episode.id])
+        let digest = SHA256.hash(data: resumeBytes).map { String(format: "%02x", $0) }.joined()
+        return VideoStream(url: url, headers: headers, resumeKey: URL(string: "readcc-catvod://episode/" + digest))
+    }
 }

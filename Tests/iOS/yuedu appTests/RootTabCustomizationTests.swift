@@ -43,6 +43,7 @@ struct RootTabCustomizationTests {
     @Test("the tabs are 探索・書架・設定・搜尋; 資源庫 and RSS are no longer tabs")
     func tabOrder() {
         #expect(RootTabItem.tabs == [.explore, .bookshelf, .settings, .search])
+        #expect(RootTabItem.explore.titleKey == "主頁")
         #expect(RootTabItem.search.defaultSystemImage == "magnifyingglass")
         #expect(RootTabItem.addedLater == [.search])
         #expect(GlobalSettings.defaultRootTabVisibleIDs == RootTabItem.tabs.map(\.rawValue))

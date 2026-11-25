@@ -62,6 +62,8 @@ struct FloatingRootTabBar: View {
     var iconSize: CGFloat = FloatingRootTabBarLayout.defaultIconSize
     var tint: Color = .accentColor
     var customIcon: (RootTabItem) -> RootTabRenderedIcon? = { _ in nil }
+    /// Media destinations revealed by a native long-press menu on Explore / Bookshelf.
+    var mediaQuickAction: (MediaHubKind, Bool) -> Void = { _, _ in }
     /// Deterministic preview/testing input; nil follows the read-only system environment.
     var reduceTransparencyOverride: Bool? = nil
 
@@ -105,7 +107,7 @@ struct FloatingRootTabBar: View {
     }
 
     private func tabButton(_ tab: RootTabItem, height: CGFloat) -> some View {
-        Button { selection = tab } label: {
+        let button = Button { selection = tab } label: {
             VStack(spacing: DSSpacing.xxs) {
                 icon(for: tab)
                 if !hidesLabels {
@@ -132,6 +134,15 @@ struct FloatingRootTabBar: View {
             .animation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.88), value: selection)
             .padding(.vertical, FloatingRootTabBarLayout.surfacePadding + FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
+        }
+        Group {
+            if tab == .explore || tab == .bookshelf {
+                button.contextMenu {
+                    RootTabMediaMenuItems(tab: tab, onSelect: mediaQuickAction)
+                }
+            } else {
+                button
+            }
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)

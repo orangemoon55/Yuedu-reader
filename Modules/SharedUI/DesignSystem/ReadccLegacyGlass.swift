@@ -23,8 +23,25 @@ struct ReadccGlassPalette: Equatable {
     }
 }
 
-/// UIKit's live backdrop blur is available on iOS17. Unlike blurring a SwiftUI
-/// color or a screenshot it continues sampling scrolling content behind the view.
+/// UIKit's live backdrop material is used on every supported system, including iOS26;
+/// it samples scrolling content behind the view without blurring foreground labels.
+/// Its style is system-controlled rather than an app-defined blur radius.
+enum ReadccBackdropBlurMaterial: Equatable {
+    case light
+    case dark
+
+    static func resolve(dark: Bool) -> Self {
+        dark ? .dark : .light
+    }
+
+    var uiBlurStyle: UIBlurEffect.Style {
+        switch self {
+        case .light: .systemMaterialLight
+        case .dark: .systemMaterialDark
+        }
+    }
+}
+
 private struct ReadccBackdropBlur: UIViewRepresentable {
     let dark: Bool
 
@@ -43,7 +60,7 @@ private struct ReadccBackdropBlur: UIViewRepresentable {
     }
 
     private var effect: UIBlurEffect {
-        UIBlurEffect(style: dark ? .systemUltraThinMaterialDark : .systemThinMaterialLight)
+        UIBlurEffect(style: ReadccBackdropBlurMaterial.resolve(dark: dark).uiBlurStyle)
     }
 }
 

@@ -348,6 +348,45 @@ struct BookSourceSelectedImportTests {
         #expect(store.sources.isEmpty, "reviewing a pack must not import it")
     }
 
+    @Test("YDS import retains names and resolves request paths without slash corruption")
+    func ydsImportNormalizesRequestPathAndCoercesLegacyScalars() throws {
+        let json = #"{"Legacy key":{"host":"https://root.example/","siteType":"2","enable":"0","searchRule":{"requestUrl":"{\"url\":\"/search?q={{keyWord}}\"}","list":"li","title":"a@text"}},"No slash":{"siteName":"NoSlash","host":"https://api.example/v1","searchRule":{"requestUrl":"search?q={keyWord}"}}}"#
+        let parsed = try BookSourceStore.shared.parseForImport(data: Data(json.utf8), fileExtension: "yds")
+
+        let root = try #require(parsed.first { $0.bookSourceUrl == "https://root.example/" })
+        #expect(root.bookSourceName == "Legacy key")
+        #expect(root.bookSourceType == 2)
+        #expect(root.enabled == false)
+        #expect(root.searchUrl == "https://root.example/search?q={{keyWord}}")
+        #expect(root.ruleSearch.bookList == "li")
+        #expect(root.ruleSearch.name == "a@text")
+
+        let nested = try #require(parsed.first { $0.bookSourceUrl == "https://api.example/v1" })
+        #expect(nested.bookSourceName == "NoSlash")
+        #expect(nested.searchUrl == "https://api.example/v1/search?q={keyWord}")
+    }
+
+    @Test("YDS blank names fall back and request URLs normalize external hosts")
+    func ydsBlankNameFallbackAndRequestURLNormalization() throws {
+        let json = #"{"Empty name":{"siteName":"","host":"https://root.example/v1/","searchRule":{"requestUrl":{"url":"//cdn.example/search?q={keyWord}"}}},"Whitespace name":{"siteName":" \t ","host":"https://api.example","searchRule":{"requestUrl":"HTTPS://search.example/items"}},"Numeric scalars":{"host":"https://numeric.example","siteType":5,"enable":true,"searchRule":{"requestUrl":"/search","title":12}}}"#
+        let parsed = try BookSourceStore.shared.parseForImport(data: Data(json.utf8), fileExtension: "yds")
+
+        let emptyName = try #require(parsed.first { $0.bookSourceUrl == "https://root.example/v1/" })
+        #expect(emptyName.bookSourceName == "Empty name")
+        #expect(emptyName.searchUrl == "https://cdn.example/search?q={keyWord}")
+
+        let whitespaceName = try #require(parsed.first { $0.bookSourceUrl == "https://api.example" })
+        #expect(whitespaceName.bookSourceName == "Whitespace name")
+        #expect(whitespaceName.searchUrl == "HTTPS://search.example/items")
+
+        let numeric = try #require(parsed.first { $0.bookSourceUrl == "https://numeric.example" })
+        #expect(numeric.bookSourceName == "Numeric scalars")
+        #expect(numeric.bookSourceType == 5)
+        #expect(numeric.enabled)
+        #expect(numeric.searchUrl == "https://numeric.example/search")
+        #expect(numeric.ruleSearch.name == "12")
+    }
+
     /// Crashlytics 4a7e76ac: a 2.4 GB file aborted the app while it became text.
     @Test("a file over the import limit is refused before it is read")
     func oversizedImportIsRefused() {

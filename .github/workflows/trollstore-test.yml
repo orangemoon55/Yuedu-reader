@@ -39,6 +39,7 @@ on:
           - module-compat
           - md5-import
           - catvod-home
+          - media51
           - ranked-home
           - discovery-glass
           - reader-comments

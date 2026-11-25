@@ -11,6 +11,20 @@ enum InterfaceGlassPolicy {
     ) -> Bool {
         isEnabled && !(override ?? systemReduceTransparency)
     }
+
+    /// Zero is a fully opaque surface: do not mount a backdrop blur that cannot show.
+    static func shouldUseBackdropBlur(
+        transparency: Double,
+        isEnabled: Bool,
+        systemReduceTransparency: Bool,
+        override: Bool? = nil
+    ) -> Bool {
+        transparency > 0 && shouldUseGlass(
+            isEnabled: isEnabled,
+            systemReduceTransparency: systemReduceTransparency,
+            override: override
+        )
+    }
 }
 
 /// The surface every floating element in the app sits on — the mini player, the
@@ -127,8 +141,11 @@ private struct InterfaceSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     /// Reduce Transparency outranks the cosmetic preference and requests a solid fill.
+    /// At the transparency slider's zero endpoint the fill is fully opaque too, so
+    /// there is no visible backdrop to sample and no live blur layer is mounted.
     private var usesFrostedGlass: Bool {
-        InterfaceGlassPolicy.shouldUseGlass(
+        InterfaceGlassPolicy.shouldUseBackdropBlur(
+            transparency: settings.interfaceGlassTransparency,
             isEnabled: glassAllowed && settings.interfaceFrostedGlass,
             systemReduceTransparency: reduceTransparency,
             override: reduceTransparencyOverride
@@ -314,8 +331,10 @@ private struct FloatingSurfaceModifier<SurfaceShape: Shape>: ViewModifier {
     }
 }
 
-/// The same backdrop/rim renderer is used on iOS17 and newer. Availability of
-/// Apple's Liquid Glass never decides whether this app's glass effect is visible.
+/// The same live UIKit backdrop/rim renderer is used on iOS17 and newer. On iOS26 it
+/// is still the one backdrop layer for shared floating surfaces; we do not stack a
+/// second SwiftUI `glassEffect` over it. Apple's Liquid Glass availability never
+/// decides whether this app's glass effect is visible.
 private struct FrostedGlassBackground<SurfaceShape: Shape>: ViewModifier {
     let shape: SurfaceShape
 
