@@ -37,14 +37,14 @@ struct TMDBClientTests {
     }
 
     @Test func exactLocalizedOrOriginalTitleAndYearMatch() {
-        let records = page(#"{"total_pages":1,"results":[{"id":11,"adult":false,"title":"Arrival","original_title":"降臨","release_date":"2016-11-11","vote_average":7.6,"vote_count":9000},{"id":12,"adult":false,"title":"Arrival","original_title":"Arrival","release_date":"1996-01-01","vote_average":6.2,"vote_count":800}]}", kind: .movie)
+        let records = page(#"{"total_pages":1,"results":[{"id":11,"adult":false,"title":"Arrival","original_title":"降臨","release_date":"2016-11-11","vote_average":7.6,"vote_count":9000},{"id":12,"adult":false,"title":"Arrival","original_title":"Arrival","release_date":"1996-01-01","vote_average":6.2,"vote_count":800}]}"#, kind: .movie)
         #expect(TMDBMatching.match(records: records, title: "降臨", sourceYear: 2016, kind: .movie)?.id == 11)
         #expect(TMDBMatching.match(records: records, title: "Arrival", sourceYear: 2016, kind: .movie)?.id == 11)
         #expect(TMDBMatching.match(records: records, title: "arrival", sourceYear: 2020, kind: .movie) == nil)
     }
 
     @Test func noYearRefusesDuplicateTitlesAndKnownYearMustBeExact() {
-        let records = page(#"{"total_pages":1,"results":[{"id":1,"adult":false,"title":"Dune","original_title":"Dune","release_date":"1984-01-01","vote_average":6.3,"vote_count":100},{"id":2,"adult":false,"title":"Dune","original_title":"Dune","release_date":"2021-01-01","vote_average":8.0,"vote_count":1000}]}", kind: .movie)
+        let records = page(#"{"total_pages":1,"results":[{"id":1,"adult":false,"title":"Dune","original_title":"Dune","release_date":"1984-01-01","vote_average":6.3,"vote_count":100},{"id":2,"adult":false,"title":"Dune","original_title":"Dune","release_date":"2021-01-01","vote_average":8.0,"vote_count":1000}]}"#, kind: .movie)
         #expect(TMDBMatching.match(records: records, title: "Dune", sourceYear: nil, kind: .movie) == nil)
         #expect(TMDBMatching.match(records: records, title: "Dune", sourceYear: 2021, kind: .movie)?.id == 2)
         #expect(TMDBMatching.match(records: records, title: "Dune", sourceYear: 2022, kind: .movie) == nil)
@@ -65,7 +65,7 @@ struct TMDBClientTests {
     }
 
     @Test func adultFilteredButUnratedIdentitiesRemainAmbiguous() {
-        let records = page(#"{"total_pages":1,"results":[{"id":1,"adult":true,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":9,"vote_count":10},{"id":2,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":0,"vote_count":10},{"id":3,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":10.1,"vote_count":10},{"id":4,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":8.5,"vote_count":0},{"id":5,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":8.5,"vote_count":20}]}", kind: .movie)
+        let records = page(#"{"total_pages":1,"results":[{"id":1,"adult":true,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":9,"vote_count":10},{"id":2,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":0,"vote_count":10},{"id":3,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":10.1,"vote_count":10},{"id":4,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":8.5,"vote_count":0},{"id":5,"adult":false,"title":"Safe","original_title":"Safe","release_date":"2020-01-01","vote_average":8.5,"vote_count":20}]}"#, kind: .movie)
         #expect(records.map(\.id) == [2, 3, 4, 5])
         #expect(records.filter(\.hasValidRating).map(\.id) == [5])
         #expect(TMDBMatching.match(records: records, title: "Safe", sourceYear: 2020, kind: .movie) == nil)
