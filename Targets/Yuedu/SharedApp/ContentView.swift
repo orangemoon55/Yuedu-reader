@@ -19,6 +19,7 @@ struct ContentView: View {
     /// Whether any screen is hiding the tab bar — answered from every tab, not only the
     /// screen's own (`RootTabBarVisibility`).
     @StateObject private var rootTabBar = RootTabBarVisibility()
+    @StateObject private var mediaActionCoordinator = RootTabMediaActionCoordinator()
     @State private var selectedRootTab: RootTabItem = .explore
     @AppStorage(MediaHubSelection.homeKey) private var homeMediaSelection = ""
     @AppStorage(MediaHubSelection.libraryKey) private var libraryMediaSelection = ""
@@ -131,6 +132,7 @@ struct ContentView: View {
             gs.noteAppearanceOnScreen(scheme, in: scenePhase)
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .background { mediaActionCoordinator.cancel() }
             SourcePerfTrace.span("content.scene.\(phase)", thresholdMs: 5) {
                 gs.noteAppearanceOnScreen(effectiveColorScheme, in: phase)
             }
@@ -353,6 +355,7 @@ struct ContentView: View {
         Binding {
             selectedRootTab
         } set: { tab in
+            mediaActionCoordinator.cancel()
             // Stamped as the tap lands: iOS 27 appears the tab's root before `onChange` runs.
             if tab == .library, selectedRootTab != .library { LibraryTabTiming.noteSelected() }
             // Returning to a root tab keeps its last manually selected content.
@@ -386,16 +389,29 @@ struct ContentView: View {
     }
 
     private func openMediaHub(_ kind: MediaHubKind, _ isLibrary: Bool) {
-        if isLibrary { libraryMediaSelection = kind.rawValue }
-        else { homeMediaSelection = kind.rawValue }
-        selectedRootTab = isLibrary ? .bookshelf : .explore
+        mediaActionCoordinator.schedule {
+            // Return from the system menu action before replacing its navigation host.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if isLibrary { libraryMediaSelection = kind.rawValue }
+                else { homeMediaSelection = kind.rawValue }
+                selectedRootTab = isLibrary ? .bookshelf : .explore
+            }
+        }
     }
 
     private func closeMediaHub(_ isLibrary: Bool) {
-        // Only an explicit close/default-content menu action clears this preference.
-        if isLibrary { libraryMediaSelection = "" }
-        else { homeMediaSelection = "" }
-        selectedRootTab = isLibrary ? .bookshelf : .explore
+        mediaActionCoordinator.schedule {
+            // Only an explicit close/default-content action clears the preference.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if isLibrary { libraryMediaSelection = "" }
+                else { homeMediaSelection = "" }
+                selectedRootTab = isLibrary ? .bookshelf : .explore
+            }
+        }
     }
 
     @available(iOS 18.0, *)

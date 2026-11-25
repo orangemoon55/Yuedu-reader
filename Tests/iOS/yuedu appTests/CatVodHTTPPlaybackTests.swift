@@ -98,21 +98,42 @@ struct CatVodHTTPPlaybackTests {
         #expect(decoded, "A ready item alone is not proof of decoded video")
     }
 
-    @Test("KSPlayer advances the same authorized HTTP fixture without AV fallback")
+    @Test("KS-first protected HTTP either advances or AV fallback decodes a real frame")
     func protectedKSPlayback() async throws {
-        let fixture = try server(mediaData())
+        let bytes = try mediaData(), fixture = try server(bytes)
         let base = try await fixture.start()
         defer { fixture.stop() }
         let controller = VideoPlaybackController(link: try stream(base.appendingPathComponent("fixture.mp4")),
-            title: "KS authorized offline fixture", prefersKSPlayer: true)
+            title: "KS-first authorized HTTP fixture", prefersKSPlayer: true)
         defer { controller.close() }
         controller.start()
+        var advanced = false
         for _ in 0..<200 {
             try await Task.sleep(for: .milliseconds(100))
-            if controller.currentTime > 0.2 { break }
+            if controller.phase == .playing && controller.currentTime > 0.2 { advanced = true; break }
         }
-        #expect(controller.kernelName == "KSPlayer · FFmpeg")
-        #expect(controller.phase == .playing)
-        #expect(controller.currentTime > 0.2)
+        #expect(advanced, "Neither KSPlayer nor the authorized AV fallback advanced")
+        if controller.kernelName == "AVFoundation" {
+            // The production controller deliberately falls back when KS cannot open a
+            // source-specific HTTP stream. Require a decoded frame, not only a ready item.
+            let item = try #require(controller.player.currentItem)
+            #expect(item.status == .readyToPlay)
+            let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            ])
+            item.add(output)
+            var decoded = false
+            for _ in 0..<50 {
+                if let pixel = output.copyPixelBuffer(forItemTime: controller.player.currentTime(), itemTimeForDisplay: nil) {
+                    decoded = CVPixelBufferGetWidth(pixel) > 0 && CVPixelBufferGetHeight(pixel) > 0
+                }
+                if decoded { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            #expect(decoded, "AV fallback did not decode the authenticated HTTP media frame")
+        } else {
+            #expect(controller.kernelName == "KSPlayer · FFmpeg")
+            #expect(controller.phase == .playing && controller.currentTime > 0.2)
+        }
     }
 }

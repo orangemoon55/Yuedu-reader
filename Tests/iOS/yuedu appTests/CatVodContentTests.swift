@@ -91,6 +91,94 @@ struct CatVodContentTests {
         #expect(result.videos.isEmpty)
         #expect(!result.hasMore)
     }
+    @Test func detailAcceptsAliasesAndBoundedKnownEnvelopes() throws {
+        #expect(try CatVodContentParser.detail(data(#"{"videos":[{"id":"videos-id","title":"Videos title"}]}"#)).id == "videos-id")
+        #expect(try CatVodContentParser.detail(data(#"{"data":{"code":0,"list":[{"id":"data-id","title":"Data title"}]}}"#)).title == "Data title")
+        #expect(try CatVodContentParser.detail(data(#"{"result":{"detail":{"vod_id":"result-id","vod_name":"Result title"}}}"#)).id == "result-id")
+        #expect(try CatVodContentParser.detail(data(#"[{"vod_id":"array-id","vod_name":"Array title"}]"#)).title == "Array title")
+    }
+
+    @Test func detailAliasRoutesPreserveEncodedCloudIDsAndFlags() throws {
+        let json = #"{"id":"pan-video","title":"两京十五日","play_from":"quark$$$uc","play_url":"第1集$quark://pan.example/s/A%2FB?pwd=x%23y%24z$tail#第2集$quark://pan.example/s/C%2FD?token=a%23b%24c$$$4K$https://media.example.invalid/4k.m3u8"}"#
+        let video = try CatVodContentParser.detail(data(json))
+        #expect(video.id == "pan-video")
+        #expect(video.title == "两京十五日")
+        #expect(video.routes.map(\.flag) == ["quark", "uc"])
+        #expect(video.routes[0].episodes.map(\.playID) == [
+            "quark://pan.example/s/A%2FB?pwd=x%23y%24z$tail",
+            "quark://pan.example/s/C%2FD?token=a%23b%24c"
+        ])
+        #expect(video.routes[1].episodes.first?.playID == "https://media.example.invalid/4k.m3u8")
+    }
+
+    @Test func actualPanAdapterCloudDetailMayOmitMovieID() throws {
+        // This is the adapter's observed m0({name, ...Vi(links)}) shape: title plus
+        // encoded share IDs and routes, without vod_id/id.
+        let response = #"{"list":[{"vod_name":"两京十五日","vod_pic":"https://poster.invalid/a.jpg","vod_play_from":"百度网盘$$$夸克网盘","vod_play_url":"全集$baidu://pan/1?pwd=a%23b%24c$$$4K$https://media.invalid/2160p.m3u8"}]}"#
+        let video = try CatVodContentParser.detail(data(response))
+        #expect(video.title == "两京十五日")
+        #expect(video.id == "route:两京十五日")
+        #expect(video.routes.count == 2)
+        #expect(video.routes[0].episodes.first?.playID == "baidu://pan/1?pwd=a%23b%24c")
+        #expect(video.routes[1].flag == "夸克网盘")
+    }
+
+    @Test func panAdapterNoShareAndLoginErrorsRemainActionable() {
+        #expect(throws: CatVodContentError.businessFailure("请先配置百度网盘 Cookie")) {
+            try CatVodContentParser.detail(data(#"{"list":[],"msg":"请先配置百度网盘 Cookie"}"#))
+        }
+        #expect(throws: CatVodContentError.businessFailure("未解析到可播放网盘资源")) {
+            try CatVodContentParser.detail(data(#"{"data":{"list":[],"msg":"未解析到可播放网盘资源"}}"#))
+        }
+        #expect(throws: CatVodContentError.invalidResponse("详情未找到影片")) {
+            try CatVodContentParser.detail(data(#"{"list":[]}"#))
+        }
+    }
+
+    @Test func detailEmptyMalformedAndBusinessErrorsStayDistinct() {
+        do {
+            _ = try CatVodContentParser.detail(data(#"{"list":[]}"#))
+            Issue.record("An explicit empty detail list was accepted")
+        } catch let error as CatVodContentError {
+            #expect(error == .invalidResponse("详情未找到影片"))
+        } catch {
+            Issue.record("Unexpected empty-detail error: \(error)")
+        }
+        for malformed in [#"{"video":{"id":"only-id"}}"#, #"{"unrelated":{"id":"x","title":"not a detail"}}"#] {
+            do {
+                _ = try CatVodContentParser.detail(data(malformed))
+                Issue.record("A malformed or unrecognized object was accepted")
+            } catch let error as CatVodContentError {
+                #expect(error == .invalidResponse("详情缺少影片字段"))
+            } catch {
+                Issue.record("Unexpected malformed-detail error: \(error)")
+            }
+        }
+        let tooDeep = #"{"result":{"result":{"result":{"result":{"result":{"vod_id":"deep","vod_name":"Deep"}}}}}}"#
+        do {
+            _ = try CatVodContentParser.detail(data(tooDeep))
+            Issue.record("An over-deep detail envelope was accepted")
+        } catch let error as CatVodContentError {
+            #expect(error == .invalidResponse("详情包裹超过允许层数"))
+        } catch {
+            Issue.record("Unexpected over-deep error: \(error)")
+        }
+        for (json, message) in [
+            (#"{"code":503,"message":"service unavailable","data":{"video":{"id":"x","title":"Hidden"}}}"#, "service unavailable"),
+            (#"{"data":{"result":{"code":401,"message":"需要登录","video":{"id":"x","title":"Hidden"}}}}"#, "需要登录"),
+            (#"{"data":{"result":{"success":false,"message":"需要登录","video":{"id":"x","title":"Hidden"}}}}"#, "需要登录")
+        ] {
+            do {
+                _ = try CatVodContentParser.detail(data(json))
+                Issue.record("A business/auth error was hidden by a detail envelope")
+            } catch let error as CatVodContentError {
+                #expect(error == .businessFailure(message))
+            } catch {
+                Issue.record("Unexpected business-error type: \(error)")
+            }
+        }
+    }
+
     @Test func outerErrorNotHiddenByData() {
         #expect(throws: CatVodContentError.self) { try CatVodContentParser.home(data(CatVodFixtures.hiddenOuterError)) }
     }

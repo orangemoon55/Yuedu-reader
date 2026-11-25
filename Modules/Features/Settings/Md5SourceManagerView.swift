@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// MD5 源, kept apart from 模組's JSON modules (maintainer: 「導入md5源的位置放在模組裡，和json源區分開」).
 /// A source here is a CatVod JS bundle + its `.md5`; the page lists what is installed, imports
@@ -6,6 +7,7 @@ import SwiftUI
 struct Md5SourceManagerView: View {
     @ObservedObject var library: Md5SourceLibrary
     @State private var showsImport = false
+    @State private var importAddress = ""
     @State private var pendingRemoval: Md5Source?
     @State private var failure: String?
 
@@ -18,7 +20,7 @@ struct Md5SourceManagerView: View {
             Section {
                 if library.sources.isEmpty {
                     VStack(alignment: .leading, spacing: DSSpacing.xs) {
-                        Text(localized("還沒有 MD5 源"))
+                        Text(localized("還沒有貓源"))
                             .foregroundStyle(DSColor.textPrimary)
                         Text(localized("按右上角的 + 加入 .js.md5 網址，例如 https://host/cat/index.js.md5。"))
                             .font(DSFont.footnote)
@@ -44,30 +46,59 @@ struct Md5SourceManagerView: View {
                         .foregroundStyle(DSColor.textSecondary)
                 }
             } header: {
-                Text(localized("MD5 源")).foregroundStyle(DSColor.textSecondary)
+                Text(localized("貓源列表")).foregroundStyle(DSColor.textSecondary)
             } footer: {
                 Text(localized("MD5 源是 CatVod 的 JS 打包檔，與 JSON 模組分開存放；下載後會核對 .md5 校驗，執行時只在本機 Node 環境內跑。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
+
+            Section {
+                NavigationLink {
+                    Md5CloudAccountsView(library: library)
+                } label: {
+                    Label(localized("網盤帳號配置"), systemImage: "person.badge.key")
+                }
+                .accessibilityIdentifier("md5source.accounts")
+                Button {
+                    importAddress = ""
+                    showsImport = true
+                } label: {
+                    Label(localized("從網址匯入貓源"), systemImage: "square.and.arrow.down")
+                }
+                Button {
+                    let address = UIPasteboard.general.string ?? ""
+                    guard address.utf8.count <= 8192 else { failure = localized("剪貼簿網址過長。"); return }
+                    importAddress = address
+                    showsImport = true
+                } label: {
+                    Label(localized("從剪貼簿匯入"), systemImage: "doc.on.clipboard")
+                }
+                .accessibilityIdentifier("md5source.clipboard")
+            } footer: {
+                Text(localized("僅支援現有 CatVod JS / .js.md5 網址匯入。帳號配置會先讓你選擇來源，明確啟動後再開啟該來源的配置中心；來源之間不共用登入資料。"))
+                    .dsSectionFooter()
+            }
+            .interfaceSectionSurface()
         }
         .softScrollEdges()
-        .navigationTitle(localized("MD5 源"))
+        .navigationTitle(localized("貓源"))
         .toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .settings)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    importAddress = ""
                     showsImport = true
                 } label: {
                     Image(systemName: "plus").accessibilityHidden(true)
                 }
-                .accessibilityLabel(localized("新增 MD5 源"))
+                .accessibilityLabel(localized("新增貓源"))
                 .accessibilityIdentifier("md5source.add")
             }
         }
         .sheet(isPresented: $showsImport) {
-            Md5SourceImportSheet(library: library)
+            Md5SourceImportSheet(library: library, initialAddress: importAddress)
         }
         .confirmationDialog(pendingRemoval.map { String(format: localized("移除「%@」？"), $0.title) } ?? "",
                             isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
@@ -113,9 +144,11 @@ struct Md5SourceImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focused: Bool
 
-    init(library: Md5SourceLibrary) {
+    init(library: Md5SourceLibrary, initialAddress: String = "") {
         self.library = library
-        _model = StateObject(wrappedValue: Md5SourceImportModel(library: library))
+        let model = Md5SourceImportModel(library: library)
+        model.address = initialAddress
+        _model = StateObject(wrappedValue: model)
     }
 
     var body: some View {
@@ -152,7 +185,7 @@ struct Md5SourceImportSheet: View {
                 content
             }
             .softScrollEdges()
-            .navigationTitle(localized("新增 MD5 源"))
+            .navigationTitle(localized("新增貓源"))
             .toolbarTitleDisplayMode(.inline)
             .themedAppSurface(for: .settings)
             .toolbar {
@@ -163,7 +196,7 @@ struct Md5SourceImportSheet: View {
                 if case .preview = model.phase {
                     ToolbarItem(placement: .confirmationAction) {
                         Button { Task { await model.commit() } } label: { Image(systemName: "checkmark").accessibilityHidden(true) }
-                            .accessibilityLabel(localized("加入 MD5 源"))
+                            .accessibilityLabel(localized("加入貓源"))
                             .disabled(model.isLoading)
                             .accessibilityIdentifier("md5source.import.commit")
                     }
@@ -207,7 +240,7 @@ struct Md5SourceImportSheet: View {
             } header: {
                 Text(localized("已讀取")).foregroundStyle(DSColor.textSecondary)
             } footer: {
-                Text(localized("確認後會存到「模組 → MD5 源」，不會寫進 JSON 模組。"))
+                Text(localized("確認後會存到「模組 → 貓源」，不會寫進 JSON 模組。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
@@ -226,6 +259,7 @@ struct Md5SourceImportSheet: View {
 struct Md5SourceDetailView: View {
     let source: Md5Source
     @ObservedObject var library: Md5SourceLibrary
+    var opensAccounts = false
     @ObservedObject private var runtime = CatVodRuntime.shared
     @State private var state: LoadState = .idle
     @State private var failure: String?
@@ -256,7 +290,7 @@ struct Md5SourceDetailView: View {
                     Button {
                         Task { await run() }
                     } label: {
-                        Label(localized("啟動並讀取站點"), systemImage: "play.circle")
+                        Label(localized(opensAccounts ? "啟動來源以配置網盤帳號" : "啟動並讀取站點"), systemImage: "play.circle")
                     }
                     .accessibilityIdentifier("md5source.detail.run")
                 case .loading:

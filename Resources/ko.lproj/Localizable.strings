@@ -4607,3 +4607,33 @@
 "這個站點不支援搜尋。" = "이 사이트는 검색을 지원하지 않습니다.";
 "還沒有 MD5 源" = "아직 MD5 소스가 없습니다";
 "配置中心 · 網盤 Cookie" = "설정 · 클라우드 저장소 쿠키";
+
+/* Built-in movie ratings and optional TMDB metadata. */
+"片源評分" = "소스 평점";
+"豆瓣" = "Douban";
+"IMDb" = "IMDb";
+"TMDB" = "TMDB";
+"由片源提供" = "소스에서 제공";
+"由 TMDB 提供" = "TMDB에서 제공";
+"%d 人評分" = "평가 %d개";
+"TMDB 評分暫時無法載入，片源與播放不受影響。" = "TMDB 평점을 불러올 수 없습니다. 소스 탐색과 재생에는 영향이 없습니다.";
+"TMDB 資料；本產品未經 TMDB 認可或認證。" = "이 제품은 TMDB API를 사용하지만 TMDB의 승인이나 인증을 받지 않았습니다.";
+
+/* Built-in movie ratings and optional TMDB metadata. */
+"TMDB 評分與憑證" = "TMDB 평점 및 자격 증명";
+"啟用 TMDB 評分" = "TMDB 평점 활성화";
+"TMDB API 金鑰或 Read Access Token" = "TMDB API 키 또는 Read Access Token";
+"儲存 TMDB 憑證" = "TMDB 자격 증명 저장";
+"憑證狀態" = "자격 증명 상태";
+"已安全儲存；不會顯示憑證內容" = "안전하게 저장됨. 자격 증명 내용은 표시되지 않습니다";
+"移除 TMDB 憑證" = "TMDB 자격 증명 삭제";
+"前往 TMDB 官方 API 金鑰頁面" = "TMDB 공식 API 키 페이지 열기";
+"TMDB 帳戶" = "TMDB 계정";
+"TMDB 評分" = "TMDB 평점";
+"TMDB 憑證" = "TMDB 자격 증명";
+"資料來源與 attribution" = "데이터 출처 및 저작자 표시";
+"無法安全儲存 TMDB 憑證，請稍後再試。" = "TMDB 자격 증명을 안전하게 저장할 수 없습니다. 나중에 다시 시도하세요.";
+"無法移除 TMDB 憑證，原設定未變更。" = "TMDB 자격 증명을 삭제할 수 없습니다. 이전 설정은 변경되지 않았습니다.";
+"TMDB 評分服務暫時無法使用。" = "TMDB 평점 서비스를 일시적으로 이용할 수 없습니다.";
+"TMDB 回應無法辨識。" = "TMDB 응답을 인식할 수 없습니다.";
+"憑證只保存在此裝置的 Keychain，不會寫入偏好設定或日誌。查詢只傳送至 TMDB 官方 HTTPS API；關閉評分或未設定憑證時不會發出請求。v3 金鑰以查詢參數傳送，v4 Read Access Token 以授權標頭傳送。" = "자격 증명은 이 기기의 Keychain에만 저장되며 환경설정이나 로그에는 기록되지 않습니다. 요청은 TMDB 공식 HTTPS API에만 전송됩니다. 비활성화되거나 미설정인 경우 요청하지 않습니다. v3 키는 쿼리 매개변수로, v4 Read Access Token은 인증 헤더로 전송됩니다.";

@@ -1,230 +1,370 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// Music currently has one import path: user-selected LX JavaScript source files.
-/// CatVod sites, direct links, playlists and local audio are not offered as source imports.
+/// Metadata discovery and JS URL resolution are deliberately separate capabilities.
+/// A resolver-only LX source is useful here without pretending it implements search.
 struct MusicJSSourceView: View {
     let isLibrary: Bool
     @ObservedObject private var store = MusicJSSourceStore.shared
     @ObservedObject private var library = MediaHubLibrary.shared
+    @ObservedObject private var player = MusicPlayer.shared
+    @StateObject private var catalog = MusicHomeCatalogModel()
     @AppStorage("readcc.musicJS.selectedSource.v1") private var selectedSourceID = ""
-    @State private var providerID = ""
-    @State private var quality = "128k"
+    @AppStorage("readcc.musicJS.selectedProvider.v1") private var providerID = ""
+    @AppStorage("readcc.musicJS.selectedQuality.v1") private var quality = "128k"
     @State private var query = ""
-    @State private var results: [MusicJSSong] = []
-    @State private var searching = false
-    @State private var busy = false
-    @State private var importing = false
-    @State private var sourceManagement = false
+    @State private var searchKind = MusicCatalogKind.song
+    @State private var searchInScript = false
+    @State private var catalogResults: [MusicCatalogEntry] = []
+    @State private var scriptResults: [MusicJSSong] = []
+    @State private var submitted = false
+    @State private var submittedQuery = ""
+    @State private var searchLoading = false
+    @State private var searchFailure: String?
+    @State private var settings = false
     @State private var failure: String?
     @State private var playing: MediaHubLibraryItem?
-    @State private var task: Task<Void, Never>?
-    @State private var generation = UUID()
+    @State private var busy = false
+    @State private var searchTask: Task<Void, Never>?
+    @State private var actionTask: Task<Void, Never>?
+    @State private var searchGeneration = UUID()
+    @State private var actionGeneration = UUID()
+    @State private var refreshID = UUID()
+    @Environment(\.colorScheme) private var colorScheme
+
+    // The reference is a cool, almost-white canvas rather than grouped-list grey.
+    // Keep the system's dark surfaces when the user is in dark mode.
+    private var homeCanvas: Color {
+        colorScheme == .dark ? Color(uiColor: .systemGroupedBackground) : Color(red: 243 / 255, green: 246 / 255, blue: 251 / 255)
+    }
+    private var continueSurface: Color {
+        colorScheme == .dark ? Color(uiColor: .secondarySystemGroupedBackground) : Color(red: 238 / 255, green: 240 / 255, blue: 242 / 255)
+    }
 
     private var source: MusicJSSource? { store.sources.first { $0.id == selectedSourceID } }
     private var provider: MusicJSProvider? { source?.providers.first { $0.id == providerID } }
     private var saved: [MusicJSSong] {
         library.items.compactMap(MusicJSSong.from).filter {
-            query.isEmpty || ($0.title + $0.artist).localizedCaseInsensitiveContains(query)
+            !isLibrary || query.isEmpty || ($0.title + $0.artist + $0.album).localizedCaseInsensitiveContains(query)
         }
     }
 
     var body: some View {
-        List {
-            Section {
-                Button { importing = true } label: {
-                    Label(localized("導入 JS 音源"), systemImage: "square.and.arrow.down")
-                }.accessibilityIdentifier("mediaHub.music.importJS")
-                if !store.sources.isEmpty {
-                    Picker(localized("JS 音源"), selection: $selectedSourceID) {
-                        Text(localized("選擇音源")).tag("")
-                        ForEach(store.sources) { source in Text(source.name).tag(source.id) }
-                    }.accessibilityIdentifier("mediaHub.music.sourcePicker")
-                    Button { sourceManagement = true } label: {
-                        Label(localized("管理音源"), systemImage: "slider.horizontal.3")
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: isLibrary ? 26 : 24) {
+                searchField.padding(.bottom, isLibrary || submitted ? 0 : 8)
+                if isLibrary { librarySection }
+                else {
+                    if submitted { searchResults }
+                    else {
+                        if let item = MusicHomePresentation.continuation(currentTrack: player.currentTrack) { continueCard(item) }
+                        catalogRail(title: "排行榜", entries: catalog.charts, loading: catalog.chartsLoading, error: catalog.chartsError, showingOrigin: true)
+                        catalogRail(title: "推薦歌單", entries: catalog.playlists, loading: catalog.playlistsLoading, error: catalog.playlistsError)
+                        Text(localized("歌單來自網易雲音樂公開熱門目錄，並非個人化推薦。"))
+                            .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+                        if !saved.isEmpty { librarySection }
                     }
+                    metadataNotice
                 }
-            } footer: {
-                Text(localized("目前只可導入 LX 格式 JS 音源；音源可存取其音樂服務，請只導入可信檔案。"))
-            }
-            .interfaceSectionSurface()
-
-            if !isLibrary {
-                if let source {
-                    Section {
-                        Picker(localized("平台"), selection: $providerID) {
-                            ForEach(source.providers) { Text($0.name).tag($0.id) }
-                        }.accessibilityIdentifier("mediaHub.music.providerPicker")
-                        if let provider {
-                            Picker(localized("音質"), selection: $quality) {
-                                ForEach(provider.qualities, id: \.self) { Text($0).tag($0) }
-                            }
-                            TextField(localized("歌曲或歌手"), text: $query)
-                                .submitLabel(.search).autocorrectionDisabled()
-                                .onSubmit { search() }
-                                .accessibilityIdentifier("mediaHub.music.sourceSearch")
-                            Button(action: search) { Label(localized("搜索"), systemImage: "magnifyingglass") }
-                                .disabled(busy || !provider.canSearch || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            if !provider.canSearch {
-                                Text(localized("此平台只提供播放解析；請選擇支援搜尋的平台。"))
-                                    .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
-                            }
-                        }
-                        if busy { ProgressView(localized("載入中")) }
-                    }.interfaceSectionSurface()
-                    if searching {
-                        Section(localized("搜尋結果")) {
-                            if results.isEmpty && !busy { Text(localized("沒有搜尋結果。")) }
-                            ForEach(results) { song in songRow(song, saved: false) }
-                        }.interfaceSectionSurface()
-                    }
-                } else {
-                    Section {
-                        Label(localized("請先導入或選擇 JS 音源"), systemImage: "music.note")
-                    }.interfaceSectionSurface()
+                if busy { ProgressView(localized("正在透過 JS 音源解析播放…")).frame(maxWidth: .infinity) }
+                if let error = store.loadFailure ?? library.loadFailure {
+                    Text(error).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 20)
                 }
-            }
-            if isLibrary || !saved.isEmpty {
-                Section(localized("已收藏音樂")) {
-                    if isLibrary {
-                        TextField(localized("搜尋已收藏音樂"), text: $query).autocorrectionDisabled()
-                    }
-                    if saved.isEmpty { Text(localized("尚無收藏")) }
-                    ForEach(saved) { song in songRow(song, saved: true) }
-                }.interfaceSectionSurface()
-            }
-            if let error = store.loadFailure ?? library.loadFailure {
-                Section { Text(error).foregroundStyle(DSColor.textSecondary) }
+            }.padding(.top, isLibrary ? 12 : 0).padding(.bottom, 28)
+        }
+        .background { (isLibrary ? Color(uiColor: .systemGroupedBackground) : homeCanvas).ignoresSafeArea() }
+        .toolbarBackground(isLibrary ? Color(uiColor: .systemGroupedBackground) : homeCanvas, for: .navigationBar)
+        .toolbarTitleDisplayMode(.inline)
+        .accessibilityIdentifier(isLibrary ? "mediaHub.musicLibrary" : "mediaHub.musicHome")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { settings = true } label: {
+                    Label(localized("音樂設定"), systemImage: "slider.horizontal.3")
+                        .font(.title2).foregroundStyle(.primary)
+                }
+                    .accessibilityIdentifier("mediaHub.music.settings")
             }
         }
-        .accessibilityIdentifier(isLibrary ? "mediaHub.musicLibrary" : "mediaHub.musicHome")
-        .fileImporter(isPresented: $importing, allowedContentTypes: [UTType(filenameExtension: "js") ?? .javaScript],
-                      allowsMultipleSelection: false, onCompletion: importSource)
-        .sheet(isPresented: $sourceManagement) { sourceList }
+        .sheet(isPresented: $settings) {
+            MusicSourceSettingsView(selectedSourceID: $selectedSourceID, providerID: $providerID, quality: $quality)
+        }
         .sheet(item: $playing) { item in MusicPlayerView(item: item, queue: [item], autoPlay: true) }
-        .alert(localized("音樂導入失敗"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert(localized("音樂操作失敗"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button(localized("關閉"), role: .cancel) { failure = nil }
         } message: { Text(failure ?? "") }
         .task {
             library.reload()
-            if selectedSourceID.isEmpty { selectedSourceID = store.sources.first?.id ?? "" }
-            chooseProvider()
+            normalizeSelection()
         }
-        .onChange(of: selectedSourceID) { _, _ in
-            task?.cancel(); generation = UUID(); busy = false; searching = false; results = []; chooseProvider()
+        .task(id: refreshID) { if !isLibrary { await catalog.load() } }
+        .refreshable { if !isLibrary { refreshID = UUID() } }
+        .onChange(of: selectedSourceID) { _, _ in selectionChanged() }
+        .onChange(of: providerID) { _, _ in selectionChanged() }
+        .onChange(of: store.sources) { _, _ in normalizeSelection(); cancelActions() }
+        .onChange(of: query) { _, _ in
+            cancelSearch(); catalogResults = []; scriptResults = []; searchFailure = nil
+            submitted = false
         }
-        .onChange(of: providerID) { _, _ in
-            task?.cancel(); generation = UUID(); busy = false; results = []; searching = false
-            quality = provider?.qualities.first ?? "128k"
-        }
-        .onDisappear { task?.cancel() }
+        .onChange(of: searchKind) { _, _ in if submitted { search() } }
+        .onChange(of: searchInScript) { _, _ in if submitted { search() } }
+        .onDisappear { cancelSearch(); cancelActions() }
     }
 
-    private func chooseProvider() {
-        providerID = source?.providers.first(where: \.canSearch)?.id ?? source?.providers.first?.id ?? ""
-        quality = provider?.qualities.first ?? "128k"
-    }
-
-    private func songRow(_ song: MusicJSSong, saved isSaved: Bool) -> some View {
-        Button { play(song) } label: {
-            HStack(spacing: DSSpacing.md) {
-                Image(systemName: "play.circle.fill").font(DSFont.title).foregroundStyle(DSColor.accent)
-                VStack(alignment: .leading, spacing: DSSpacing.xs) {
-                    Text(song.title).foregroundStyle(DSColor.textPrimary).lineLimit(2)
-                    Text([song.artist, song.album].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary).lineLimit(1)
+    private var searchField: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(localized(isLibrary ? "搜尋已收藏音樂" : "歌曲、歌手、專輯或歌單"), text: $query)
+                    .submitLabel(.search).autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .onSubmit { if !isLibrary { search() } }
+                    .accessibilityIdentifier("mediaHub.music.sourceSearch")
+                if !query.isEmpty {
+                    Button { query = ""; submitted = false } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .accessibilityLabel(localized("清除搜尋"))
                 }
-            }.frame(minHeight: 44)
-        }
-        .disabled(busy)
-        .accessibilityIdentifier("mediaHub.music.song.\(song.id)")
-        .contextMenu {
-            if isSaved {
-                Button(localized("移除收藏"), role: .destructive) {
-                    do { try library.remove(song.savedItem(sourceName: sourceName(song))) }
-                    catch { failure = error.localizedDescription }
-                }
-            } else {
-                Button(localized("加入媒體庫")) {
-                    do { try library.save(song.savedItem(sourceName: sourceName(song))) }
-                    catch { failure = error.localizedDescription }
+                if !isLibrary && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button(action: search) { Image(systemName: "arrow.right.circle.fill").font(.title3) }
+                        .accessibilityLabel(localized("搜尋"))
                 }
             }
+            .font(isLibrary ? .body : .callout.weight(.semibold))
+            .padding(.horizontal, isLibrary ? 14 : 8)
+            .padding(.vertical, isLibrary ? 14 : 6)
+            .frame(minHeight: isLibrary ? 48 : 34)
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: isLibrary ? 16 : 10))
+            if !isLibrary && (!query.isEmpty || submitted) {
+                if provider?.canSearch == true {
+                    Picker(localized("搜尋目錄"), selection: $searchInScript) {
+                        Text(localized("網易雲目錄")).tag(false)
+                        Text(localized("目前 JS 音源")).tag(true)
+                    }.pickerStyle(.segmented)
+                }
+                if !searchInScript {
+                    Picker(localized("搜尋類型"), selection: $searchKind) {
+                        ForEach(MusicCatalogKind.allCases) { Text(localized($0.title)).tag($0) }
+                    }.pickerStyle(.segmented)
+                }
+            }
+        }.padding(.horizontal, isLibrary ? 20 : 16)
+    }
+
+    private func continueCard(_ item: MediaHubLibraryItem) -> some View {
+        Button {
+            if player.errorMessage != nil, let song = MusicJSSong.from(item) { play(song) }
+            else {
+                if !player.isPlaying { player.resume() }
+                playing = item
+            }
+        } label: {
+            HStack(spacing: 14) {
+                MusicCatalogArtwork(poster: item.poster, size: 66, cornerRadius: 6)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(localized(player.isPlaying ? "正在播放" : "繼續播放")).font(.caption2.weight(.semibold))
+                    Text(item.title).font(.headline).lineLimit(1)
+                    Text([item.remarks ?? "", localized("停在") + " " + MusicHomePresentation.time(player.currentTime)]
+                        .filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    if let error = player.errorMessage { Text(error).font(.caption).foregroundStyle(.red).lineLimit(2) }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: player.isPlaying ? "waveform.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 30)).frame(width: 34, height: 44)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(.primary).padding(14)
+            .background(continueSurface, in: RoundedRectangle(cornerRadius: 20))
         }
+        .buttonStyle(.plain).disabled(busy).padding(.horizontal, 16)
+        .accessibilityIdentifier("mediaHub.music.continuePlaying")
+    }
+
+    private func catalogRail(title: String, entries: [MusicCatalogEntry], loading: Bool, error: String?, showingOrigin: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            NavigationLink {
+                MusicCatalogDirectoryView(title: title, entries: entries, showingOrigin: showingOrigin,
+                                          onPlay: playTrack, onSave: saveTrack)
+            } label: {
+                HStack(spacing: 8) {
+                    Text(localized(title)).font(.title3.bold()).foregroundStyle(.primary)
+                    Image(systemName: "chevron.right").font(.subheadline.bold()).foregroundStyle(.tertiary)
+                }.frame(minHeight: 28, alignment: .leading)
+            }
+            .buttonStyle(.plain).disabled(entries.isEmpty).padding(.horizontal, 16)
+            .accessibilityIdentifier(showingOrigin ? "mediaHub.music.charts" : "mediaHub.music.playlists")
+            if loading && entries.isEmpty {
+                ProgressView(localized("載入公開音樂目錄…")).frame(maxWidth: .infinity, minHeight: 148)
+            } else if let error {
+                MusicCatalogStatus(message: error, retry: { refreshID = UUID() }).padding(.horizontal, 16)
+            } else if entries.isEmpty {
+                Text(localized("目錄暫無內容。")) .font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 16)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 14) {
+                        ForEach(entries) { entry in
+                            NavigationLink {
+                                MusicCatalogCollectionView(entry: entry, onPlay: playTrack, onSave: saveTrack)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 7) {
+                                    MusicCatalogArtwork(poster: entry.poster, size: 148, cornerRadius: 18)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                        Text(MusicHomePresentation.catalogCaption(for: entry, showingOrigin: showingOrigin))
+                                            .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                }.frame(width: 148, alignment: .leading).foregroundStyle(.primary)
+                            }.buttonStyle(.plain)
+                                .accessibilityIdentifier("mediaHub.music.catalog.\(entry.id)")
+                        }
+                    }.padding(.horizontal, 16)
+                }
+            }
+        }.padding(.bottom, 4)
+    }
+
+    private var metadataNotice: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(localized(MusicPublicCatalog.providerName), systemImage: "info.circle")
+            Text(localized("目錄只提供歌曲資料；播放網址僅由你導入的 JS 音源解析。需具備相應播放權限。"))
+            if !MusicHomePresentation.canResolveCatalog(source: source, providerID: providerID) {
+                Button(localized("選擇支援網易雲 wy 的 JS 音源以播放")) { settings = true }
+            }
+        }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20)
+    }
+
+    private var searchResults: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(localized("搜尋結果")).font(.title2.bold())
+                Spacer()
+                Button(localized("返回發現")) { cancelSearch(); submitted = false }
+            }
+            Text((searchInScript ? (source?.name ?? localized("JS 音源")) : localized(MusicPublicCatalog.providerName)) + " · " + submittedQuery)
+                .font(.caption).foregroundStyle(.secondary)
+            if searchLoading { ProgressView(localized("搜尋中…")) }
+            else if let searchFailure { MusicCatalogStatus(message: searchFailure, retry: search) }
+            else if catalogResults.isEmpty && scriptResults.isEmpty { Text(localized("沒有搜尋結果。")).foregroundStyle(.secondary) }
+            if searchInScript {
+                ForEach(scriptResults) { song in songRow(song, isSaved: false) }
+            } else {
+                ForEach(catalogResults) { entry in
+                    if let track = entry.track {
+                        MusicCatalogSongRow(title: track.title, subtitle: entry.subtitle, poster: track.poster, busy: busy,
+                                            onPlay: { playTrack(track) }, onSave: { saveTrack(track) })
+                    } else {
+                        NavigationLink {
+                            MusicCatalogCollectionView(entry: entry, onPlay: playTrack, onSave: saveTrack)
+                        } label: {
+                            HStack(spacing: 12) {
+                                MusicCatalogArtwork(poster: entry.poster, size: 52)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.title).font(.headline).lineLimit(2)
+                                    Text(entry.subtitle).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                            }.foregroundStyle(.primary)
+                        }.buttonStyle(.plain)
+                    }
+                    Divider()
+                }
+                if !catalogResults.isEmpty { Text(localized("顯示服務返回的前 30 筆結果。")) .font(.caption).foregroundStyle(.secondary) }
+            }
+        }.padding(.horizontal, 20)
+    }
+
+    private var librarySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(localized("已收藏音樂")).font(.title2.bold())
+            if saved.isEmpty { Text(localized("尚無收藏")).foregroundStyle(.secondary) }
+            ForEach(saved) { song in songRow(song, isSaved: true); Divider() }
+        }.padding(.horizontal, 20)
+    }
+
+    private func songRow(_ song: MusicJSSong, isSaved: Bool) -> some View {
+        MusicCatalogSongRow(title: song.title, subtitle: [song.artist, song.album].filter { !$0.isEmpty }.joined(separator: " · "),
+            poster: song.poster, busy: busy, onPlay: { play(song) }, onSave: {
+                do {
+                    let item = try song.savedItem(sourceName: sourceName(song))
+                    if isSaved { try library.remove(item) } else { try library.save(item) }
+                } catch { failure = error.localizedDescription }
+            }, isSaved: isSaved)
+        .accessibilityIdentifier("mediaHub.music.song.\(song.id)")
     }
 
     private func sourceName(_ song: MusicJSSong) -> String {
         store.sources.first { $0.id == song.sourceID }?.name ?? localized("JS 音源")
     }
-
-    private func importSource(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else {
-            if case .failure(let error) = result, (error as NSError).code != CocoaError.userCancelled.rawValue {
-                failure = error.localizedDescription
-            }
-            return
+    private func normalizeSelection() {
+        if source == nil { selectedSourceID = store.sources.first?.id ?? "" }
+        if provider == nil {
+            providerID = source?.providers.first(where: { $0.id == "wy" })?.id ?? source?.providers.first?.id ?? ""
         }
-        task?.cancel(); let token = UUID(); generation = token; busy = true
-        task = Task { @MainActor in
-            defer { if generation == token { busy = false } }
-            do {
-                let source = try await store.importFile(url)
-                try Task.checkCancellation()
-                selectedSourceID = source.id; chooseProvider()
-            } catch { if !Task.isCancelled && generation == token { failure = error.localizedDescription } }
-        }
+        if provider?.qualities.contains(quality) != true { quality = provider?.qualities.first ?? "128k" }
+        if provider?.canSearch != true { searchInScript = false }
     }
-
+    private func selectionChanged() {
+        cancelSearch(); cancelActions(); submitted = false
+        catalogResults = []; scriptResults = []
+        normalizeSelection()
+    }
+    private func cancelSearch() {
+        searchTask?.cancel(); searchGeneration = UUID(); searchLoading = false
+    }
+    private func cancelActions() {
+        actionTask?.cancel(); actionGeneration = UUID(); busy = false
+    }
     private func search() {
-        guard provider?.canSearch == true, !busy else { return }
-        task?.cancel(); let token = UUID(); generation = token; busy = true; searching = true; results = []
-        let sourceID = selectedSourceID, provider = providerID, keyword = query
-        task = Task { @MainActor in
-            defer { if generation == token { busy = false } }
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return }
+        cancelSearch()
+        let token = UUID(); searchGeneration = token
+        submitted = true; submittedQuery = keyword; searchLoading = true; searchFailure = nil
+        scriptResults = []; catalogResults = []
+        let useScript = searchInScript && provider?.canSearch == true
+        let sourceID = selectedSourceID, platform = providerID, kind = searchKind
+        searchTask = Task { @MainActor in
+            defer { if searchGeneration == token { searchLoading = false } }
             do {
-                let found = try await store.search(sourceID: sourceID, provider: provider, query: keyword)
-                try Task.checkCancellation()
-                if generation == token { results = found }
-            } catch { if !Task.isCancelled && generation == token { failure = error.localizedDescription } }
+                if useScript {
+                    let found = try await store.search(sourceID: sourceID, provider: platform, query: keyword)
+                    guard !Task.isCancelled, searchGeneration == token else { return }
+                    scriptResults = found
+                } else {
+                    let found = try await MusicPublicCatalog.shared.search(keyword, kind: kind)
+                    guard !Task.isCancelled, searchGeneration == token else { return }
+                    catalogResults = found
+                }
+            } catch {
+                guard !Task.isCancelled, searchGeneration == token else { return }
+                searchFailure = error.localizedDescription
+            }
         }
     }
-
+    private func playTrack(_ track: MusicCatalogTrack) {
+        do { play(try MusicCatalogResolverMapping.song(track, source: source, providerID: providerID)) }
+        catch { failure = error.localizedDescription }
+    }
+    private func saveTrack(_ track: MusicCatalogTrack) {
+        do {
+            let song = try MusicCatalogResolverMapping.song(track, source: source, providerID: providerID)
+            try library.save(song.savedItem(sourceName: sourceName(song)))
+        } catch { failure = error.localizedDescription }
+    }
     private func play(_ song: MusicJSSong) {
         guard !busy else { return }
-        task?.cancel(); let token = UUID(); generation = token; busy = true
+        cancelActions()
+        let token = UUID(); actionGeneration = token; busy = true
         let available = store.sources.first { $0.id == song.sourceID }?.providers.first { $0.id == song.provider }
-        let selectedQuality = available?.qualities.contains(quality) == true ? quality : available?.qualities.first ?? "128k"
-        task = Task { @MainActor in
-            defer { if generation == token { busy = false } }
+        let chosenQuality = available?.qualities.contains(quality) == true ? quality : available?.qualities.first ?? "128k"
+        actionTask = Task { @MainActor in
+            defer { if actionGeneration == token { busy = false } }
             do {
-                let item = try await store.resolve(song, quality: selectedQuality)
-                try Task.checkCancellation()
-                if generation == token { playing = item }
-            } catch { if !Task.isCancelled && generation == token { failure = error.localizedDescription } }
-        }
-    }
-
-    private var sourceList: some View {
-        NavigationStack {
-            List {
-                ForEach(store.sources) { source in
-                    VStack(alignment: .leading, spacing: DSSpacing.xs) {
-                        Text(source.name).font(DSFont.headline)
-                        Text(source.version + " · " + source.providers.map(\.name).joined(separator: " / "))
-                            .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
-                    }
-                    .swipeActions {
-                        Button(localized("移除"), role: .destructive) {
-                            do { try store.remove(source) }
-                            catch { failure = error.localizedDescription }
-                        }
-                    }
-                }
+                let item = try await store.resolve(song, quality: chosenQuality)
+                guard !Task.isCancelled, actionGeneration == token else { return }
+                playing = item
+            } catch {
+                guard !Task.isCancelled, actionGeneration == token else { return }
+                failure = error.localizedDescription
             }
-            .navigationTitle(localized("管理音源"))
-            .toolbar { ToolbarItem(placement: .confirmationAction) {
-                Button(localized("關閉")) { sourceManagement = false }
-            } }
         }
     }
 }

@@ -4647,3 +4647,33 @@
 "這個站點不支援搜尋。" = "此站點不支援搜尋。";
 "還沒有 MD5 源" = "還沒有 MD5 源";
 "配置中心 · 網盤 Cookie" = "設定中心 · 網盤 Cookie";
+
+/* Built-in movie ratings and optional TMDB metadata. */
+"片源評分" = "片源評分";
+"豆瓣" = "豆瓣";
+"IMDb" = "IMDb";
+"TMDB" = "TMDB";
+"由片源提供" = "由片源提供";
+"由 TMDB 提供" = "由 TMDB 提供";
+"%d 人評分" = "%d 人評分";
+"TMDB 評分暫時無法載入，片源與播放不受影響。" = "TMDB 評分暫時無法載入，片源與播放不受影響。";
+"TMDB 資料；本產品未經 TMDB 認可或認證。" = "TMDB 資料；本產品未經 TMDB 認可或認證。";
+
+/* Built-in movie ratings and optional TMDB metadata. */
+"TMDB 評分與憑證" = "TMDB 評分與憑證";
+"啟用 TMDB 評分" = "啟用 TMDB 評分";
+"TMDB API 金鑰或 Read Access Token" = "TMDB API 金鑰或 Read Access Token";
+"儲存 TMDB 憑證" = "儲存 TMDB 憑證";
+"憑證狀態" = "憑證狀態";
+"已安全儲存；不會顯示憑證內容" = "已安全儲存；不會顯示憑證內容";
+"移除 TMDB 憑證" = "移除 TMDB 憑證";
+"前往 TMDB 官方 API 金鑰頁面" = "前往 TMDB 官方 API 金鑰頁面";
+"TMDB 帳戶" = "TMDB 帳戶";
+"TMDB 評分" = "TMDB 評分";
+"TMDB 憑證" = "TMDB 憑證";
+"資料來源與 attribution" = "資料來源與 attribution";
+"無法安全儲存 TMDB 憑證，請稍後再試。" = "無法安全儲存 TMDB 憑證，請稍後再試。";
+"無法移除 TMDB 憑證，原設定未變更。" = "無法移除 TMDB 憑證，原設定未變更。";
+"TMDB 評分服務暫時無法使用。" = "TMDB 評分服務暫時無法使用。";
+"TMDB 回應無法辨識。" = "TMDB 回應無法辨識。";
+"憑證只保存在此裝置的 Keychain，不會寫入偏好設定或日誌。查詢只傳送至 TMDB 官方 HTTPS API；關閉評分或未設定憑證時不會發出請求。v3 金鑰以查詢參數傳送，v4 Read Access Token 以授權標頭傳送。" = "憑證只保存在此裝置的 Keychain，不會寫入偏好設定或日誌。查詢只傳送至 TMDB 官方 HTTPS API；關閉評分或未設定憑證時不會發出請求。v3 金鑰以查詢參數傳送，v4 Read Access Token 以授權標頭傳送。";

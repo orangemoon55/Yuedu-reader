@@ -23,6 +23,7 @@ struct MediaHubRootView: View {
     @State private var rails: [MediaHubVideoRail] = []
     @State private var railFailures: [String: String] = [:]
     @State private var selectedCategoryID: String?
+    @State private var homeSearchActive = false
     @State private var searchText = ""
     @State private var submittedSearch = ""
     @State private var page = 1
@@ -81,7 +82,7 @@ struct MediaHubRootView: View {
                 else { discoveryBody }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
-            .navigationTitle(localized(isLibrary ? kind.libraryTitleKey : kind.titleKey))
+            .navigationTitle(localized(kind == .video && !isLibrary && isHomeFeed ? "" : (isLibrary ? kind.libraryTitleKey : kind.titleKey)))
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -91,6 +92,13 @@ struct MediaHubRootView: View {
                 if let mediaMenuContext {
                     RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
                                         onDefault: mediaMenuContext.onDefault)
+                }
+                if kind == .video, !isLibrary {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { homeSearchActive.toggle() } label: {
+                            Label(localized("搜尋影片"), systemImage: "magnifyingglass")
+                        }.accessibilityIdentifier("mediaHub.homeSearchToggle")
+                    }
                 }
                 if kind != .music {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -149,18 +157,22 @@ struct MediaHubRootView: View {
             LazyVStack(alignment: .leading, spacing: DSSpacing.lg) {
                 if kind == .video, selectedSite != nil {
                     if isHomeFeed, homeShowsHero, !heroVideos.isEmpty { heroCarousel }
-                    VStack(alignment: .leading, spacing: DSSpacing.md) {
-                        sourceBadge
-                        searchField(music: false)
-                        categoryControls
-                    }.padding(.horizontal, DSSpacing.md)
+                    if !isHomeFeed {
+                        VStack(alignment: .leading, spacing: DSSpacing.md) {
+                            sourceBadge
+                            searchField(music: false)
+                            categoryControls
+                        }.padding(.horizontal, DSSpacing.md)
+                    } else if homeSearchActive {
+                        searchField(music: false).padding(.horizontal, DSSpacing.md)
+                    }
                     contentBody
                 } else {
                     sourceBadge.padding(.horizontal, DSSpacing.md)
                     discoveryAvailability.padding(.horizontal, DSSpacing.md)
                 }
             }
-            .padding(.top, DSSpacing.sm)
+            .padding(.top, isHomeFeed ? 0 : DSSpacing.sm)
             .padding(.bottom, DSSpacing.lg)
         }
         .accessibilityIdentifier("mediaHub.videoHome")
@@ -981,22 +993,29 @@ private struct MediaHubHeroCard: View {
     var body: some View {
         Group {
             if expanded {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(spacing: DSSpacing.md) {
                     artwork.aspectRatio(16 / 10, contentMode: .fit)
-                    metadata.padding(DSSpacing.lg)
-                }.background(Color.black)
-            } else {
-                ZStack(alignment: .bottomLeading) {
-                    artwork
-                    LinearGradient(stops: [.init(color: .clear, location: 0),
-                                           .init(color: .black.opacity(0.20), location: 0.35),
-                                           .init(color: .black.opacity(0.94), location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
-                    metadata.padding(DSSpacing.lg)
+                    metadata.padding(.horizontal, DSSpacing.lg).padding(.bottom, DSSpacing.lg)
                 }
+                .foregroundStyle(DSColor.textPrimary)
+                .background(DSColor.surfacePrimary)
+            } else {
+                ZStack(alignment: .bottom) {
+                    artwork.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0.28),
+                        .init(color: .white.opacity(0.16), location: 0.48),
+                        .init(color: .white.opacity(0.84), location: 0.73),
+                        .init(color: .white.opacity(0.98), location: 1)
+                    ], startPoint: .top, endPoint: .bottom)
+                    metadata
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, DSSpacing.xl)
+                        .padding(.bottom, DSSpacing.lg)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .foregroundStyle(.white)
         .clipped()
         .accessibilityElement(children: .combine)
         .accessibilityHint(localized("開啟詳情"))
@@ -1007,20 +1026,32 @@ private struct MediaHubHeroCard: View {
     }
 
     private var metadata: some View {
-        VStack(alignment: .leading, spacing: DSSpacing.sm) {
-            Label(localized("站點推薦"), systemImage: "sparkles").font(DSFont.caption.weight(.semibold))
-            Text(video.title).font(DSFont.title.weight(.bold)).lineLimit(expanded ? nil : 2)
+        VStack(alignment: expanded ? .leading : .center, spacing: DSSpacing.sm) {
+            Text(video.title)
+                .font(DSFont.title.weight(.bold))
+                .multilineTextAlignment(expanded ? .leading : .center)
+                .lineLimit(expanded ? nil : 2)
                 .fixedSize(horizontal: false, vertical: true)
             let facts = MediaHubPresentation.facts(for: video)
-            if !facts.isEmpty { Text(facts).font(DSFont.footnote.weight(.semibold)).lineLimit(expanded ? nil : 2) }
+            if !facts.isEmpty {
+                HStack(spacing: DSSpacing.sm) {
+                    ForEach(Array(facts.components(separatedBy: " · ").enumerated()), id: \.offset) { _, fact in
+                        Text(fact).font(DSFont.caption.weight(.semibold))
+                            .padding(.horizontal, DSSpacing.sm).padding(.vertical, DSSpacing.xs)
+                            .background(.black.opacity(expanded ? 0.06 : 0.08), in: Capsule())
+                    }
+                }.frame(maxWidth: .infinity, alignment: expanded ? .leading : .center)
+            }
+            MovieRatingsView(video: video, compact: true, centered: !expanded)
             let summary = MediaHubPresentation.plainText(video.summary)
             if !summary.isEmpty {
-                Text(summary).font(DSFont.subheadline).lineLimit(expanded ? nil : 3)
+                Text(summary).font(DSFont.subheadline)
+                    .multilineTextAlignment(expanded ? .leading : .center)
+                    .lineLimit(expanded ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Label(localized("開啟詳情"), systemImage: "arrow.up.right.circle.fill")
-                .font(DSFont.footnote.weight(.semibold)).padding(.top, DSSpacing.xs)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: expanded ? .leading : .center)
     }
 }
 

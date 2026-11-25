@@ -75,6 +75,27 @@ struct CatVodPlaybackFlowTests {
         #expect(try makeStream(json, route: selected, episode: episode, site: "different-site") { try #require(URL(string: $0)) }.resumeKey != key)
     }
 
+    @Test("alias detail routes reach the production stream factory without losing playback headers")
+    func aliasDetailPlaybackHeaders() throws {
+        let detailJSON = #"{"data":{"videos":[{"title":"两京十五日","play_from":"quark$$$uc","play_url":"Share$quark://pan.example/s/A%2FB?pwd=x%23y%24z$tail$$$4K$https://media.example.invalid/4k.m3u8"}]}}"#
+        let detail = try CatVodContentParser.detail(Data(detailJSON.utf8))
+        #expect(detail.id == "route:两京十五日")
+        let route = try #require(detail.routes.first { $0.flag == "quark" })
+        let episode = try #require(route.episodes.first)
+        #expect(episode.playID == "quark://pan.example/s/A%2FB?pwd=x%23y%24z$tail")
+
+        var resolved: [String] = []
+        let stream = try CatVodPlaybackFactory.stream(
+            data: Data(#"{"url":"https://media.example.invalid/4k.m3u8","headers":{"Referer":"https://source.example.invalid/","User-Agent":"Fixture Player"}}"#.utf8),
+            sourceID: sourceID, siteKey: siteKey, videoID: detail.id, flag: route.flag, episode: episode
+        ) {
+            resolved.append($0)
+            return try #require(URL(string: $0))
+        }
+        #expect(resolved == ["https://media.example.invalid/4k.m3u8"])
+        #expect(stream.headers == ["Referer": "https://source.example.invalid/", "User-Agent": "Fixture Player"])
+    }
+
     @Test("CatVod web-parser flags are refused before resolving or opening any URL")
     func refusesWebParsing() throws {
         let route = try #require(try video().routes.first)

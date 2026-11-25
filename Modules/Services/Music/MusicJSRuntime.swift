@@ -248,15 +248,17 @@ final class MusicJSRuntime: NSObject, WKNavigationDelegate {
 
     nonisolated static func redirectedRequest(_ request: URLRequest, from origin: URL?) -> URLRequest? {
         guard let url = request.url, allowedRemoteURL(url) else { return nil }
-        var next = request
-        if origin?.host?.lowercased() != url.host?.lowercased()
-            || origin?.scheme != url.scheme || origin?.port != url.port {
-            // Arbitrary custom headers and POST bodies may contain source credentials.
-            guard ["GET", "HEAD"].contains((next.httpMethod ?? "GET").uppercased()),
-                  next.httpBody == nil, next.httpBodyStream == nil else { return nil }
-            next.allHTTPHeaderFields = [:]
-        }
-        return next
+        let changedOrigin = origin?.host?.lowercased() != url.host?.lowercased()
+            || origin?.scheme != url.scheme || origin?.port != url.port
+        guard changedOrigin else { return request }
+        // Arbitrary custom headers, cookie/auth defaults and POST bodies may contain
+        // source credentials. Build a clean request for the new origin rather than
+        // clearing a copied URLRequest (Foundation can retain synthesized defaults).
+        guard ["GET", "HEAD"].contains((request.httpMethod ?? "GET").uppercased()),
+              request.httpBody == nil, request.httpBodyStream == nil else { return nil }
+        var clean = URLRequest(url: url, cachePolicy: request.cachePolicy, timeoutInterval: request.timeoutInterval)
+        clean.httpMethod = request.httpMethod
+        return clean
     }
 
     nonisolated static func safeHeader(_ key: String, _ value: String) -> Bool {

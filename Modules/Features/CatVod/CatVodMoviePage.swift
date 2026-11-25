@@ -92,8 +92,8 @@ struct CatVodMoviePage: View {
     }
 }
 
-/// Source-only metadata in the same scaffold/hero/cards as the app's native video details.
-/// No guessed ratings, third-party artwork, or episode-stream prefetches.
+/// Source metadata plus explicitly attributed ratings in the app's native detail scaffold.
+/// Optional TMDB metadata never changes source artwork, episodes or playback routes.
 struct CatVodMovieDetailPresentation: View {
     let detail: CatVodVideo
     let poster: UIImage?
@@ -151,6 +151,7 @@ struct CatVodMovieDetailPresentation: View {
                 }
             } intro: {
                 VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                    MovieRatingsView(video: detail)
                     if !detail.actor.isEmpty {
                         Text(detail.actor).font(DSFont.caption).foregroundStyle(DSColor.textSecondary)
                     }

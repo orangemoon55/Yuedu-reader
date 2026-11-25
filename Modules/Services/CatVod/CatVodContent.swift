@@ -30,6 +30,8 @@ struct CatVodVideo: Identifiable, Sendable, Hashable {
     let year: String
     let area: String
     let routes: [CatVodRoute]
+    var ratings: [MovieRating] = []
+    var metadataIdentity: MovieMetadataIdentity = .init()
 }
 
 struct CatVodRoute: Identifiable, Sendable, Hashable {
@@ -85,6 +87,12 @@ enum CatVodContentError: Error, LocalizedError, Sendable, Equatable {
 }
 
 enum CatVodContentParser {
+    private enum DetailLookup {
+        case video([String: Any])
+        case empty
+        case malformed
+    }
+
     static func home(_ data: Data) throws -> CatVodHome {
         let root = try normalizedRoot(data)
         try checkBusinessStatus(root)
@@ -123,22 +131,14 @@ enum CatVodContentParser {
     static func detail(_ data: Data) throws -> CatVodVideo {
         let root = try normalizedRoot(data)
         try checkBusinessStatus(root)
-        let item: [String: Any]
-        if let object = root as? [String: Any] {
-            if let list = object["list"] as? [Any], let first = list.first as? [String: Any] {
-                item = first
-            } else {
-                item = object
-            }
-        } else if let list = root as? [Any], let first = list.first as? [String: Any] {
-            item = first
-        } else {
-            throw CatVodContentError.invalidResponse("详情应包含影片对象")
-        }
-        guard ["vod_id", "vod_name", "vod_play_url"].contains(where: { item[$0] != nil }) else {
+        switch try detailLookup(in: root, depth: 0) {
+        case .video(let item):
+            return parseVideo(item, includeRoutes: true)
+        case .empty:
+            throw CatVodContentError.invalidResponse("详情未找到影片")
+        case .malformed:
             throw CatVodContentError.invalidResponse("详情缺少影片字段")
         }
-        return parseVideo(item, includeRoutes: true)
     }
 
     static func playback(_ data: Data) throws -> CatVodPlayback {
@@ -177,6 +177,66 @@ enum CatVodContentParser {
         throw CatVodContentError.invalidResponse("响应包裹超过允许层数")
     }
 
+    private static func detailLookup(in value: Any, depth: Int) throws -> DetailLookup {
+        // Every inspected wrapper is status-checked before we descend into it. Only these
+        // explicitly recognized CatVod response keys are traversed; arbitrary objects are
+        // never treated as videos just because they contain unrelated fields.
+        try checkBusinessStatus(value)
+        guard depth <= 4 else {
+            throw CatVodContentError.invalidResponse("详情包裹超过允许层数")
+        }
+
+        if let item = value as? [String: Any] {
+            if isRecognizedVideoObject(item) { return .video(item) }
+
+            var sawEmpty = false
+            var sawMalformed = false
+            for key in ["list", "videos", "video", "detail", "result", "data"] {
+                guard let nested = item[key] else { continue }
+                if nested is NSNull {
+                    if key == "list" || key == "videos" { sawEmpty = true }
+                    else { sawMalformed = true }
+                    continue
+                }
+                switch try detailLookup(in: nested, depth: depth + 1) {
+                case .video(let video): return .video(video)
+                case .empty: sawEmpty = true
+                case .malformed: sawMalformed = true
+                }
+            }
+            if sawMalformed { return .malformed }
+            if sawEmpty { return .empty }
+            return .malformed
+        }
+
+        if let values = value as? [Any] {
+            guard !values.isEmpty else { return .empty }
+            var sawEmpty = false
+            var sawMalformed = false
+            for nested in values {
+                switch try detailLookup(in: nested, depth: depth + 1) {
+                case .video(let video): return .video(video)
+                case .empty: sawEmpty = true
+                case .malformed: sawMalformed = true
+                }
+            }
+            if sawMalformed { return .malformed }
+            return sawEmpty ? .empty : .malformed
+        }
+        return .malformed
+    }
+
+    private static func isRecognizedVideoObject(_ item: [String: Any]) -> Bool {
+        let title = string(item["vod_name"] ?? item["title"])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return false }
+        let identifier = string(item["vod_id"] ?? item["id"])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Normal details require their identifier; some PanAdapter cloud-search
+        // sites intentionally omit it but return explicit playable share routes.
+        return !identifier.isEmpty || !parseRoutes(item).isEmpty
+    }
+
     private static func jsonObject(_ data: Data) throws -> Any {
         do {
             return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
@@ -195,6 +255,13 @@ enum CatVodContentParser {
         if let error = object["error"], isMeaningfulError(error) {
             let detail = string(error).isEmpty ? "服务器返回 error" : string(error)
             throw CatVodContentError.businessFailure(detail)
+        }
+        // CatVod /spider routes commonly encode PanAdapter login/share failures as
+        // {list:[], msg:"..."}; preserve that actionable cause instead of showing
+        // the misleading generic missing-detail-field error.
+        if let message = object["msg"], isMeaningfulError(message),
+           (object["list"] as? [Any])?.isEmpty == true {
+            throw CatVodContentError.businessFailure(string(message))
         }
         if let status = object["status"], let failure = failureStatus(status) {
             throw CatVodContentError.businessFailure(message(in: object, fallback: failure))
@@ -267,17 +334,25 @@ enum CatVodContentParser {
     }
 
     private static func parseVideo(_ item: [String: Any], includeRoutes: Bool) -> CatVodVideo {
-        CatVodVideo(
-            id: string(item["vod_id"] ?? item["id"]),
-            title: string(item["vod_name"] ?? item["title"]),
+        let title = string(item["vod_name"] ?? item["title"])
+        let identifier = string(item["vod_id"] ?? item["id"])
+        // Use a deterministic presentation identity only for explicitly route-backed
+        // adapter details that omit IDs; play IDs remain the untouched route payload.
+        let stableID = identifier.isEmpty && includeRoutes && !parseRoutes(item).isEmpty
+            ? "route:" + title : identifier
+        return CatVodVideo(
+            id: stableID,
+            title: title,
             poster: string(item["vod_pic"] ?? item["poster"]),
             remarks: string(item["vod_remarks"] ?? item["remarks"]),
             summary: string(item["vod_content"] ?? item["summary"]),
             actor: string(item["actor"] ?? item["vod_actor"]),
             director: string(item["director"] ?? item["vod_director"]),
-            year: string(item["year"] ?? item["vod_year"]),
+            year: MovieRatingParser.yearText(in: item),
             area: string(item["area"] ?? item["vod_area"]),
-            routes: includeRoutes ? parseRoutes(item) : []
+            routes: includeRoutes ? parseRoutes(item) : [],
+            ratings: MovieRatingParser.ratings(in: item),
+            metadataIdentity: MovieRatingParser.identity(in: item)
         )
     }
 
@@ -323,8 +398,8 @@ enum CatVodContentParser {
     }
 
     private static func parseRoutes(_ item: [String: Any]) -> [CatVodRoute] {
-        let flags = string(item["vod_play_from"]).components(separatedBy: "$$$")
-        let groupValues = string(item["vod_play_url"]).components(separatedBy: "$$$")
+        let flags = string(item["vod_play_from"] ?? item["play_from"]).components(separatedBy: "$$$")
+        let groupValues = string(item["vod_play_url"] ?? item["play_url"]).components(separatedBy: "$$$")
         let groupCount = max(flags.count, groupValues.count)
         guard groupCount > 0 else { return [] }
         return (0..<groupCount).compactMap { groupIndex -> CatVodRoute? in

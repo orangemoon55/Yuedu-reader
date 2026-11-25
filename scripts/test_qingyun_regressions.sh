@@ -39,7 +39,8 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
-  DEST="$(bash scripts/sim.sh dest iPad)"
+  # The supplied crash recording is the iPhone floating Home context-menu path.
+  DEST="$(bash scripts/sim.sh dest iPhone)"
 else
   DEST="$(bash scripts/sim.sh dest)"
 fi
@@ -50,6 +51,8 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/MusicImportServiceTests'
     -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
     -only-testing:'yuedu appTests/MusicJSSourceTests'
+    -only-testing:'yuedu appTests/MusicCatalogTests'
+    -only-testing:'yuedu appTests/ModuleMediaImportTests'
     -only-testing:'yuedu appTests/CatVodHTTPPlaybackTests'
     -only-testing:'yuedu appTests/MediaHubInteractionTests'
     -only-testing:'yuedu appTests/SourceImportPlanTests'
@@ -60,6 +63,8 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/ReadccBackdropBlurTests'
     -only-testing:'yuedu appTests/VideoTransportTests'
     -only-testing:'yuedu appTests/CatVodContentTests'
+    -only-testing:'yuedu appTests/MovieRatingTests'
+    -only-testing:'yuedu appTests/TMDBClientTests'
     -only-testing:'yuedu appTests/CatVodHomeFlowTests'
     -only-testing:'yuedu appUITests/MediaTabToolbarUITests'
   )
@@ -303,6 +308,17 @@ xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
   -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
   "${TEST_SELECTION[@]}" >> "$PRIVATE/test.log" 2>&1
+if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
+  # The supplied crash recording is the iPhone floating Home context-menu path.
+  # Keep it on a phone-sized simulator; the preceding media51 suite runs on iPad.
+  PHONE_DEST="$(bash scripts/sim.sh dest iPhone)"
+  xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+    -configuration Debug -destination "$PHONE_DEST" -derivedDataPath "$PRIVATE/Tests" \
+    -resultBundlePath "$PRIVATE/phone-crash.xcresult" -parallel-testing-enabled NO \
+    -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+    -only-testing:'yuedu appUITests/MediaMenuCrashUITests' >> "$PRIVATE/test.log" 2>&1
+fi
 python3 - "$PRIVATE/test.log" <<'PY'
 from pathlib import Path
 import sys

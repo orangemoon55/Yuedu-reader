@@ -22,6 +22,12 @@ struct RuleModuleManagerView: View {
     @ObservedObject var repositories: RuleModuleRepositoryModel
     @ObservedObject private var availability = PublicLibraryAvailability.shared
     @ObservedObject private var md5Library = Md5SourceLibrary.shared
+    @ObservedObject private var mediaImports = ModuleMediaImportStore.shared
+    private var counts: ModuleLandingCounts {
+        ModuleLandingCounts(appOfficial: AppOfficialModule.available(librariesAvailable: availability.isAvailable).count,
+                            installedOfficial: library.official.count, installedImported: library.imported.count,
+                            unreadableImported: library.failures.count)
+    }
     @Environment(\.ruleModuleAddFlow) private var addFlow
     @AppStorage(ReaderChapterCommentDecorator.enabledKey) private var showsModuleComments = true
     /// Once per visit: back from a repository's page, the indexes are not read again.
@@ -41,11 +47,14 @@ struct RuleModuleManagerView: View {
                 NavigationLink(value: ExploreNavigationRoute.moduleGroup(.official)) {
                     RuleModuleOriginRow(title: localized("官方模組"), systemImage: "puzzlepiece.extension.fill", isVerified: true,
                                         subtitle: localized("隨閱讀一起提供的模組"), origin: localized("閱讀"),
-                                        count: AppOfficialModule.available(librariesAvailable: availability.isAvailable).count
-                                            + library.official.count)
+                                        count: counts.official)
                 }
                 .accessibilityIdentifier("modules.official")
+            }
+            .interfaceSectionSurface()
 
+            if !repositories.repositories.isEmpty {
+                Section {
                 ForEach(repositories.repositories) { repository in
                     NavigationLink(value: ExploreNavigationRoute.moduleRepository(repository.id)) {
                         RuleModuleOriginRow(title: repository.subscription.name, systemImage: "shippingbox",
@@ -66,29 +75,41 @@ struct RuleModuleManagerView: View {
                         Text(localized("已安裝的模組會留下。"))
                     }
                 }
+                } header: { Text(localized("訂閱的模組庫")) }
+                .interfaceSectionSurface()
+            }
 
+            Section {
                 NavigationLink(value: ExploreNavigationRoute.moduleGroup(.imported)) {
                     RuleModuleOriginRow(title: localized("匯入的模組"), systemImage: "arrow.down.circle.fill",
                                         subtitle: localized("你自己加入的模組"), origin: localized("匯入"),
-                                        count: library.imported.count + library.failures.count)
+                                        count: counts.imported)
                 }
                 .accessibilityIdentifier("modules.imported")
 
-                // MD5 源 (CatVod JS bundles) share 模組's page but never its JSON list: their own
-                // store, their own checksum, their own Node run (maintainer, 2026-11-23).
-                NavigationLink {
-                    Md5SourceManagerView(library: md5Library)
-                } label: {
-                    RuleModuleOriginRow(title: localized("MD5 源"), systemImage: "curlybraces",
-                                        subtitle: localized("CatVod JS 打包檔，與 JSON 模組分開"), origin: localized("匯入"),
-                                        count: md5Library.isLoaded ? md5Library.sources.count : nil)
-                }
-                .accessibilityIdentifier("modules.md5Sources")
             } footer: {
                 Text(localized("第三方模組由作者自行維護，閱讀不審核其內容。加入前請確認來源可信；有問題的模組可以在「回饋與改進」回報。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
+            ForEach(ModuleMediaRoute.allCases) { route in
+                Section {
+                    NavigationLink {
+                        mediaDestination(route)
+                    } label: {
+                        RuleModuleOriginRow(title: localized(route.titleKey), systemImage: route.systemImage,
+                                            subtitle: mediaSubtitle(route), origin: localized("匯入"), count: mediaCount(route))
+                            .padding(.vertical, DSSpacing.xs)
+                    }
+                    .accessibilityIdentifier(route.accessibilityIdentifier)
+                } footer: {
+                    if route == .catSources {
+                        Text(localized("彈幕與字幕來源目前僅登記，本地字幕可保存與預覽，播放匹配尚未接入。貓源使用獨立 CatVod 引擎，與 JSON 模組、音樂 JS 源分開；只匯入你信任的來源。"))
+                            .dsSectionFooter()
+                    }
+                }
+                .interfaceSectionSurface()
+            }
             if library.modules.contains(where: { $0.module.comments != nil }) {
                 Section {
                     Toggle(localized("在正文顯示模組的評論"), isOn: $showsModuleComments)
@@ -117,11 +138,37 @@ struct RuleModuleManagerView: View {
             Text(repositories.message ?? "")
         }
         .task {
+            mediaImports.loadIfNeeded()
             md5Library.loadIfNeeded()
             guard !hasLoaded else { return }
             hasLoaded = true
             await library.loadIfNeeded()
             await repositories.load()
+        }
+    }
+
+    @ViewBuilder
+    private func mediaDestination(_ route: ModuleMediaRoute) -> some View {
+        switch route {
+        case .danmaku: ModuleMediaManagerView(kind: .danmaku)
+        case .subtitles: ModuleMediaManagerView(kind: .subtitle)
+        case .catSources: Md5SourceManagerView(library: md5Library)
+        }
+    }
+
+    private func mediaSubtitle(_ route: ModuleMediaRoute) -> String {
+        switch route {
+        case .danmaku: localized("登記彈彈 play 相容來源；播放匹配尚未接入")
+        case .subtitles: localized("線上來源登記、本地 SRT / VTT 匯入與預覽")
+        case .catSources: localized("CatVod 影視來源與網盤帳號配置")
+        }
+    }
+
+    private func mediaCount(_ route: ModuleMediaRoute) -> Int? {
+        switch route {
+        case .danmaku: mediaImports.isLoaded ? mediaImports.archive.danmaku.count : nil
+        case .subtitles: mediaImports.isLoaded ? mediaImports.archive.subtitle.count + mediaImports.archive.files.count : nil
+        case .catSources: md5Library.isLoaded ? md5Library.sources.count : nil
         }
     }
 

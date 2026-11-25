@@ -143,6 +143,16 @@ struct MediaSettingsView: View {
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
+
+        Section {
+            NavigationLink {
+                TMDBSettingsView()
+            } label: {
+                SettingsRowLabel(localized("TMDB 評分與憑證"), systemImage: "star.leadinghalf.filled")
+            }
+            .accessibilityIdentifier("media.video.tmdbSettings")
+        }
+        .interfaceSectionSurface()
     }
 
     @ViewBuilder
