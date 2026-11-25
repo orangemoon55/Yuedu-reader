@@ -162,16 +162,20 @@ final class MusicPlayer: ObservableObject {
         let center = NotificationCenter.default
         endObserver = center.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil,
             queue: .main) { [weak self] note in
-                Task { @MainActor in self?.itemEnded(note.object as? AVPlayerItem) }
+                let item = note.object as? AVPlayerItem
+                Task { @MainActor in self?.itemEnded(item) }
             }
         failedObserver = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil,
             queue: .main) { [weak self] note in
-                Task { @MainActor in self?.itemFailed(note.object as? AVPlayerItem) }
+                let item = note.object as? AVPlayerItem
+                Task { @MainActor in self?.itemFailed(item) }
             }
         let session = AVAudioSession.sharedInstance()
         interruptionObserver = center.addObserver(forName: AVAudioSession.interruptionNotification,
             object: session, queue: .main) { [weak self] note in
-                Task { @MainActor in self?.handleInterruption(note) }
+                let rawType = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                let rawOptions = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+                Task { @MainActor in self?.handleInterruption(type: rawType, options: rawOptions) }
             }
         routeObserver = center.addObserver(forName: AVAudioSession.routeChangeNotification,
             object: session, queue: .main) { [weak self] _ in
@@ -299,12 +303,12 @@ final class MusicPlayer: ObservableObject {
         setRemoteCommands(enabled: true)
     }
 
-    private func handleInterruption(_ note: Notification) {
-        guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+    private func handleInterruption(type rawType: UInt?, options rawOptions: UInt?) {
+        guard let rawType,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
         if type == .began { isPlaying = false; updateNowPlaying() }
         else if type == .ended,
-                let rawOptions = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
+                let rawOptions,
                 AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
             resume()
         }
@@ -331,7 +335,8 @@ final class MusicPlayer: ObservableObject {
             }),
             RemoteCommandTarget(command: center.changePlaybackPositionCommand, token: center.changePlaybackPositionCommand.addTarget { @Sendable [weak self] event in
                 guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-                Task { @MainActor in self?.seek(to: event.positionTime) }; return .success
+                let position = event.positionTime
+                Task { @MainActor in self?.seek(to: position) }; return .success
             })
         ]
     }
@@ -372,7 +377,7 @@ final class MusicPlayer: ObservableObject {
         configureNowPlaying(for: item, elapsed: currentTime, duration: duration, playing: isPlaying)
     }
 
-    deinit {
+    isolated deinit {
         let center = NotificationCenter.default
         if let endObserver { center.removeObserver(endObserver) }
         if let failedObserver { center.removeObserver(failedObserver) }
