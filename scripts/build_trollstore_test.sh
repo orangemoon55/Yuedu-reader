@@ -74,6 +74,8 @@ ARGS=(
 printf '%s\n' '正在解析依赖及读取构建设置；此步骤尚未完成编译。' >&3
 xcodebuild "${ARGS[@]}" -showBuildSettings -json >"$PRIVATE/settings.json"
 python3 scripts/prepare_trollstore_test.py locate "$PRIVATE/settings.json" "$PRIVATE/app-path.txt"
+# SPM has resolved the pinned checkout. Fix the upstream plist before embedding/validation.
+python3 scripts/normalize_ksplayer_frameworks.py "$PRIVATE/DerivedData/SourcePackages"
 printf '%s\n' '正在进行完整 iOS 真机 Debug 配置编译（Swift -Osize / C -Os），编译错误将立即终止。' >&3
 xcodebuild "${ARGS[@]}" build
 NODE_FRAMEWORK="$ROOT/Vendor/NodeMobile.xcframework/ios-arm64/NodeMobile.framework"

@@ -291,6 +291,10 @@ else
   )
 fi
 echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"
+# Resolve into this job's exact DerivedData before correcting the known upstream plist.
+xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+  -derivedDataPath "$PRIVATE/Tests" >> "$PRIVATE/test.log" 2>&1
+python3 scripts/normalize_ksplayer_frameworks.py "$PRIVATE/Tests/SourcePackages" >> "$PRIVATE/test.log" 2>&1
 xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
   -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
