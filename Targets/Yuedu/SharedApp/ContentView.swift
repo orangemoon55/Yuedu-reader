@@ -20,7 +20,8 @@ struct ContentView: View {
     /// screen's own (`RootTabBarVisibility`).
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @State private var selectedRootTab: RootTabItem = .explore
-    @State private var mediaHubRoute: MediaHubRoute?
+    @AppStorage(MediaHubSelection.homeKey) private var homeMediaSelection = ""
+    @AppStorage(MediaHubSelection.libraryKey) private var libraryMediaSelection = ""
     @State private var rootKeyboardVisible = false
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
@@ -354,7 +355,7 @@ struct ContentView: View {
         } set: { tab in
             // Stamped as the tap lands: iOS 27 appears the tab's root before `onChange` runs.
             if tab == .library, selectedRootTab != .library { LibraryTabTiming.noteSelected() }
-            if tab == .explore || tab == .bookshelf { mediaHubRoute = nil }
+            // Returning to a root tab keeps its last manually selected content.
             selectedRootTab = tab
         }
     }
@@ -377,15 +378,23 @@ struct ContentView: View {
                     displayScale: displayScale, settings: gs
                 )
             },
-            mediaQuickAction: openMediaHub
+            mediaQuickAction: openMediaHub,
+            mediaDefaultAction: closeMediaHub
         )
         .padding(.top, FloatingRootTabBarLayout.topSpacing)
         .padding(.bottom, FloatingRootTabBarLayout.bottomSpacing)
     }
 
     private func openMediaHub(_ kind: MediaHubKind, _ isLibrary: Bool) {
-        // A menu action must not use rootTabSelection: ordinary taps clear the route.
-        mediaHubRoute = MediaHubRoute(kind: kind, isLibrary: isLibrary)
+        if isLibrary { libraryMediaSelection = kind.rawValue }
+        else { homeMediaSelection = kind.rawValue }
+        selectedRootTab = isLibrary ? .bookshelf : .explore
+    }
+
+    private func closeMediaHub(_ isLibrary: Bool) {
+        // Only an explicit close/default-content menu action clears this preference.
+        if isLibrary { libraryMediaSelection = "" }
+        else { homeMediaSelection = "" }
         selectedRootTab = isLibrary ? .bookshelf : .explore
     }
 
@@ -401,7 +410,7 @@ struct ContentView: View {
                 // TabContent.contextMenu belongs on the Tab, not on its label.
                 // Apple's public API presents this menu in the native sidebar.
                 .contextMenu {
-                    RootTabMediaMenuItems(tab: tab, onSelect: openMediaHub)
+                    RootTabMediaMenuItems(tab: tab, onSelect: openMediaHub, onDefault: closeMediaHub)
                 }
             }
         }
@@ -419,15 +428,16 @@ struct ContentView: View {
         }
     }
 
+    private func mediaMenuContext(for tab: RootTabItem) -> RootTabMediaMenuContext? {
+        guard !usesFloatingRootTabBar, selectedRootTab == tab, !rootTabBar.isTabBarHidden,
+              !MediaHubKind.quickActionKinds(for: tab).isEmpty else { return nil }
+        return RootTabMediaMenuContext(tab: tab, onSelect: openMediaHub, onDefault: closeMediaHub)
+    }
+
     private func rootTabPage(for tab: RootTabItem) -> some View {
         rootTabContent(for: tab)
-            .toolbar {
-                // Keep the existing stacks, native tab layout and novel/comic roots.
-                // A visible Menu complements (not impersonates) sidebar long-press.
-                if !usesFloatingRootTabBar, selectedRootTab == tab, !rootTabBar.isTabBarHidden {
-                    RootTabMediaToolbar(tab: tab, onSelect: openMediaHub)
-                }
-            }
+            // Toolbar items must be inside the existing page's NavigationStack, not outside it.
+            .environment(\.rootTabMediaMenuContext, mediaMenuContext(for: tab))
             .modifier(ThemedSurfaceBackground(
                 scope: AppearancePageBackgroundScope(rawValue: tab.rawValue) ?? .global,
                 isProActive: subscriptionStore.hasAccess(.readerThemePacks)
@@ -456,15 +466,15 @@ struct ContentView: View {
     private func rootTabContent(for tab: RootTabItem) -> some View {
         switch tab {
         case .bookshelf:
-            if let route = mediaHubRoute, route.isLibrary {
-                MediaHubRootView(kind: route.kind, isLibrary: true, onClose: { mediaHubRoute = nil })
+            if let route = MediaHubSelection.route(libraryMediaSelection, isLibrary: true) {
+                MediaHubRootView(kind: route.kind, isLibrary: true, onClose: { closeMediaHub(true) })
                     .id(route.id)
             } else {
                 HomeView()
             }
         case .explore:
-            if let route = mediaHubRoute, !route.isLibrary {
-                MediaHubRootView(kind: route.kind, isLibrary: false, onClose: { mediaHubRoute = nil })
+            if let route = MediaHubSelection.route(homeMediaSelection, isLibrary: false) {
+                MediaHubRootView(kind: route.kind, isLibrary: false, onClose: { closeMediaHub(false) })
                     .id(route.id)
             } else {
                 BrowserView(browser: browser)

@@ -7,10 +7,10 @@ import SwiftUI
 struct PanCookieSettingsView: View {
     let source: Md5Source
     let sites: [CatVodSite]
-    @ObservedObject private var runtime = CatVodRuntime.shared
 
     @State private var values: [String: [String: String]] = [:]
     @State private var isLoading = true
+    @State private var loaded = false
     @State private var failure: String?
     @State private var savedProvider: String?
     @State private var isSaving = false
@@ -40,13 +40,7 @@ struct PanCookieSettingsView: View {
 
     var body: some View {
         Form {
-            if runtime.activeSourceID != source.id {
-                Section {
-                    Text(localized("請先回到上一頁，按「啟動並讀取站點」。"))
-                        .foregroundStyle(DSColor.textSecondary)
-                }
-                .interfaceSectionSurface()
-            } else if isLoading {
+            if isLoading {
                 Section {
                     HStack(spacing: DSSpacing.sm) {
                         ProgressView()
@@ -54,6 +48,11 @@ struct PanCookieSettingsView: View {
                     }
                 }
                 .interfaceSectionSurface()
+            } else if !loaded {
+                Section {
+                    Button(localized("重試")) { Task { await load() } }
+                        .accessibilityIdentifier("pan.retry")
+                }.interfaceSectionSurface()
             } else {
                 ForEach(providers) { provider in
                     Section {
@@ -92,7 +91,7 @@ struct PanCookieSettingsView: View {
         } message: {
             Text(failure ?? "")
         }
-        .task { await load() }
+        .task(id: source.id) { await load() }
     }
 
     private func binding(_ provider: String, _ field: String) -> Binding<String> {
@@ -107,14 +106,18 @@ struct PanCookieSettingsView: View {
     }
 
     private func load() async {
-        guard runtime.activeSourceID == source.id else { isLoading = false; return }
+        isLoading = true
+        loaded = false
+        values = [:]
+        defer { isLoading = false }
         do {
-            let credentials = try await runtime.credentials()
+            let credentials = try await CatVodCatalog.shared.credentials(sourceID: source.id)
+            try Task.checkCancellation()
             values = credentials.values
+            loaded = true
         } catch {
-            failure = (error as? CatVodRuntimeError)?.message ?? error.localizedDescription
+            if !Task.isCancelled { failure = CatVodCatalog.message(error) }
         }
-        isLoading = false
     }
 
     private func save(_ provider: Provider) async {
@@ -124,14 +127,14 @@ struct PanCookieSettingsView: View {
             for field in provider.fields {
                 let value = values[provider.id]?[field.id] ?? ""
                 if value.isEmpty {
-                    try await runtime.clearCredential(provider: provider.id, field: field.id)
+                    try await CatVodCatalog.shared.clearCredential(sourceID: source.id, provider: provider.id, field: field.id)
                 } else {
-                    try await runtime.saveCredential(provider: provider.id, field: field.id, value: value)
+                    try await CatVodCatalog.shared.saveCredential(sourceID: source.id, provider: provider.id, field: field.id, value: value)
                 }
             }
             savedProvider = provider.id
         } catch {
-            failure = (error as? CatVodRuntimeError)?.message ?? error.localizedDescription
+            failure = CatVodCatalog.message(error)
         }
     }
 }

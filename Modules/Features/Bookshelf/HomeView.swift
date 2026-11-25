@@ -240,6 +240,7 @@ struct HomeView: View {
     @EnvironmentObject var store: BookStore
     @Environment(\.appDependencies) private var appDependencies
     @Environment(\.rootTabBarVisibility) private var rootTabBarVisibility
+    @Environment(\.rootTabMediaMenuContext) private var mediaMenuContext
     @Environment(OnboardingState.self) private var onboarding: OnboardingState?
     @Bindable private var gs = GlobalSettings.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -651,7 +652,13 @@ struct HomeView: View {
             .themedAppSurface(for: .bookshelf)
             .animation(DSAnimation.standard, value: store.books.isEmpty)
             .rootTabTitle(localized("書架"), onScroll: .fadesTitle)
-            .toolbar { shelfToolbar(addsBooks: true) }
+            .toolbar {
+                shelfToolbar(addsBooks: true)
+                if editMode != .active, openedFolder == nil, let mediaMenuContext {
+                    RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
+                                        onDefault: mediaMenuContext.onDefault)
+                }
+            }
             // In edit mode, hide the app tab bar so the contextual .bottomBar (delete / group / share)
             // takes its place — the system selection pattern used by Photos / Files.
             .hidesRootTabBar(editMode == .active)

@@ -54,7 +54,8 @@ struct CatVodPlaybackFlowTests {
         }
         #expect(resolved == ["https://media.example.invalid/backup.mp4?token=one"])
         #expect(first.headers == ["User-Agent": "Fixture Player", "Referer": "https://source.example.invalid/",
-                                  "Origin": "https://source.example.invalid", "Accept": "video/*", "Accept-Language": "en"])
+                                  "Origin": "https://source.example.invalid", "Accept": "video/*", "Accept-Language": "en",
+                                  "Cookie": "not-a-real-cookie", "Authorization": "not-a-real-token"])
         let key = try #require(first.resumeKey)
         #expect(key.scheme == "readcc-catvod")
         #expect(key.host == "episode")

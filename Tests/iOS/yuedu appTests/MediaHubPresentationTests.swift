@@ -46,7 +46,8 @@ struct MediaHubPresentationTests {
         let other = bookmark("3", source: "another", title: "另一首", kind: .music)
         let items = [movie, music, other]
         #expect(MediaHubPresentation.savedItems(items, kind: .music).map(\.videoID) == ["2", "3"])
-        #expect(MediaHubPresentation.savedItems(items, kind: .music, query: "真實").map(\.videoID) == ["2"])
+        #expect(MediaHubPresentation.savedItems(items, kind: .music, query: "真實音樂").map(\.videoID) == ["2"])
+        #expect(MediaHubPresentation.savedItems(items, kind: .music, query: "真實站點").map(\.videoID) == ["2", "3"])
         #expect(MediaHubPresentation.savedItems(items, kind: .music, sourceID: "another").map(\.videoID) == ["3"])
         #expect(MediaHubPresentation.savedItems(items, kind: .video).map(\.videoID) == ["1"])
     }

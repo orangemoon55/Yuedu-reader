@@ -22,7 +22,7 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
         // Reject line breaks before KSOptions turns dictionary entries into HTTP lines.
         let safe = headers.filter { key, value in
             !key.isEmpty && !key.contains(":") && !key.contains(where: { $0.isWhitespace || $0.isNewline })
-                && !value.contains("\r") && !value.contains("\n")
+                && value.unicodeScalars.allSatisfy { $0.value != 0x0D && $0.value != 0x0A }
         }
         options.appendHeader(safe)
         options.isLoopPlay = false

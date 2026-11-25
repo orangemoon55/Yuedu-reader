@@ -66,12 +66,14 @@ struct VideoTransportTests {
         }
     }
 
-    private func withLocalPlayer(_ body: (VideoPlaybackController) async throws -> Void) async throws {
+    private func withLocalPlayer(prefersKSPlayer: Bool = false,
+                                 _ body: (VideoPlaybackController) async throws -> Void) async throws {
         let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/VideoStill/video-still-landscape.mp4")
         let saved = VideoLinkPositions.time(for: file)
         VideoLinkPositions.save(0, for: file)
-        let controller = VideoPlaybackController(link: VideoStream(url: file, headers: [:]), title: "Synthetic transport")
+        let controller = VideoPlaybackController(link: VideoStream(url: file, headers: [:]),
+                                                 title: "Synthetic transport", prefersKSPlayer: prefersKSPlayer)
         defer {
             controller.close()
             VideoLinkPositions.save(saved ?? 0, for: file)
@@ -85,6 +87,64 @@ struct VideoTransportTests {
         #expect(abs(controller.duration - 10) < 0.5)
         controller.pause()
         try await body(controller)
+    }
+
+    @Test("KS native transport clamps and replays the same engine without AV fallback")
+    func ksTransportClampsAndReplays() async throws {
+        try await withLocalPlayer(prefersKSPlayer: true) { controller in
+            let engine = try #require(controller.ksKernel.engine)
+            let chapter = controller.chapterIndex
+            #expect(controller.usesKSPlayer && controller.player.currentItem == nil)
+            controller.seek(to: 4)
+            var deadline = ContinuousClock.now + .seconds(5)
+            while abs(engine.currentPlaybackTime - 4) > 0.25, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(abs(engine.currentPlaybackTime - 4) <= 0.25)
+            controller.skip(by: -15)
+            #expect(controller.currentTime == 0)
+            controller.skip(by: 15)
+            controller.skip(by: 15)
+            #expect(controller.currentTime == controller.duration)
+            #expect(controller.phase == .paused)
+            controller.seek(to: .nan)
+            #expect(controller.currentTime == controller.duration)
+            controller.togglePlayPause()
+            deadline = ContinuousClock.now + .seconds(8)
+            while (controller.phase != .playing || controller.currentTime >= controller.duration),
+                  ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(controller.phase == .playing)
+            #expect(controller.currentTime < controller.duration)
+            #expect(controller.ksKernel.engine === engine && controller.usesKSPlayer)
+            #expect(controller.player.currentItem == nil && controller.chapterIndex == chapter)
+            controller.pause()
+        }
+    }
+
+    @Test("KS natural EOF disables skips and replay remains on this episode")
+    func ksNaturalEndRetainsReplay() async throws {
+        try await withLocalPlayer(prefersKSPlayer: true) { controller in
+            let chapter = controller.chapterIndex
+            controller.seek(to: 8)
+            controller.resume()
+            var deadline = ContinuousClock.now + .seconds(12)
+            while controller.phase != .ended, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            #expect(controller.phase == .ended)
+            #expect(!controller.canSkip && controller.currentTime == 0)
+            controller.skip(by: -15)
+            #expect(controller.phase == .ended)
+            controller.togglePlayPause()
+            deadline = ContinuousClock.now + .seconds(8)
+            while controller.phase == .loading, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(controller.phase == .playing && controller.usesKSPlayer)
+            #expect(controller.player.currentItem == nil && controller.chapterIndex == chapter)
+        }
     }
 
     @Test("unknown/loading transport is a no-op without opening any media")

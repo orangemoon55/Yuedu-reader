@@ -19,13 +19,14 @@ struct NativeKSVideoKernelTests {
     func headerOptions() {
         let options = NativeKSVideoKernel.options(headers: [
             "User-Agent": "Readcc Fixture", "Referer": "https://fixture.invalid/",
-            "X-Injected": "unsafe\r\nOther: header", "Bad Header": "discard",
-            "Bad:Name": "discard", "Bad\nName": "discard", "": "discard"
+            "X-Injected": "unsafe\r\nOther: header", "X-Bare-CR": "bare\r", "X-Bare-LF": "bare\n",
+            "Bad Header": "discard", "Bad:Name": "discard", "Bad\nName": "discard", "": "discard"
         ])
         let raw = options.formatContextOptions["headers"] as? String ?? ""
         #expect(raw.contains("User-Agent:Readcc Fixture\r\n"))
         #expect(raw.contains("Referer:https://fixture.invalid/\r\n"))
         #expect(!raw.contains("Other:") && !raw.contains("Bad Header"))
+        #expect(!raw.contains("bare\r") && !raw.contains("bare\n"))
         #expect(!raw.contains("Bad:Name") && !raw.contains("Bad\nName"))
         #expect(!raw.contains("discard"))
         #expect(options.formatContextOptions["rw_timeout"] as? Int == 20_000_000)

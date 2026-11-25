@@ -11,5 +11,8 @@ xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Y
 exec bash scripts/xctest.sh -t 1200 -- \
     -only-testing:'yuedu appTests/NativeKSVideoKernelTests' \
     -only-testing:'yuedu appTests/CatVodPlaybackFlowTests' \
+    -only-testing:'yuedu appTests/CatVodHTTPPlaybackTests' \
+    -only-testing:'yuedu appTests/MusicJSSourceTests' \
+    -only-testing:'yuedu appTests/MediaHubInteractionTests' \
     -only-testing:'yuedu appTests/SourceImportPlanTests' \
     "$@"

@@ -64,6 +64,7 @@ struct FloatingRootTabBar: View {
     var customIcon: (RootTabItem) -> RootTabRenderedIcon? = { _ in nil }
     /// Media destinations revealed by a native long-press menu on Explore / Bookshelf.
     var mediaQuickAction: (MediaHubKind, Bool) -> Void = { _, _ in }
+    var mediaDefaultAction: ((Bool) -> Void)? = nil
     /// Deterministic preview/testing input; nil follows the read-only system environment.
     var reduceTransparencyOverride: Bool? = nil
 
@@ -138,7 +139,7 @@ struct FloatingRootTabBar: View {
         return Group {
             if tab == .explore || tab == .bookshelf {
                 button.contextMenu {
-                    RootTabMediaMenuItems(tab: tab, onSelect: mediaQuickAction)
+                    RootTabMediaMenuItems(tab: tab, onSelect: mediaQuickAction, onDefault: mediaDefaultAction)
                 }
             } else {
                 button

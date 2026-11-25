@@ -1,6 +1,6 @@
 import Foundation
 
-/// The media destinations available from the Explore and Bookshelf quick menus.
+/// Media destination identifiers. Menu visibility is controlled separately per root tab.
 enum MediaHubKind: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case video
     case music
@@ -32,7 +32,7 @@ enum MediaHubKind: String, CaseIterable, Codable, Hashable, Identifiable, Sendab
         }
     }
 
-    static let discoveryMenuKinds: [MediaHubKind] = [.video, .music, .drama]
+    static let discoveryMenuKinds: [MediaHubKind] = [.video, .music]
     static let libraryMenuKinds: [MediaHubKind] = [.video, .music]
 
     /// Menus exist only for the two requested root tabs. Keeping their contents here

@@ -68,7 +68,7 @@ struct MusicPlayerView: View {
                     .accessibilityIdentifier("mediaHub.music.play")
                     Button { player.next() } label: {
                         Image(systemName: "forward.fill").font(DSFont.title2)
-                    }.disabled(player.currentTrack == nil)
+                    }.disabled(player.currentTrack == nil || player.queue.last?.id == player.currentTrack?.id)
                 }
                 Button(role: .destructive) { player.stop() } label: {
                     Label(localized("停止播放"), systemImage: "stop.fill")
@@ -90,9 +90,16 @@ struct MusicPlayerView: View {
         .task {
             guard autoPlay, !didStart else { return }
             didStart = true
-            if player.currentTrack?.id != item.id { player.play(item, queue: queue) }
+            if Self.shouldReplace(current: player.currentTrack, with: item, hasError: player.errorMessage != nil) {
+                player.play(item, queue: queue)
+            }
         }
         .accessibilityIdentifier("mediaHub.music.player")
+    }
+
+    static func shouldReplace(current: MediaHubLibraryItem?, with proposed: MediaHubLibraryItem, hasError: Bool) -> Bool {
+        current?.id != proposed.id || current?.musicURL != proposed.musicURL
+            || current?.musicHeaders != proposed.musicHeaders || hasError
     }
 
     private static func time(_ value: TimeInterval) -> String {

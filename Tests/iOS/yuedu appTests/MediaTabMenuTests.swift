@@ -2,9 +2,10 @@ import Testing
 @testable import yuedu_app
 
 struct MediaTabMenuTests {
-    @Test("discovery quick menu keeps video, music, drama order")
+    @Test("home quick menu contains only video and music")
     func discoveryMenuOrder() {
-        #expect(MediaHubKind.quickActionKinds(for: .explore) == [.video, .music, .drama])
+        #expect(MediaHubKind.quickActionKinds(for: .explore) == [.video, .music])
+        #expect(!MediaHubKind.quickActionKinds(for: .explore).contains(.drama))
     }
 
     @Test("bookshelf quick menu contains only video and music libraries")

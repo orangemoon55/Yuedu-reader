@@ -46,6 +46,7 @@ private struct ExploreHomeRoot: View {
     @ObservedObject private var modules = RuleModuleLibrary.shared
     @ObservedObject private var md5Library = Md5SourceLibrary.shared
     @AppStorage(ExploreSettings.modeKey) private var storedMode = ExploreMode.publicLibraries.rawValue
+    @Environment(\.rootTabMediaMenuContext) private var mediaMenuContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsMoreChooser = false
     @State private var moreSequence = DismissalSequencedPresentation<ExploreMoreAction>()
@@ -481,6 +482,10 @@ private struct ExploreHomeRoot: View {
                 Spacer()
             }
         } else {
+            if let mediaMenuContext {
+                RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
+                                    onDefault: mediaMenuContext.onDefault)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { path.append(ExploreNavigationRoute.genres) } label: {
                     Image(systemName: "square.grid.2x2")

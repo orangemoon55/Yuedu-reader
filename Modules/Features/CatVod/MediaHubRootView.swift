@@ -10,6 +10,7 @@ struct MediaHubRootView: View {
     @ObservedObject private var sourceLibrary = Md5SourceLibrary.shared
     @ObservedObject private var mediaLibrary = MediaHubLibrary.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.rootTabMediaMenuContext) private var mediaMenuContext
     @AppStorage(MediaPreferences.homeShowsHeroKey) private var homeShowsHero = MediaPreferences.homeShowsHero
     @AppStorage(MediaPreferences.posterColumnsKey) private var posterColumns = MediaPreferences.posterColumns
     @AppStorage(MediaPreferences.musicArtworkSquareKey) private var musicArtworkSquare = MediaPreferences.musicArtworkSquare
@@ -75,7 +76,7 @@ struct MediaHubRootView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if kind == .music { musicBody }
+                if kind == .music { MusicJSSourceView(isLibrary: isLibrary) }
                 else if isLibrary { libraryBody }
                 else { discoveryBody }
             }
@@ -87,11 +88,17 @@ struct MediaHubRootView: View {
                     Button(action: onClose) { Label(localized("關閉"), systemImage: "xmark") }
                         .accessibilityIdentifier("mediaHub.close")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { sourceSheetPresented = true } label: {
-                        Label(localized("來源與篩選"), systemImage: "slider.horizontal.3")
+                if let mediaMenuContext {
+                    RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
+                                        onDefault: mediaMenuContext.onDefault)
+                }
+                if kind != .music {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { sourceSheetPresented = true } label: {
+                            Label(localized("來源與篩選"), systemImage: "slider.horizontal.3")
+                        }
+                        .accessibilityIdentifier("mediaHub.sourceControls")
                     }
-                    .accessibilityIdentifier("mediaHub.sourceControls")
                 }
             }
             .themedAppSurface(for: .explore)
@@ -101,20 +108,6 @@ struct MediaHubRootView: View {
                 get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })) {
                 Button(localized("關閉"), role: .cancel) { saveFailure = nil }
             } message: { Text(saveFailure ?? "") }
-            .sheet(isPresented: $musicDirectImportPresented) {
-                MusicDirectImportSheet { url, title, artist, headersJSON in
-                    importDirectMusic(url: url, title: title, artist: artist, headersJSON: headersJSON)
-                }
-            }
-            .fileImporter(isPresented: $musicImportPresented,
-                          allowedContentTypes: [UTType.audio, UTType.plainText],
-                          allowsMultipleSelection: true) { result in
-                importMusicFiles(result)
-            }
-            .alert(localized("音樂導入失敗"), isPresented: Binding(
-                get: { musicImportFailure != nil }, set: { if !$0 { musicImportFailure = nil } })) {
-                Button(localized("關閉"), role: .cancel) { musicImportFailure = nil }
-            } message: { Text(musicImportFailure ?? "") }
         }
         .task { sourceLibrary.loadIfNeeded(); mediaLibrary.reload() }
         .onChange(of: availableSources.map(\.id)) { _, ids in
@@ -138,7 +131,20 @@ struct MediaHubRootView: View {
         }
     }
 
-    private var discoveryBody: some View {
+    @ViewBuilder private var discoveryBody: some View {
+        if selectedSite?.isConfigurationSite == true, let selectedSource {
+            VStack(spacing: 0) {
+                sourceBadge.padding(.horizontal, DSSpacing.md)
+                // Configuration is an editable native destination, never a fake film/QR card.
+                PanCookieSettingsView(source: selectedSource, sites: sites)
+            }
+            .accessibilityIdentifier("mediaHub.siteConfiguration")
+        } else {
+            videoDiscoveryBody
+        }
+    }
+
+    private var videoDiscoveryBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DSSpacing.lg) {
                 if kind == .video, selectedSite != nil {
@@ -224,17 +230,38 @@ struct MediaHubRootView: View {
         }.accessibilityIdentifier("mediaHub.hero")
     }
 
-    private var sourceBadge: some View {
-        Button { sourceSheetPresented = true } label: {
-            HStack(spacing: DSSpacing.xs) {
-                Image(systemName: "globe")
-                Text(selectedSite.map { $0.name } ?? selectedSource?.title ?? localized("選擇接口"))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down").font(DSFont.caption2)
-                Spacer(minLength: 0)
-            }.font(DSFont.footnote.weight(.semibold)).foregroundStyle(DSColor.textSecondary)
-                .padding(.vertical, DSSpacing.xs)
-        }.buttonStyle(.plain).accessibilityIdentifier("mediaHub.activeSource")
+    @ViewBuilder private var sourceBadge: some View {
+        if kind == .video, selectedSource != nil, !sites.isEmpty {
+            // The same system menu as the settings Picker, opened directly at the badge.
+            // UIKit supplies scrolling for long site lists and a checkmark for the selection.
+            Menu {
+                Picker(localized("選擇站點"), selection: siteBinding) {
+                    Text(localized("選擇站點")).tag(nil as String?)
+                    ForEach(sites) { site in Text(site.name).tag(Optional(site.key)) }
+                }
+                .pickerStyle(.inline)
+            } label: { sourceBadgeLabel }
+            .menuOrder(.fixed)
+            .disabled(loadingSites)
+            .accessibilityIdentifier("mediaHub.activeSource")
+            .accessibilityValue(selectedSite?.name ?? localized("選擇站點"))
+        } else {
+            Button { sourceSheetPresented = true } label: { sourceBadgeLabel }
+                .buttonStyle(.plain).accessibilityIdentifier("mediaHub.activeSource")
+        }
+    }
+
+    private var sourceBadgeLabel: some View {
+        HStack(spacing: DSSpacing.xs) {
+            Image(systemName: "globe")
+            Text(selectedSite.map { $0.name } ?? selectedSource?.title ?? localized("選擇接口"))
+                .lineLimit(1)
+            Image(systemName: "chevron.down").font(DSFont.caption2)
+            Spacer(minLength: 0)
+        }
+        .font(DSFont.footnote.weight(.semibold)).foregroundStyle(DSColor.textSecondary)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private func searchField(music: Bool) -> some View {
@@ -756,7 +783,8 @@ struct MediaHubRootView: View {
 
     private func loadContent() async {
         guard !isLibrary, kind == .video, let sourceID = selectedSourceID,
-              let siteKey = selectedSiteKey, selectedSite != nil, availableSources.contains(where: { $0.id == sourceID }) else { return }
+              let siteKey = selectedSiteKey, let selectedSite, !selectedSite.isConfigurationSite,
+              availableSources.contains(where: { $0.id == sourceID }) else { return }
         let token = requestID
         loadingContent = true
         failure = nil

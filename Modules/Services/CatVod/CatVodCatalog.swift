@@ -64,6 +64,26 @@ final class CatVodCatalog {
     func sites(sourceID: String) async throws -> [CatVodSite] {
         try await perform { try await self.activate(sourceID) }
     }
+    // Configuration uses the same serialized source activation as browsing/playback.
+    // A stale settings page must never read or write another source's login database.
+    func credentials(sourceID: String) async throws -> CatVodCredentials {
+        try await perform {
+            _ = try await self.activate(sourceID)
+            return try await CatVodRuntime.shared.credentials()
+        }
+    }
+    func saveCredential(sourceID: String, provider: String, field: String, value: String) async throws {
+        try await perform {
+            _ = try await self.activate(sourceID)
+            try await CatVodRuntime.shared.saveCredential(provider: provider, field: field, value: value)
+        }
+    }
+    func clearCredential(sourceID: String, provider: String, field: String) async throws {
+        try await perform {
+            _ = try await self.activate(sourceID)
+            try await CatVodRuntime.shared.clearCredential(provider: provider, field: field)
+        }
+    }
     private func request(_ sourceID: String, _ key: String, _ action: String, _ args: [String: Any]) async throws -> Data {
         guard let site = try await activate(sourceID).first(where: { $0.key == key }) else { throw CatVodUseError.noSite }
         if action == "search", !site.searchable { throw CatVodUseError.notSearchable }
@@ -125,9 +145,13 @@ enum CatVodPlaybackFactory {
         guard !result.requiresWebParsing else { throw CatVodUseError.parsePage }
         let url = try resolveURL(result.url)
         guard url.pathExtension.lowercased() != "mpd" else { throw VideoChapterLinkError.dashManifest }
-        let allowed = Set(["user-agent", "referer", "origin", "accept", "accept-language"])
+        // These headers belong to this source's selected playback response, not the global
+        // cookie store. Pan/CDN links may require them; discarding them turns valid media
+        // requests into 401/403 even after the source has resolved an authorized URL.
+        let allowed = Set(["user-agent", "referer", "origin", "accept", "accept-language", "cookie", "authorization"])
         let headers = result.headers.filter {
-            allowed.contains($0.key.lowercased()) && !$0.value.contains("\r") && !$0.value.contains("\n")
+            allowed.contains($0.key.lowercased()) && $0.value.utf8.count <= 16 * 1024
+                && $0.value.utf8.allSatisfy { ($0 == 9 || $0 >= 32) && $0 != 127 }
         }
         let resumeBytes = try JSONEncoder().encode([sourceID, siteKey, videoID, flag, episode.id])
         let digest = SHA256.hash(data: resumeBytes).map { String(format: "%02x", $0) }.joined()

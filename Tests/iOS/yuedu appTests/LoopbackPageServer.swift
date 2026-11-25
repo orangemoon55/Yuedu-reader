@@ -24,7 +24,7 @@ final class LoopbackPageServer: @unchecked Sendable {
 
     private let listener: NWListener
     private let queue = DispatchQueue(label: "LoopbackPageServer")
-    private let route: @Sendable (String) -> Reply
+    private let route: @Sendable (String, String) -> Reply
     private let counts = OSAllocatedUnfairLock(initialState: [String: Int]())
     private let open = OSAllocatedUnfairLock(initialState: [NWConnection]())
 
@@ -32,7 +32,15 @@ final class LoopbackPageServer: @unchecked Sendable {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: parameters)
-        self.route = route
+        self.route = { path, _ in route(path) }
+    }
+
+    /// Header-aware offline fixture without changing existing path-only call sites.
+    init(request: @escaping @Sendable (String, String) -> Reply) throws {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        listener = try NWListener(using: parameters)
+        self.route = request
     }
 
     /// How many requests asked for a path starting with `prefix`.
@@ -81,7 +89,7 @@ final class LoopbackPageServer: @unchecked Sendable {
                 let head = String(decoding: buffer[..<end.lowerBound], as: UTF8.self)
                 let path = head.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
                 counts.withLock { $0[path, default: 0] += 1 }
-                respond(route(path), on: connection)
+                respond(route(path, head), on: connection)
                 return
             }
             if isComplete || error != nil { connection.cancel(); return }
