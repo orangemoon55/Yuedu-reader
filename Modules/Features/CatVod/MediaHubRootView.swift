@@ -998,7 +998,7 @@ private struct MediaHubHeroCard: View {
                     metadata.padding(.horizontal, DSSpacing.lg).padding(.bottom, DSSpacing.lg)
                 }
                 .foregroundStyle(DSColor.textPrimary)
-                .background(DSColor.surfacePrimary)
+                .background(DSColor.surface)
             } else {
                 ZStack(alignment: .bottom) {
                     artwork.frame(maxWidth: .infinity, maxHeight: .infinity)
