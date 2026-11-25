@@ -730,12 +730,6 @@ private extension View {
         modifier(RSSFeedSearchBar(searchText: searchText))
     }
 }
-// MARK: - URL Identifiable conformance for sheet(item:)
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
-}
-
 #Preview("Today") {
     NavigationStack {
         RSSSmartFeedView(kind: .today)
