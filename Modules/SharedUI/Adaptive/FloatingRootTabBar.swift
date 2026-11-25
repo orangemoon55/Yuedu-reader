@@ -135,7 +135,7 @@ struct FloatingRootTabBar: View {
             .padding(.vertical, FloatingRootTabBarLayout.surfacePadding + FloatingRootTabBarLayout.hitExpansion)
             .contentShape(Rectangle())
         }
-        Group {
+        return Group {
             if tab == .explore || tab == .bookshelf {
                 button.contextMenu {
                     RootTabMediaMenuItems(tab: tab, onSelect: mediaQuickAction)
