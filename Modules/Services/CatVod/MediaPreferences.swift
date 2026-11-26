@@ -1,6 +1,14 @@
 import CoreFoundation
 import Foundation
 
+/// Density affects spacing only; video posters always retain their portrait 2:3 shape.
+enum MediaVideoCardDensity: String, CaseIterable, Identifiable {
+    case comfortable
+    case compact
+
+    var id: String { rawValue }
+}
+
 /// User-facing preferences shared by the native movie and music surfaces.
 ///
 /// The computed properties intentionally read `UserDefaults.standard` on every access. This
@@ -9,6 +17,11 @@ import Foundation
 enum MediaPreferences {
     static let videoDefaultRateKey = "media.video.defaultRate"
     static let videoResumeEnabledKey = "media.video.resumeEnabled"
+    static let videoKernelKey = "media.video.kernel"
+    // Video discovery settings must never reuse the saved-library posterColumns key.
+    static let videoPosterColumnsKey = "media.video.posterColumns"
+    static let videoShowsFactsKey = "media.video.showsFacts"
+    static let videoCardDensityKey = "media.video.cardDensity"
     static let musicDefaultRateKey = "media.music.defaultRate"
     static let musicResumeEnabledKey = "media.music.resumeEnabled"
     static let musicLoopCurrentKey = "media.music.loopCurrent"
@@ -34,6 +47,26 @@ enum MediaPreferences {
     static var videoResumeEnabled: Bool {
         get { videoResumeEnabled(in: .standard) }
         set { setVideoResumeEnabled(newValue, in: .standard) }
+    }
+
+    static var videoKernel: VideoKernelPreference {
+        get { videoKernel(in: .standard) }
+        set { setVideoKernel(newValue, in: .standard) }
+    }
+
+    static var videoPosterColumns: Int {
+        get { videoPosterColumns(in: .standard) }
+        set { setVideoPosterColumns(newValue, in: .standard) }
+    }
+
+    static var videoShowsFacts: Bool {
+        get { videoShowsFacts(in: .standard) }
+        set { setVideoShowsFacts(newValue, in: .standard) }
+    }
+
+    static var videoCardDensity: MediaVideoCardDensity {
+        get { videoCardDensity(in: .standard) }
+        set { setVideoCardDensity(newValue, in: .standard) }
     }
 
     static var musicDefaultRate: Float {
@@ -85,6 +118,46 @@ enum MediaPreferences {
 
     static func setVideoResumeEnabled(_ value: Bool, in defaults: UserDefaults) {
         defaults.set(value, forKey: videoResumeEnabledKey)
+    }
+
+    static func videoKernel(in defaults: UserDefaults = .standard) -> VideoKernelPreference {
+        guard let raw = defaults.object(forKey: videoKernelKey) as? String,
+              let preference = VideoKernelPreference(rawValue: raw) else { return .automatic }
+        return preference
+    }
+
+    static func setVideoKernel(_ value: VideoKernelPreference, in defaults: UserDefaults) {
+        defaults.set(value.rawValue, forKey: videoKernelKey)
+    }
+
+    static func videoPosterColumns(in defaults: UserDefaults = .standard) -> Int {
+        let value = number(forKey: videoPosterColumnsKey, in: defaults)
+        guard value.isFinite, value.rounded() == value else { return 3 }
+        if value <= 2 { return 2 }
+        if value >= 5 { return 5 }
+        return Int(value)
+    }
+
+    static func setVideoPosterColumns(_ value: Int, in defaults: UserDefaults) {
+        defaults.set(min(max(value, 2), 5), forKey: videoPosterColumnsKey)
+    }
+
+    static func videoShowsFacts(in defaults: UserDefaults = .standard) -> Bool {
+        bool(forKey: videoShowsFactsKey, in: defaults, default: true)
+    }
+
+    static func setVideoShowsFacts(_ value: Bool, in defaults: UserDefaults) {
+        defaults.set(value, forKey: videoShowsFactsKey)
+    }
+
+    static func videoCardDensity(in defaults: UserDefaults = .standard) -> MediaVideoCardDensity {
+        guard let raw = defaults.object(forKey: videoCardDensityKey) as? String,
+              let density = MediaVideoCardDensity(rawValue: raw) else { return .comfortable }
+        return density
+    }
+
+    static func setVideoCardDensity(_ value: MediaVideoCardDensity, in defaults: UserDefaults) {
+        defaults.set(value.rawValue, forKey: videoCardDensityKey)
     }
 
     static func musicDefaultRate(in defaults: UserDefaults) -> Float {

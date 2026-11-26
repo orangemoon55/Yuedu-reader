@@ -10,6 +10,10 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
     private(set) var engine: KSMEPlayer?
     private var timer: Timer?
     private var timeoutTask: Task<Void, Never>?
+    private var generation = UUID()
+    private var seekGeneration = UUID()
+    private var deliveredReady = false
+    private var deliveredFinish = false
     var onReady: (() -> Void)?
     var onTick: ((Double, Double, Bool, CGSize) -> Void)?
     var onFinish: ((Error?) -> Void)?
@@ -32,22 +36,33 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
         return options
     }
 
-    func open(_ stream: VideoStream) {
+    /// Deferred preparation lets the controller install callbacks AFTER old callbacks clear,
+    /// but BEFORE prepareToPlay can synchronously report ready/failure.
+    func open(_ stream: VideoStream, prepareImmediately: Bool = true) {
         stop()
         let next = KSMEPlayer(url: stream.url, options: Self.options(headers: stream.headers))
         engine = next
         next.delegate = self
-        next.prepareToPlay()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.publishTimeline() }
+        if prepareImmediately { prepare() }
+    }
+
+    func prepare() {
+        guard let next = engine, timer == nil, !deliveredFinish else { return }
+        let token = generation
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self, weak next] _ in
+            Task { @MainActor in
+                guard let self, self.generation == token, let next, self.engine === next else { return }
+                self.publishTimeline()
+            }
         }
         timeoutTask = Task { [weak self, weak next] in
             try? await Task.sleep(for: .seconds(30))
-            guard !Task.isCancelled, let self, let next,
+            guard !Task.isCancelled, let self, let next, self.generation == token,
                   self.engine === next, !next.isReadyToPlay else { return }
-            self.onFinish?(NSError(domain: "Readcc.KSPlayer", code: 1,
-                                   userInfo: [NSLocalizedDescriptionKey: "KSPlayer: media preparation timed out"]))
+            self.deliverFinish(NSError(domain: "Readcc.KSPlayer", code: 1,
+                                      userInfo: [NSLocalizedDescriptionKey: "KSPlayer: media preparation timed out"]))
         }
+        next.prepareToPlay()
     }
 
     func play(rate: Float) {
@@ -62,14 +77,27 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
             return
         }
         let identity = ObjectIdentifier(engine)
+        let token = generation
+        let operation = UUID()
+        seekGeneration = operation
         engine.seek(time: max(0, seconds)) { [weak self] finished in
             Task { @MainActor [weak self] in
-                guard let self, self.engine.map(ObjectIdentifier.init) == identity else { return }
+                guard let self, self.generation == token, self.seekGeneration == operation,
+                      self.engine.map(ObjectIdentifier.init) == identity else { return }
+                // A successful explicit replay/seek begins another EOF cycle on the same engine.
+                if finished { self.deliveredFinish = false }
                 completion(finished)
             }
         }
     }
     func stop() {
+        generation = UUID()
+        seekGeneration = UUID()
+        deliveredReady = false
+        deliveredFinish = false
+        onReady = nil
+        onTick = nil
+        onFinish = nil
         timeoutTask?.cancel()
         timeoutTask = nil
         timer?.invalidate()
@@ -84,7 +112,7 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
         return ObjectIdentifier(player) == ObjectIdentifier(engine)
     }
     private func publishTimeline() {
-        guard let engine, engine.isReadyToPlay else { return }
+        guard let engine, engine.isReadyToPlay, !deliveredFinish else { return }
         let time = engine.currentPlaybackTime
         let duration = engine.duration
         onTick?(time.isFinite ? max(0, time) : 0,
@@ -92,8 +120,10 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
                 engine.seekable, engine.naturalSize)
     }
     func readyToPlay(player: some MediaPlayerProtocol) {
-        guard isCurrent(player) else { return }
+        guard isCurrent(player), !deliveredReady, !deliveredFinish else { return }
+        deliveredReady = true
         timeoutTask?.cancel()
+        timeoutTask = nil
         publishTimeline()
         onReady?()
     }
@@ -105,7 +135,14 @@ final class NativeKSVideoKernel: NSObject, MediaPlayerDelegate {
     func playBack(player: some MediaPlayerProtocol, loopCount: Int) {}
     func finish(player: some MediaPlayerProtocol, error: Error?) {
         guard isCurrent(player) else { return }
+        deliverFinish(error)
+    }
+
+    private func deliverFinish(_ error: Error?) {
+        guard engine != nil, !deliveredFinish else { return }
+        deliveredFinish = true
         timeoutTask?.cancel()
+        timeoutTask = nil
         onFinish?(error)
     }
 }

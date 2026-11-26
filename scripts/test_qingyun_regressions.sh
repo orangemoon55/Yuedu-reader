@@ -6,23 +6,65 @@ cd "$ROOT"
 PRIVATE="$(mktemp -d "${RUNNER_TEMP:-/tmp}/qingyun-tests.XXXXXX")"
 export TROLLSTORE_PRIVATE_DIR="$PRIVATE"
 mkdir -p trollstore-output
+set_phase() { printf '%s\n' "$1" > "$PRIVATE/regression-phase.txt"; }
+write_media51_status() {
+  [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]] || return 0
+  printf 'MEDIA51_IPAD_EXIT_STATUS=%s\nMEDIA51_IPHONE_EXIT_STATUS=%s\n' \
+    "${IPAD_STATUS:-not_started}" "${PHONE_STATUS:-not_started}" > "$PRIVATE/media51-exit-status.txt"
+}
+# Background the active command so Bash can handle cancellation immediately,
+# rather than deferring TERM/INT until a foreground xcodebuild returns.
+run_private() {
+  local log="$1" result=0
+  shift
+  "$@" >> "$log" 2>&1 &
+  ACTIVE_PID=$!
+  wait "$ACTIVE_PID" || result=$?
+  ACTIVE_PID=
+  return "$result"
+}
+select_xcode() { exec python3 scripts/prepare_trollstore_test.py select-xcode > "$PRIVATE/xcode.txt"; }
+select_destination() { exec bash scripts/sim.sh dest "$@" > "$PRIVATE/destination.txt"; }
+on_signal() {
+  local signal="$1" code="$2" phase="$3" attempt
+  trap '' TERM INT
+  CANCELLED=1
+  set_phase "$phase"
+  if [[ "${ACTIVE_SUITE:-}" == ipad ]]; then IPAD_STATUS=cancelled; fi
+  if [[ "${ACTIVE_SUITE:-}" == phone ]]; then PHONE_STATUS=cancelled; fi
+  write_media51_status
+  if [[ -n "${ACTIVE_PID:-}" ]]; then
+    # Bash asynchronous jobs may inherit ignored SIGINT; request TERM for the
+    # child in either case while preserving the caller's 130/143 exit status.
+    if [[ "$signal" == INT ]]; then signal=TERM; fi
+    kill -s "$signal" "$ACTIVE_PID" 2>/dev/null || true
+    for ((attempt=0; attempt<25; attempt++)); do
+      kill -0 "$ACTIVE_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$ACTIVE_PID" 2>/dev/null || true
+    wait "$ACTIVE_PID" 2>/dev/null || true
+  fi
+  exit "$code"
+}
 finish() {
   local status=$?
   trap - EXIT
+  trap '' TERM INT
+  if [[ "${CANCELLED:-0}" != 1 ]]; then set_phase finishing; fi
+  printf '%s\n' "$status" > "$PRIVATE/regression-exit-status.txt"
+  write_media51_status
   if [[ -n "${MANGA_FIXTURE_PID:-}" ]]; then kill "$MANGA_FIXTURE_PID" 2>/dev/null || true; fi
   if [[ -f "$PRIVATE/manga-fixture.log" ]]; then
     cat "$PRIVATE/manga-fixture.log" >> "$PRIVATE/test.log"
   fi
-  python3 scripts/prepare_trollstore_test.py redact "$PRIVATE/test.log" trollstore-output/regressions.log || true
-  for suite in ipad phone; do
-    if [[ -f "$PRIVATE/$suite-test.log" ]]; then
-      python3 scripts/prepare_trollstore_test.py redact "$PRIVATE/$suite-test.log" \
-        "trollstore-output/media51-$suite-test.log" || true
-    fi
-  done
-  if [[ -f "$PRIVATE/media51-exit-status.txt" ]]; then
-    cp "$PRIVATE/media51-exit-status.txt" trollstore-output/media51-exit-status.txt
+  # Flush sanitized evidence before potentially expensive xcresult export.
+  # SIGKILL cannot run EXIT: the already-published heartbeat remains available.
+  if [[ -n "${LOG_SNAPSHOT_PID:-}" ]]; then
+    kill -TERM "$LOG_SNAPSHOT_PID" 2>/dev/null || true
+    wait "$LOG_SNAPSHOT_PID" 2>/dev/null || true
   fi
+  python3 scripts/stream_regression_logs.py --private-dir "$PRIVATE" --output-dir trollstore-output --status-only || true
   if [[ -f "$PRIVATE/result.xcresult/Info.plist" ]]; then
     mkdir -p trollstore-output/layout-preview
     xcrun xcresulttool export attachments --path "$PRIVATE/result.xcresult" --output-path trollstore-output/layout-preview >/dev/null 2>&1 || true
@@ -43,19 +85,37 @@ finish() {
   exit "$status"
 }
 trap finish EXIT
+trap 'on_signal TERM 143 cancelled-term' TERM
+trap 'on_signal INT 130 cancelled-int' INT
 : > "$PRIVATE/test.log"
-python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
-export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
-bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
+set_phase starting
+write_media51_status
+# Create actual upload paths synchronously, before preparation can fail/hang.
+python3 scripts/stream_regression_logs.py --private-dir "$PRIVATE" --output-dir trollstore-output --once
+python3 scripts/stream_regression_logs.py --private-dir "$PRIVATE" --output-dir trollstore-output \
+  > "$PRIVATE/snapshot-worker.log" 2>&1 &
+LOG_SNAPSHOT_PID=$!
+set_phase preparing
+run_private "$PRIVATE/test.log" python3 scripts/prepare_trollstore_test.py prepare
+set_phase select-xcode
+run_private "$PRIVATE/test.log" select_xcode
+export DEVELOPER_DIR="$(< "$PRIVATE/xcode.txt")"
+set_phase metal-toolchain
+run_private "$PRIVATE/test.log" bash scripts/ensure_metal_toolchain.sh
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
   # Run the wide-toolbar/sidebar suite on iPad; the separate crash pass below uses iPhone.
-  DEST="$(bash scripts/sim.sh dest iPad)"
+  set_phase destination-ipad
+  run_private "$PRIVATE/test.log" select_destination iPad
 else
-  DEST="$(bash scripts/sim.sh dest)"
+  set_phase destination
+  run_private "$PRIVATE/test.log" select_destination
 fi
+DEST="$(< "$PRIVATE/destination.txt")"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/NativeKSVideoKernelTests'
+    -only-testing:'yuedu appTests/VideoKernelPreferenceTests'
+    -only-testing:'yuedu appTests/MediaVideoLayoutSettingsTests'
     -only-testing:'yuedu appTests/CatVodPlaybackFlowTests'
     -only-testing:'yuedu appTests/MusicImportServiceTests'
     -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
@@ -316,42 +376,56 @@ else
 fi
 echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"
 # Resolve into this job's exact DerivedData before correcting the known upstream plist.
-xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
-  -derivedDataPath "$PRIVATE/Tests" >> "$PRIVATE/test.log" 2>&1
-python3 scripts/normalize_ksplayer_frameworks.py "$PRIVATE/Tests/SourcePackages" >> "$PRIVATE/test.log" 2>&1
+set_phase resolve-packages
+run_private "$PRIVATE/test.log" xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+  -derivedDataPath "$PRIVATE/Tests"
+set_phase normalize-frameworks
+run_private "$PRIVATE/test.log" python3 scripts/normalize_ksplayer_frameworks.py "$PRIVATE/Tests/SourcePackages"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
   # Run both device-class suites even if the iPad suite fails. Preserve independent logs
   # and statuses; the aggregate status below still fails if either test command fails.
+  ACTIVE_SUITE=ipad
+  IPAD_STATUS=running
+  write_media51_status
+  set_phase ipad-test
   set +e
-  xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+  run_private "$PRIVATE/ipad-test.log" xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
     -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
     -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
     -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-    "${TEST_SELECTION[@]}" > "$PRIVATE/ipad-test.log" 2>&1
+    "${TEST_SELECTION[@]}"
   IPAD_STATUS=$?
   set -e
+  ACTIVE_SUITE=
+  write_media51_status
   printf '===== iPad media51 suite (exit %s) =====\n' "$IPAD_STATUS" >> "$PRIVATE/test.log"
   cat "$PRIVATE/ipad-test.log" >> "$PRIVATE/test.log"
 
-  if PHONE_DEST="$(bash scripts/sim.sh dest iPhone)"; then
+  set_phase destination-phone
+  if run_private "$PRIVATE/test.log" select_destination iPhone; then
+    PHONE_DEST="$(< "$PRIVATE/destination.txt")"
+    ACTIVE_SUITE=phone
+    PHONE_STATUS=running
+    write_media51_status
+    set_phase phone-test
     set +e
-    xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+    run_private "$PRIVATE/phone-test.log" xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
       -configuration Debug -destination "$PHONE_DEST" -derivedDataPath "$PRIVATE/Tests" \
       -resultBundlePath "$PRIVATE/phone-crash.xcresult" -parallel-testing-enabled NO \
       -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN \
       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-      -only-testing:'yuedu appUITests/MediaMenuCrashUITests' > "$PRIVATE/phone-test.log" 2>&1
+      -only-testing:'yuedu appUITests/MediaMenuCrashUITests'
     PHONE_STATUS=$?
     set -e
+    ACTIVE_SUITE=
   else
     PHONE_STATUS=$?
     printf 'iPhone simulator destination lookup failed (exit %s); phone suite was not launchable.\n' \
       "$PHONE_STATUS" > "$PRIVATE/phone-test.log"
   fi
+  write_media51_status
   printf '===== iPhone MediaMenuCrashUITests (exit %s) =====\n' "$PHONE_STATUS" >> "$PRIVATE/test.log"
   cat "$PRIVATE/phone-test.log" >> "$PRIVATE/test.log"
-  printf 'MEDIA51_IPAD_EXIT_STATUS=%s\nMEDIA51_IPHONE_EXIT_STATUS=%s\n' \
-    "$IPAD_STATUS" "$PHONE_STATUS" > "$PRIVATE/media51-exit-status.txt"
   cat "$PRIVATE/media51-exit-status.txt" >> "$PRIVATE/test.log"
   if [[ "$IPAD_STATUS" -ne 0 || "$PHONE_STATUS" -ne 0 ]]; then
     echo 'media51 suites failed; both suite statuses and logs were retained.' >&2
@@ -367,12 +441,14 @@ for path in sys.argv[1:]:
     print(Path(path).name + ': ** TEST SUCCEEDED **')
 PY
 else
-  xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+  set_phase test
+  run_private "$PRIVATE/test.log" xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
     -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
     -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
     -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-    "${TEST_SELECTION[@]}" >> "$PRIVATE/test.log" 2>&1
+    "${TEST_SELECTION[@]}"
 fi
+set_phase verify-results
 python3 - "$PRIVATE/test.log" <<'PY'
 from pathlib import Path
 import sys

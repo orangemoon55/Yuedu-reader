@@ -32,7 +32,7 @@ struct NativeKSVideoKernelTests {
         #expect(options.formatContextOptions["rw_timeout"] as? Int == 20_000_000)
     }
 
-    @Test("default production controller uses KSMEPlayer, decodes a frame, seeks and releases the kernel")
+    @Test("automatic production controller uses KSMEPlayer, decodes a frame, seeks and releases the kernel")
     func decodesAndAdvancesWithoutAVFallback() async throws {
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/VideoStill/video-still-landscape.mp4")
@@ -46,7 +46,8 @@ struct NativeKSVideoKernelTests {
             defaults.set(oldResume, forKey: MediaPreferences.videoResumeEnabledKey)
             defaults.set(oldRate, forKey: MediaPreferences.videoDefaultRateKey)
         }
-        let controller = VideoPlaybackController(link: VideoStream(url: fixture, headers: [:]), title: "KS offline fixture")
+        let controller = VideoPlaybackController(link: VideoStream(url: fixture, headers: [:]),
+                                                 title: "KS offline fixture", prefersKSPlayer: true)
         defer { controller.close() }
         controller.start()
         let started = try await waitUntil {
@@ -80,7 +81,8 @@ struct NativeKSVideoKernelTests {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         try Data("not a media file".utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
-        let controller = VideoPlaybackController(link: VideoStream(url: file, headers: [:]), title: "Invalid offline fixture")
+        let controller = VideoPlaybackController(link: VideoStream(url: file, headers: [:]),
+                                                 title: "Invalid offline fixture", prefersKSPlayer: true)
         defer { controller.close() }
         controller.start()
         let failed = try await waitUntil {
@@ -90,5 +92,82 @@ struct NativeKSVideoKernelTests {
         #expect(failed)
         #expect(!controller.usesKSPlayer, "The invalid media should also exercise the real AV fallback")
         #expect(controller.phase != .playing)
+    }
+
+    @Test("adapter drops retired engine events, delivers terminal once and clears callbacks on stop")
+    func adapterTerminalLifecycle() throws {
+        // Delegate-contract test only: engines are real but intentionally not prepared/decoded.
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/VideoStill/video-still-landscape.mp4")
+        let kernel = NativeKSVideoKernel()
+        defer { kernel.stop() }
+        let stream = VideoStream(url: fixture, headers: [:])
+        kernel.open(stream, prepareImmediately: false)
+        let retired = try #require(kernel.engine)
+        var finishes = 0
+        kernel.onReady = {}
+        kernel.onTick = { _, _, _, _ in }
+        kernel.onFinish = { _ in finishes += 1 }
+        let error = NSError(domain: "Readcc.LifecycleTest", code: 1)
+        kernel.finish(player: retired, error: error)
+        kernel.finish(player: retired, error: error)
+        #expect(finishes == 1)
+        kernel.stop()
+        #expect(kernel.engine == nil)
+        #expect(kernel.onReady == nil && kernel.onTick == nil && kernel.onFinish == nil)
+        kernel.open(stream, prepareImmediately: false)
+        let current = try #require(kernel.engine)
+        kernel.onFinish = { _ in finishes += 1 }
+        kernel.finish(player: retired, error: error)
+        #expect(finishes == 1)
+        kernel.finish(player: current, error: error)
+        kernel.finish(player: current, error: error)
+        #expect(finishes == 2)
+    }
+
+    @Test("queued controller callbacks cannot alter a replacement load or revive close")
+    func controllerRetiredCallbacks() throws {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/VideoStill/video-still-landscape.mp4")
+        let controller = VideoPlaybackController(link: VideoStream(url: fixture, headers: [:]),
+                                                 title: "Lifecycle fixture", prefersKSPlayer: true)
+        defer { controller.close() }
+        controller.start()
+        let oldReady = try #require(controller.ksKernel.onReady)
+        let oldFinish = try #require(controller.ksKernel.onFinish)
+        controller.play(chapterIndex: 0)
+        let current = try #require(controller.ksKernel.engine)
+        let currentReady = try #require(controller.ksKernel.onReady)
+        let currentFinish = try #require(controller.ksKernel.onFinish)
+        let phase = controller.phase
+        oldReady()
+        oldFinish(NSError(domain: "Readcc.LifecycleTest", code: 2))
+        #expect(controller.ksKernel.engine === current && controller.usesKSPlayer)
+        #expect(controller.phase == phase)
+        controller.close()
+        currentReady()
+        currentFinish(NSError(domain: "Readcc.LifecycleTest", code: 3))
+        #expect(controller.ksKernel.engine == nil && controller.player.currentItem == nil)
+        #expect(controller.phase == .paused)
+    }
+
+    @Test("pause during real fixture preparation stays paused on ready and keeps desired rate")
+    func pausedPreparationStaysPaused() async throws {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/VideoStill/video-still-landscape.mp4")
+        let controller = VideoPlaybackController(link: VideoStream(url: fixture, headers: [:]),
+                                                 title: "Paused preparation fixture", prefersKSPlayer: true)
+        defer { controller.close() }
+        controller.start()
+        controller.setRate(1.5)
+        controller.pause()
+        let ready = try await waitUntil { controller.phase != .loading }
+        try #require(ready)
+        #expect(controller.usesKSPlayer && controller.phase == .paused)
+        let engine = try #require(controller.ksKernel.engine)
+        #expect(!engine.isPlaying)
+        #expect(controller.rate == 1.5)
+        controller.resume()
+        #expect(controller.phase == .playing && engine.playbackRate == 1.5)
     }
 }

@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// One presentation contract for the video root, site browser and site search.
-/// Source preferences still apply to saved-library rails, not this fixed video grid.
+/// Video-only settings choose an explicit fixed template, never a width-adaptive column count.
+/// Legacy source preferences remain scoped to the saved-library rails.
 enum MediaHubVideoLayout {
     static let posterColumnCount = 3
     static let posterAspectRatio: CGFloat = 2.0 / 3.0
@@ -9,9 +10,30 @@ enum MediaHubVideoLayout {
     static let horizontalPadding: CGFloat = 16
     static let skeletonCount = 9
 
+    // Keep the original default contract for callers/tests that do not supply preferences.
     static var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(minimum: 0), spacing: spacing, alignment: .top),
-              count: posterColumnCount)
+        columns(count: posterColumnCount, density: .comfortable)
+    }
+
+    static func columns(count: Int, density: MediaVideoCardDensity = .comfortable) -> [GridItem] {
+        Array(repeating: GridItem(.flexible(minimum: 0), spacing: spacing(for: density), alignment: .top),
+              count: min(max(count, 2), 5))
+    }
+
+    static func spacing(for density: MediaVideoCardDensity) -> CGFloat {
+        density == .comfortable ? spacing : 8
+    }
+
+    static func rowSpacing(for density: MediaVideoCardDensity) -> CGFloat {
+        density == .comfortable ? 20 : 12
+    }
+
+    static func cardSpacing(for density: MediaVideoCardDensity) -> CGFloat {
+        density == .comfortable ? 5 : 3
+    }
+
+    static func skeletonCount(forColumnCount count: Int) -> Int {
+        min(max(count, 2), 5) * 3
     }
 
     /// Describe the selected site's published API, never its display name or an assumed runtime.
@@ -65,6 +87,8 @@ struct MediaHubVideoSourceKindPill: View {
 }
 
 struct MediaHubVideoGrid<Item: Identifiable, Content: View>: View {
+    @AppStorage(MediaPreferences.videoPosterColumnsKey) private var videoPosterColumns = 3
+    @AppStorage(MediaPreferences.videoCardDensityKey) private var videoCardDensity = MediaVideoCardDensity.comfortable
     let videos: [Item]
     let identifier: String
     private let content: (Item) -> Content
@@ -77,7 +101,8 @@ struct MediaHubVideoGrid<Item: Identifiable, Content: View>: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: MediaHubVideoLayout.columns, alignment: .leading, spacing: 20) {
+        LazyVGrid(columns: MediaHubVideoLayout.columns(count: videoPosterColumns, density: videoCardDensity),
+                  alignment: .leading, spacing: MediaHubVideoLayout.rowSpacing(for: videoCardDensity)) {
             ForEach(videos) { video in content(video).frame(maxWidth: .infinity, alignment: .topLeading) }
         }
         .accessibilityIdentifier(identifier)
@@ -85,13 +110,15 @@ struct MediaHubVideoGrid<Item: Identifiable, Content: View>: View {
 }
 
 struct MediaHubVideoPosterCard: View {
+    @AppStorage(MediaPreferences.videoShowsFactsKey) private var videoShowsFacts = true
+    @AppStorage(MediaPreferences.videoCardDensityKey) private var videoCardDensity = MediaVideoCardDensity.comfortable
     let sourceID: String
     let video: CatVodVideo
 
     private var subtitle: String { MediaHubPresentation.facts(for: video) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: MediaHubVideoLayout.cardSpacing(for: videoCardDensity)) {
             MediaHubPoster(sourceID: sourceID, rawURL: video.poster, fallback: "film")
                 .aspectRatio(MediaHubVideoLayout.posterAspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -100,12 +127,14 @@ struct MediaHubVideoPosterCard: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            // Reserve the second metadata line even when a site supplies no facts.
-            Text(subtitle.isEmpty ? " " : subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .accessibilityHidden(subtitle.isEmpty)
+            if videoShowsFacts {
+                // Reserve the metadata line only while enabled, even if a site supplies no facts.
+                Text(subtitle.isEmpty ? " " : subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityHidden(subtitle.isEmpty)
+            }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
@@ -115,14 +144,21 @@ struct MediaHubVideoPosterCard: View {
 
 /// This is request state, not placeholder content. Callers must gate it on active loading.
 struct MediaHubVideoSkeletonGrid: View {
+    @AppStorage(MediaPreferences.videoPosterColumnsKey) private var videoPosterColumns = 3
+    @AppStorage(MediaPreferences.videoShowsFactsKey) private var videoShowsFacts = true
+    @AppStorage(MediaPreferences.videoCardDensityKey) private var videoCardDensity = MediaVideoCardDensity.comfortable
+
     var body: some View {
-        LazyVGrid(columns: MediaHubVideoLayout.columns, alignment: .leading, spacing: 24) {
-            ForEach(0..<MediaHubVideoLayout.skeletonCount, id: \.self) { _ in
-                VStack(alignment: .leading, spacing: 6) {
+        LazyVGrid(columns: MediaHubVideoLayout.columns(count: videoPosterColumns, density: videoCardDensity),
+                  alignment: .leading, spacing: MediaHubVideoLayout.rowSpacing(for: videoCardDensity)) {
+            ForEach(0..<MediaHubVideoLayout.skeletonCount(forColumnCount: videoPosterColumns), id: \.self) { _ in
+                VStack(alignment: .leading, spacing: MediaHubVideoLayout.cardSpacing(for: videoCardDensity)) {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .aspectRatio(MediaHubVideoLayout.posterAspectRatio, contentMode: .fit)
                     RoundedRectangle(cornerRadius: 3).frame(height: 11)
-                    RoundedRectangle(cornerRadius: 3).frame(width: 46, height: 9).opacity(0.65)
+                    if videoShowsFacts {
+                        RoundedRectangle(cornerRadius: 3).frame(width: 46, height: 9).opacity(0.65)
+                    }
                 }
             }
         }

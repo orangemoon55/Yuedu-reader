@@ -25,11 +25,14 @@ struct MediaSettingsView: View {
     // remains the source for playback/home services, while these bindings refresh live.
     @AppStorage(MediaPreferences.videoDefaultRateKey) private var videoDefaultRate = 1.0
     @AppStorage(MediaPreferences.videoResumeEnabledKey) private var videoResumeEnabled = true
+    @AppStorage(MediaPreferences.videoKernelKey) private var videoKernel = VideoKernelPreference.automatic
+    @AppStorage(MediaPreferences.videoPosterColumnsKey) private var videoPosterColumns = 3
+    @AppStorage(MediaPreferences.videoShowsFactsKey) private var videoShowsFacts = true
+    @AppStorage(MediaPreferences.videoCardDensityKey) private var videoCardDensity = MediaVideoCardDensity.comfortable
     @AppStorage(MediaPreferences.musicDefaultRateKey) private var musicDefaultRate = 1.0
     @AppStorage(MediaPreferences.musicResumeEnabledKey) private var musicResumeEnabled = true
     @AppStorage(MediaPreferences.musicLoopCurrentKey) private var musicLoopCurrent = false
     @AppStorage(MediaPreferences.homeShowsContinueKey) private var homeShowsContinue = true
-    @AppStorage(MediaPreferences.homeShowsHeroKey) private var homeShowsHero = true
     @AppStorage(MediaPreferences.posterColumnsKey) private var posterColumns = 3
     @AppStorage(MediaPreferences.musicArtworkSquareKey) private var musicArtworkSquare = true
 
@@ -61,6 +64,10 @@ struct MediaSettingsView: View {
             let clamped = Double(MediaPreferences.musicDefaultRate(in: .standard))
             if value != clamped { musicDefaultRate = clamped }
         }
+        .onChange(of: videoPosterColumns) { _, value in
+            let clamped = MediaPreferences.videoPosterColumns(in: .standard)
+            if value != clamped { videoPosterColumns = clamped }
+        }
         .onChange(of: posterColumns) { _, value in
             let clamped = MediaPreferences.posterColumns(in: .standard)
             if value != clamped { posterColumns = clamped }
@@ -77,6 +84,16 @@ struct MediaSettingsView: View {
     @ViewBuilder
     private var videoSections: some View {
         Section {
+            Picker(selection: $videoKernel) {
+                ForEach(VideoKernelPreference.allCases) { kernel in
+                    Text(videoKernelTitle(kernel)).tag(kernel)
+                }
+            } label: {
+                SettingsRowLabel(localized("播放內核"), systemImage: "play.rectangle")
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("media.video.kernel")
+
             SettingsSliderRow(
                 title: localized("預設播放速度"),
                 systemImage: "speedometer",
@@ -95,44 +112,72 @@ struct MediaSettingsView: View {
             Text(localized("播放"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("已接線：影片播放器讀取預設速度與續播偏好，並保存／恢復播放進度。"))
+            Text(localized("內核選擇於下次播放生效。自動模式可在 KSPlayer 無法使用或開啟失敗時改用 AVFoundation；強制 KSPlayer 失敗時會顯示錯誤，不會靜默切換。AVFoundation 只使用系統播放器。預設速度與續播偏好沿用既有播放進度保存與恢復。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
 
         Section {
+            Picker(selection: $videoPosterColumns) {
+                ForEach(2...5, id: \.self) { columns in
+                    Text(String(columns)).tag(columns)
+                }
+            } label: {
+                SettingsRowLabel(localized("影視海報欄數"), systemImage: "square.grid.2x2")
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("media.video.posterColumns")
+
+            Toggle(isOn: $videoShowsFacts) {
+                SettingsRowLabel(localized("顯示影片資料行"), systemImage: "text.alignleft")
+            }
+            .accessibilityIdentifier("media.video.showsFacts")
+
+            Picker(selection: $videoCardDensity) {
+                Text(localized("舒適")).tag(MediaVideoCardDensity.comfortable)
+                Text(localized("緊湊")).tag(MediaVideoCardDensity.compact)
+            } label: {
+                SettingsRowLabel(localized("卡片間距"), systemImage: "rectangle.grid.1x2")
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("media.video.cardDensity")
+        } header: {
+            Text(localized("影視佈局"))
+                .foregroundStyle(DSColor.textSecondary)
+        } footer: {
+            Text(localized("套用於影視首頁、分類、站點列表與搜尋，並即時更新。預設固定三欄，海報維持 2:3；欄數不隨螢幕寬度自動切換，不影響已收藏媒體庫或音樂。"))
+                .dsSectionFooter()
+        }
+        .interfaceSectionSurface()
+
+        Section {
+            Picker(selection: $posterColumns) {
+                ForEach(2...5, id: \.self) { columns in
+                    Text(String(columns)).tag(columns)
+                }
+            } label: {
+                SettingsRowLabel(localized("媒體庫海報欄數"), systemImage: "square.grid.2x2")
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("media.home.posterColumns")
+
             Toggle(isOn: $homeShowsContinue) {
                 SettingsRowLabel(localized("顯示繼續觀看"), systemImage: "play.circle")
             }
             .disabled(true)
             .accessibilityValue(localized("待接線：目前只有書籤，尚無繼續觀看歷史"))
             .accessibilityIdentifier("media.home.showsContinue")
-
-            Toggle(isOn: $homeShowsHero) {
-                SettingsRowLabel(localized("顯示首頁主視覺"), systemImage: "rectangle.topthird.inset.filled")
-            }
-            .accessibilityIdentifier("media.home.showsHero")
-
-            Picker(selection: $posterColumns) {
-                ForEach(2...5, id: \.self) { columns in
-                    Text(String(columns)).tag(columns)
-                }
-            } label: {
-                SettingsRowLabel(localized("海報欄數"), systemImage: "square.grid.2x2")
-            }
-            .pickerStyle(.menu)
-            .accessibilityIdentifier("media.home.posterColumns")
         } header: {
-            Text(localized("首頁展示"))
+            Text(localized("已收藏影視"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("已實作：首頁主視覺與海報欄數會由首頁讀取；待接線：繼續觀看目前只有書籤資料，這個偏好先停用，不宣稱已有歷史列表。"))
+            Text(localized("此欄數僅套用於已收藏影視媒體庫，不影響影視首頁、分類與搜尋。繼續觀看尚無播放歷史資料，暫停使用。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
 
         Section {
-            capabilityRow(title: localized("已實作"), detail: localized("播放器速度與續播；首頁主視覺、海報欄數與方形封面偏好"), systemImage: "checkmark.circle")
+            capabilityRow(title: localized("已實作"), detail: localized("播放內核選擇、速度與續播；影視固定欄數、資料行、間距與媒體庫獨立欄數"), systemImage: "checkmark.circle")
             capabilityRow(title: localized("待接線"), detail: localized("繼續觀看：目前只有書籤資料，尚無繼續觀看歷史列表"), systemImage: "clock")
             capabilityRow(title: localized("未提供"), detail: localized("本頁不提供字幕、彈幕供應器或未實作的畫質／解析兼容開關"), systemImage: "minus.circle")
         } header: {
@@ -264,6 +309,14 @@ struct MediaSettingsView: View {
         }
     }
 
+    private func videoKernelTitle(_ kernel: VideoKernelPreference) -> String {
+        switch kernel {
+        case .automatic: return localized("自動")
+        case .ksPlayer: return localized("KSPlayer")
+        case .avFoundation: return localized("AVFoundation")
+        }
+    }
+
     private func rateText(_ value: Double) -> String {
         String(format: "%.2f×", value)
     }
@@ -278,6 +331,9 @@ struct MediaSettingsView: View {
 
         let musicRate = Double(MediaPreferences.musicDefaultRate(in: .standard))
         if musicDefaultRate != musicRate { musicDefaultRate = musicRate }
+
+        let videoColumns = MediaPreferences.videoPosterColumns(in: .standard)
+        if videoPosterColumns != videoColumns { videoPosterColumns = videoColumns }
 
         let columns = MediaPreferences.posterColumns(in: .standard)
         if posterColumns != columns { posterColumns = columns }
