@@ -41,9 +41,10 @@ struct MusicSourceSettingsView: View {
                             .font(.footnote).foregroundStyle(.secondary)
                         if !qualities.isEmpty {
                             Picker(localized("音质"), selection: $quality) {
-                                ForEach(qualities, id: \.self) { Text($0).tag($0) }
+                                Text(localized("自动优先高音质")).tag(MusicQualityPolicy.automatic)
+                                ForEach(MusicQualityPolicy.ordered(qualities), id: \.self) { Text($0).tag($0) }
                             }
-                            Text(localized("优先使用所选音质；歌曲平台不支持时，使用该平台声明的首个可用音质。"))
+                            Text(localized("自动模式优先请求歌曲原平台声明的高音质；手动档位不可用时优先选择较低档位。档位不代表实测码率或无损，实际音质取决于音源和输出设备。"))
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
@@ -92,7 +93,7 @@ struct MusicSourceSettingsView: View {
                 let source = try await store.importFile(url)
                 guard !Task.isCancelled, generation == token else { return }
                 selectedSourceID = source.id
-                quality = MusicCatalogResolverMapping.qualities(source: source).first ?? "128k"
+                quality = MusicQualityPolicy.automatic
             } catch {
                 guard !Task.isCancelled, generation == token else { return }
                 failure = error.localizedDescription

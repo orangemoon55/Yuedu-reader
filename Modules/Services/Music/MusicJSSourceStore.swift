@@ -240,6 +240,7 @@ final class MusicJSSourceStore: ObservableObject {
             .filter { MusicJSRuntime.safeHeader($0.key, $0.value) }
         var item = song.playbackItem(sourceName: source.name)
         item.musicURL = address; item.musicHeaders = headers.isEmpty ? nil : headers
+        item.musicQuality = quality
         return item
     }
 }

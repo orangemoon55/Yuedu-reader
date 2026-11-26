@@ -4782,3 +4782,21 @@
 "根据每首歌曲的原平台自动解析，仅使用当前 JS 音源；不支持的平台会提示，不会混用歌曲 ID。" = "Automatically resolve each song on its original platform using only the selected JS source. Unsupported platforms are reported; song IDs are never mixed across platforms.";
 "优先使用所选音质；歌曲平台不支持时，使用该平台声明的首个可用音质。" = "Prefer the selected quality. If the song platform does not support it, use the first quality declared by that platform.";
 "此平台暂不支持播放解析，不会改用其他平台的歌曲 ID。" = "Playback resolution is not yet supported for this platform. IDs from other platforms will not be substituted.";
+
+/* Music playback lyrics and request quality */
+"请求音质：%@" = "Requested quality: %@";
+"源请求档位，非实测音质。" = "Requested source quality, not a measured audio quality.";
+"正在缓冲…" = "Buffering…";
+"上下轻扫可前进或后退 5 秒。" = "Swipe up or down to move forward or backward by 5 seconds.";
+"收起歌词" = "Collapse lyrics";
+"展开歌词" = "Expand lyrics";
+"恢复跟随" = "Resume following";
+"自动跟随" = "Follow playback";
+"手动滚动歌词会暂停跟随。" = "Scrolling lyrics manually pauses following.";
+"显示翻译" = "Show translation";
+"同步偏移：%@ 秒" = "Sync offset: %@ s";
+"正数提前，负数延后；仅对当前歌曲生效。" = "Positive values show lyrics earlier; negative values show them later. Current track only.";
+"重置偏移" = "Reset offset";
+"同步调整" = "Adjust synchronization";
+"自动优先高音质" = "Automatic: prefer high quality";
+"自动模式优先请求歌曲原平台声明的高音质；手动档位不可用时优先选择较低档位。档位不代表实测码率或无损，实际音质取决于音源和输出设备。" = "Automatic mode prefers high quality declared by the song’s original platform. If a manual tier is unavailable, a lower tier is preferred. Tiers are not measured bitrates or a lossless guarantee; actual quality depends on the source and output device.";

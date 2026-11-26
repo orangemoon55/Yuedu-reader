@@ -19,7 +19,7 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
 
     /// Returns the last timed lyric whose start is at or before `time`.
     func index(at time: Double) -> Int? {
-        guard synced, let first = lines.first, time >= first.time else { return nil }
+        guard time.isFinite, synced, let first = lines.first, time >= first.time else { return nil }
         var low = 0, high = lines.count - 1
         while low < high {
             let mid = (low + high + 1) / 2
@@ -80,7 +80,7 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
             }
         }
 
-        // Ignore the catalog-style title/credit prefix; keep the timed lyric body intact.
+        // Ignore only an explicitly labelled opening metadata/credit prefix; keep lyric punctuation intact.
         if let firstSung = result.firstIndex(where: { !isCredit($0.text) }), firstSung > 0 {
             result.removeFirst(firstSung)
         }
@@ -106,12 +106,22 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
         return lyrics
     }
 
-    private static let creditLine = try! NSRegularExpression(pattern: "^[^：:]{1,16}\\s*[：:]")
+    private static let creditLabels: Set<String> = [
+        "title", "artist", "album", "by", "lyrics", "lyricist", "composer", "arranger", "producer",
+        "lyrics by", "words by", "music by", "composed by", "arranged by", "produced by",
+        "mixed by", "recorded by", "mastered by",
+        "歌名", "歌曲", "歌手", "专辑", "專輯", "演唱", "原唱",
+        "词", "詞", "曲", "作词", "作詞", "作曲", "词曲", "詞曲", "编曲", "編曲",
+        "制作人", "製作人", "制作", "製作", "监制", "監製", "录音", "錄音", "混音", "母带", "母帶",
+        "和声", "和聲", "出品", "发行", "發行"
+    ]
 
     private static func isCredit(_ text: String) -> Bool {
         let line = text.trimmingCharacters(in: .whitespaces)
-        if line.isEmpty || line.contains(" - ") { return true }
-        return creditLine.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+        if line.isEmpty { return true }
+        guard let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }) else { return false }
+        let label = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+        return creditLabels.contains(label)
     }
 
     private static func lines(of lrc: String) -> (timed: [(time: Double, text: String)], plain: [String], offset: Double)? {
@@ -119,9 +129,11 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
         let normalized = lrc.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         let rawLines = normalized.components(separatedBy: "\n")
         guard rawLines.count <= maximumLines else { return nil }
-        for raw in rawLines {
+        for (index, raw) in rawLines.enumerated() {
             guard !Task.isCancelled, raw.utf8.count <= 16_384 else { return nil }
-            let line = raw.trimmingCharacters(in: .whitespaces)
+            // A leading BOM is an encoding signature, not part of the first timestamp/tag.
+            let content = index == 0 && raw.hasPrefix("\u{FEFF}") ? String(raw.dropFirst()) : raw
+            let line = content.trimmingCharacters(in: .whitespaces)
             let range = NSRange(line.startIndex..., in: line)
             if let match = tag.firstMatch(in: line, range: range),
                let name = Range(match.range(at: 1), in: line), let value = Range(match.range(at: 2), in: line) {

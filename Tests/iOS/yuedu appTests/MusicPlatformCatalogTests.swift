@@ -3,6 +3,45 @@ import Testing
 @testable import yuedu_app
 
 struct MusicPlatformCatalogTests {
+    @Test func automaticQualityUsesDeclaredCapabilityNotSourceOrdering() {
+        let declared = ["128k", "320k", "flac", "flac24bit", "320k"]
+        #expect(MusicQualityPolicy.selection(preferred: MusicQualityPolicy.automatic, available: declared) == "flac24bit")
+        #expect(MusicQualityPolicy.selection(preferred: MusicQualityPolicy.automatic, available: Array(declared.reversed())) == "flac24bit")
+        #expect(MusicQualityPolicy.ordered(declared) == ["flac24bit", "flac", "320k", "128k"])
+        #expect(MusicQualityPolicy.selection(preferred: MusicQualityPolicy.automatic, available: []) == nil)
+    }
+    @Test func manualQualityIsRespectedAndFallbackStaysInSameProvider() throws {
+        let wy = MusicJSProvider(id: "wy", name: "WY", actions: ["musicUrl"], qualities: ["128k", "320k"])
+        let tx = MusicJSProvider(id: "tx", name: "QQ", actions: ["musicUrl"], qualities: ["flac"])
+        let source = MusicJSSource(id: "fixture", name: "Fixture", version: "1", providers: [wy, tx])
+        let own = try #require(MusicCatalogResolverMapping.provider(source: source, platform: .wy))
+        #expect(MusicQualityPolicy.selection(preferred: "128k", available: own.qualities) == "128k")
+        #expect(MusicQualityPolicy.selection(preferred: "flac24bit", available: own.qualities) == "320k")
+        #expect(MusicQualityPolicy.selection(preferred: "256k", available: own.qualities) == "128k")
+        #expect(MusicQualityPolicy.selection(preferred: MusicQualityPolicy.automatic, available: own.qualities) == "320k")
+        #expect(!own.qualities.contains("flac"))
+        #expect(MusicQualityPolicy.selection(preferred: "custom", available: ["custom", "flac"]) == "custom")
+        #expect(MusicQualityPolicy.selection(preferred: MusicQualityPolicy.automatic, available: ["custom-b", "custom-a"]) == "custom-b")
+    }
+    @Test func normalizedManualPreferenceStillUsesLowerTierInsteadOfAuto() {
+        let available = ["128k", "flac"]
+        let normalized = MusicQualityPolicy.normalizedPreference("320k", available: available)
+        #expect(normalized == "128k")
+        #expect(MusicQualityPolicy.selection(preferred: normalized, available: available) == "128k")
+        #expect(MusicQualityPolicy.normalizedPreference("auto", available: available) == "auto")
+        #expect(MusicQualityPolicy.normalizedPreference("128k", available: available) == "128k")
+        #expect(MusicQualityPolicy.normalizedPreference("320k", available: []) == "320k")
+    }
+    @Test func requestQualityIsOptionalMetadataNotMeasuredAudio() throws {
+        var item = MediaHubLibraryItem(sourceID: "fixture", siteKey: "tx", videoID: "1", title: "Fixture", poster: "", kind: .music, siteName: "Fixture")
+        let legacy = try JSONEncoder().encode(item)
+        #expect(try JSONDecoder().decode(MediaHubLibraryItem.self, from: legacy).musicQuality == nil)
+        item.musicQuality = "flac"
+        let decoded = try JSONDecoder().decode(MediaHubLibraryItem.self, from: JSONEncoder().encode(item))
+        #expect(decoded.musicQuality == "flac")
+        #expect(decoded.id == item.id)
+        #expect(decoded.musicURL == nil)
+    }
     private static var qqSong: [String: Any] { ["mid": "003FixtureMid", "id": 123,
         "title": "QQ Fixture", "interval": 92, "singer": [["name": "Singer"]],
         "album": ["mid": "002Album", "name": "Album"], "file": ["media_mid": "004MediaMid"],

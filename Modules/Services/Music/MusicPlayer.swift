@@ -10,8 +10,11 @@ final class MusicPlayer: ObservableObject {
     static let shared = MusicPlayer(queuePlayer: AVQueuePlayer())
 
     @Published private(set) var currentTrack: MediaHubLibraryItem?
+    /// Changes on item replacement/stop even when the library track ID is unchanged.
+    @Published private(set) var playbackInstanceID = UUID()
     @Published private(set) var queue: [MediaHubLibraryItem] = []
     @Published private(set) var isPlaying = false
+    @Published private(set) var isBuffering = false
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var errorMessage: String?
@@ -35,6 +38,7 @@ final class MusicPlayer: ObservableObject {
     private var interruptionObserver: NSObjectProtocol?
     private var routeObserver: NSObjectProtocol?
     private var timeObserver: Any?
+    private var playbackStatusObservation: NSKeyValueObservation?
     private var hubObservation: AnyCancellable?
     private struct RemoteCommandTarget {
         let command: MPRemoteCommand
@@ -52,6 +56,11 @@ final class MusicPlayer: ObservableObject {
         self.removeCommandTarget = removeCommandTarget
         self.queuePlayer.actionAtItemEnd = .pause
         installObservers()
+        playbackStatusObservation = queuePlayer.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] _, _ in
+            // Read the live state after hopping actors; queued old notifications cannot restore
+            // an obsolete buffering spinner after pause, replacement, or stop.
+            Task { @MainActor in self?.updateBufferingState() }
+        }
         // Remote command targets are installed only while this player owns the session. TTS and
         // audiobook playback share MPRemoteCommandCenter and may replace these targets.
         hubObservation = NowPlayingHub.shared.objectWillChange.sink { [weak self] _ in
@@ -123,6 +132,7 @@ final class MusicPlayer: ObservableObject {
     /// Rebuild only the current AV item: consumed AVQueuePlayer items cannot provide backward
     /// history. The upstream cursor and published full queue do not change during this rebuild.
     private func startCurrentTrack(autoplay: Bool) {
+        playbackInstanceID = UUID()
         invalidateItemObservers()
         queuePlayer.pause()
         queuePlayer.removeAllItems()
@@ -271,7 +281,7 @@ final class MusicPlayer: ObservableObject {
                 let failed = note.object as? AVPlayerItem
                 Task { @MainActor in self?.itemFailed(failed, generation: generation) }
             }
-        timeObserver = queuePlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+        timeObserver = queuePlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main) { [weak self, weak item] time in
                 Task { @MainActor in
                     guard let self, let item,
@@ -360,10 +370,12 @@ final class MusicPlayer: ObservableObject {
     }
 
     private func stopQueue(clearMetadata: Bool, deactivateSession: Bool = true) {
+        playbackInstanceID = UUID()
         invalidateItemObservers()
         queuePlayer.pause()
         queuePlayer.removeAllItems()
         isPlaying = false
+        isBuffering = false
         currentTime = 0
         duration = 0
         queue = []
@@ -456,12 +468,19 @@ final class MusicPlayer: ObservableObject {
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused
     }
 
+    private func updateBufferingState() {
+        isBuffering = currentTrack != nil && errorMessage == nil && isPlaying
+            && queuePlayer.timeControlStatus == .waitingToPlayAtSpecifiedRate
+    }
+
     private func updateNowPlaying() {
+        updateBufferingState()
         guard let item = currentTrack else { return }
         configureNowPlaying(for: item, elapsed: currentTime, duration: duration, playing: isPlaying)
     }
 
     isolated deinit {
+        playbackStatusObservation?.invalidate()
         itemStatusObservation?.cancel()
         // Only unregister this instance's exact targets. Do not disable global commands,
         // deactivate AVAudioSession, clear metadata, or detach a newer TTS/audiobook owner.

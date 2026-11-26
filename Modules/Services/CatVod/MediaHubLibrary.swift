@@ -19,10 +19,12 @@ struct MediaHubLibraryItem: Codable, Hashable, Identifiable, Sendable {
     var musicURL: String?
     /// Request headers supplied by the user in an imported playlist. Never logged.
     var musicHeaders: [String: String]?
+    /// Requested source-declared quality only, not a measured bitrate or lossless guarantee.
+    var musicQuality: String? = nil
 
     private enum CodingKeys: String, CodingKey {
         case sourceID, siteKey, videoID, title, poster, kind, siteName
-        case categoryName, year, area, remarks, musicURL, musicHeaders
+        case categoryName, year, area, remarks, musicURL, musicHeaders, musicQuality
     }
 
     init(from decoder: Decoder) throws {
@@ -40,6 +42,7 @@ struct MediaHubLibraryItem: Codable, Hashable, Identifiable, Sendable {
         remarks = try container.decodeIfPresent(String.self, forKey: .remarks)
         musicURL = try container.decodeIfPresent(String.self, forKey: .musicURL)
         musicHeaders = try container.decodeIfPresent([String: String].self, forKey: .musicHeaders)
+        musicQuality = try container.decodeIfPresent(String.self, forKey: .musicQuality)
     }
     var id: String {
         [sourceID, siteKey, videoID]

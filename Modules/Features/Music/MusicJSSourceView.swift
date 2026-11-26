@@ -9,7 +9,7 @@ struct MusicJSSourceView: View {
     @ObservedObject private var player = MusicPlayer.shared
     @StateObject private var catalog = MusicHomeCatalogModel()
     @AppStorage("readcc.musicJS.selectedSource.v1") private var selectedSourceID = ""
-    @AppStorage("readcc.musicJS.selectedQuality.v1") private var quality = "128k"
+    @AppStorage("readcc.musicJS.selectedQuality.v1") private var quality = MusicQualityPolicy.automatic
     @State private var query = ""
     @State private var metadataPlatform: MusicCatalogPlatform = .wy
     @State private var searchKind = MusicCatalogKind.song
@@ -329,7 +329,8 @@ struct MusicJSSourceView: View {
     private func normalizeSelection() {
         if source == nil { selectedSourceID = store.sources.first?.id ?? "" }
         let qualities = MusicCatalogResolverMapping.qualities(source: source)
-        if !qualities.contains(quality) { quality = qualities.first ?? "128k" }
+        let normalized = MusicQualityPolicy.normalizedPreference(quality, available: qualities)
+        if quality != normalized { quality = normalized }
         if provider?.canSearch != true { searchInScript = false }
     }
     private func selectionChanged() {
@@ -386,7 +387,11 @@ struct MusicJSSourceView: View {
         cancelActions()
         let token = UUID(); actionGeneration = token; busy = true
         let available = store.sources.first { $0.id == song.sourceID }?.providers.first { $0.id == song.provider }
-        let chosenQuality = available?.qualities.contains(quality) == true ? quality : available?.qualities.first ?? "128k"
+        guard let chosenQuality = MusicQualityPolicy.selection(preferred: quality, available: available?.qualities ?? []) else {
+            failure = MusicJSError.unsupported.localizedDescription
+            busy = false
+            return
+        }
         actionTask = Task { @MainActor in
             defer { if actionGeneration == token { busy = false } }
             do {

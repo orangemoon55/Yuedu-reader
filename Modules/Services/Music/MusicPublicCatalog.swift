@@ -233,6 +233,45 @@ enum MusicCatalogParser {
     }
 }
 
+/// Select only qualities explicitly declared by the current song's original-platform provider.
+/// These are request labels, never measured codec/bitrate or a guarantee of lossless output.
+enum MusicQualityPolicy {
+    static let automatic = "auto"
+
+    private static func rank(_ value: String) -> Int? {
+        switch value.lowercased() {
+        case "flac24bit": return 20_000
+        case "flac": return 10_000
+        default:
+            let text = value.lowercased()
+            guard text.hasSuffix("k"), let rate = Int(text.dropLast()), (8...2_000).contains(rate) else { return nil }
+            return rate
+        }
+    }
+
+    static func ordered(_ available: [String]) -> [String] {
+        var seen = Set<String>()
+        return available.enumerated().filter { seen.insert($0.element).inserted }
+            .sorted { lhs, rhs in
+                let left = rank(lhs.element) ?? -1, right = rank(rhs.element) ?? -1
+                return left == right ? lhs.offset < rhs.offset : left > right
+            }.map(\.element)
+    }
+
+    static func normalizedPreference(_ preferred: String, available: [String]) -> String {
+        guard preferred != automatic, !available.contains(preferred) else { return preferred }
+        return selection(preferred: preferred, available: available) ?? preferred
+    }
+
+    static func selection(preferred: String, available: [String]) -> String? {
+        let choices = ordered(available)
+        if preferred != automatic, choices.contains(preferred) { return preferred }
+        if preferred != automatic, let ceiling = rank(preferred),
+           let fallback = choices.first(where: { rank($0).map { $0 <= ceiling } ?? false }) { return fallback }
+        return choices.first
+    }
+}
+
 /// Metadata identity, not the current discovery selection, determines the resolver platform.
 enum MusicCatalogResolverMapping {
     /// Only the user's selected script may resolve a song; never try other scripts or platforms.

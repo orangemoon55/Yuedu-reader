@@ -125,6 +125,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/MusicSevenPlatformCatalogTests'
     -only-testing:'yuedu appTests/MediaHubVideoLayoutTests'
     -only-testing:'yuedu appTests/MusicPlaybackCapsuleTests'
+    -only-testing:'yuedu appTests/MusicPlayerViewInteractionTests'
     -only-testing:'yuedu appTests/YingxiaMusicQueueTests'
     -only-testing:'yuedu appTests/MusicJSSourceTests'
     -only-testing:'yuedu appTests/MusicCatalogTests'
