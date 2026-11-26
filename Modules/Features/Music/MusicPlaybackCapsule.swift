@@ -80,7 +80,7 @@ struct MusicPlaybackCapsule: View {
         if lyrics.trackID == player.currentTrack?.id, let value = lyrics.lyrics,
            let index = value.index(at: player.currentTime), value.lines.indices.contains(index),
            !value.lines[index].text.isEmpty { return value.lines[index].text }
-        return player.currentTrack?.remarks ?? localized("音樂播放")
+        return player.currentTrack?.remarks ?? localized("音乐播放")
     }
 
     private var progress: Double {
@@ -94,7 +94,7 @@ struct MusicPlaybackCapsule: View {
                 HStack(spacing: 10) {
                     MusicCatalogArtwork(poster: player.currentTrack?.poster ?? "", size: 40, cornerRadius: 20)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(player.currentTrack?.title ?? localized("音樂播放"))
+                        Text(player.currentTrack?.title ?? localized("音乐播放"))
                             .font(.subheadline.weight(.semibold)).lineLimit(1)
                         Text(subtitle).font(.caption).foregroundStyle(player.errorMessage == nil ? Color.secondary : Color.red)
                             .lineLimit(1)
@@ -104,7 +104,7 @@ struct MusicPlaybackCapsule: View {
                 .frame(minHeight: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(localized("展開音樂播放器"))
+            .accessibilityLabel(localized("展开音乐播放器"))
             .accessibilityValue([player.currentTrack?.title ?? "", subtitle].joined(separator: "，"))
             .accessibilityIdentifier("mediaHub.music.capsule.open")
             Button { player.togglePlayPause() } label: {
@@ -112,7 +112,7 @@ struct MusicPlaybackCapsule: View {
                     .font(.title3).frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(localized(player.isPlaying ? "暫停" : "播放"))
+            .accessibilityLabel(localized(player.isPlaying ? "暂停" : "播放"))
             .accessibilityIdentifier("mediaHub.music.capsule.playPause")
             if !dynamicTypeSize.isAccessibilitySize {
                 Button { player.next() } label: {
@@ -130,13 +130,13 @@ struct MusicPlaybackCapsule: View {
         .overlay(alignment: .bottom) {
             ProgressView(value: progress).tint(DSColor.accent)
                 .padding(.horizontal, 32).padding(.bottom, 4)
-                .accessibilityLabel(localized("播放進度"))
+                .accessibilityLabel(localized("播放进度"))
         }
         .overlay { Capsule().strokeBorder(.primary.opacity(0.07), lineWidth: 0.5) }
         .frame(maxWidth: 560)
         .padding(.horizontal, 16)
         .contextMenu {
-            Button(action: openPlayer) { Label(localized("音樂播放"), systemImage: "music.note") }
+            Button(action: openPlayer) { Label(localized("音乐播放"), systemImage: "music.note") }
             Button { player.next() } label: { Label(localized("下一首"), systemImage: "forward.end") }
                 .disabled(player.queue.last?.id == player.currentTrack?.id)
             Button(role: .destructive) { player.stop() } label: {

@@ -50,7 +50,7 @@ struct PanCookieSettingsView: View {
                 .interfaceSectionSurface()
             } else if !loaded {
                 Section {
-                    Button(localized("重試")) { Task { await load() } }
+                    Button(localized("重试")) { Task { await load() } }
                         .accessibilityIdentifier("pan.retry")
                 }.interfaceSectionSurface()
             } else {

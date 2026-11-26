@@ -36,11 +36,11 @@ enum CatVodRuntimeError: Error, Sendable {
 
     var message: String {
         switch self {
-        case .frameworkMissing: localized("這一版沒有帶 Node 執行環境，MD5 源無法執行。")
-        case .startTimeout: localized("Node 執行環境啟動逾時。")
-        case .notLoaded: localized("請先啟動一個 MD5 源。")
-        case .sourceFailed(let reason): String(format: localized("源執行失敗：%@"), reason)
-        case .badResponse(let reason): String(format: localized("源回應無法讀取：%@"), reason)
+        case .frameworkMissing: localized("此版本未包含 Node 运行环境，无法执行 MD5 源。")
+        case .startTimeout: localized("Node 运行环境启动超时。")
+        case .notLoaded: localized("请先启动一个 MD5 源。")
+        case .sourceFailed(let reason): String(format: localized("源执行失败：%@"), reason)
+        case .badResponse(let reason): String(format: localized("无法读取源响应：%@"), reason)
         }
     }
 }
@@ -95,7 +95,7 @@ final class CatVodRuntime: ObservableObject {
     func startNodeIfNeeded() async throws {
         if ready != nil { return }
         if let nodeExit {
-            throw CatVodRuntimeError.sourceFailed("Node 結束代碼 \(nodeExit)")
+            throw CatVodRuntimeError.sourceFailed("Node 结束代码 \(nodeExit)")
         }
         guard nodeStarted || Self.frameworkAvailable else { throw CatVodRuntimeError.frameworkMissing }
         isStarting = true
@@ -124,7 +124,7 @@ final class CatVodRuntime: ObservableObject {
         }
 
         for _ in 0..<150 {
-            if let nodeExit { throw CatVodRuntimeError.sourceFailed("Node 結束代碼 \(nodeExit)") }
+            if let nodeExit { throw CatVodRuntimeError.sourceFailed("Node 结束代码 \(nodeExit)") }
             if let data = try? Data(contentsOf: readyURL),
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let port = object["port"] as? Int, let token = object["token"] as? String {

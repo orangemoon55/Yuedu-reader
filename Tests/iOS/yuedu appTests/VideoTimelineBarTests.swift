@@ -30,7 +30,7 @@ struct VideoTimelineBarTests {
 
     private func withSlider(_ player: Player, body: (UISlider) async throws -> Void) async throws {
         try await withAccessibleSlider(in: bar(player)) { slider, _ in
-            #expect(slider.accessibilityLabel == localized("播放進度"))
+            #expect(slider.accessibilityLabel == localized("播放进度"))
             try await body(slider)
         }
     }

@@ -9,7 +9,7 @@ enum VideoKernelPreference: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .automatic: localized("自動（優先 KSPlayer）")
+        case .automatic: localized("自动（优先 KSPlayer）")
         case .ksPlayer: "KSPlayer · FFmpeg"
         case .avFoundation: "AVFoundation"
         }

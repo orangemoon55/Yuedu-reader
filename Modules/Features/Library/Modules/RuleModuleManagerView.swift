@@ -75,7 +75,7 @@ struct RuleModuleManagerView: View {
                         Text(localized("已安裝的模組會留下。"))
                     }
                 }
-                } header: { Text(localized("訂閱的模組庫")) }
+                } header: { Text(localized("订阅的模组库")) }
                 .interfaceSectionSurface()
             }
 
@@ -98,13 +98,13 @@ struct RuleModuleManagerView: View {
                         mediaDestination(route)
                     } label: {
                         RuleModuleOriginRow(title: localized(route.titleKey), systemImage: route.systemImage,
-                                            subtitle: mediaSubtitle(route), origin: localized("匯入"), count: mediaCount(route))
+                                            subtitle: mediaSubtitle(route), origin: localized("导入"), count: mediaCount(route))
                             .padding(.vertical, DSSpacing.xs)
                     }
                     .accessibilityIdentifier(route.accessibilityIdentifier)
                 } footer: {
                     if route == .catSources {
-                        Text(localized("彈幕與字幕來源目前僅登記，本地字幕可保存與預覽，播放匹配尚未接入。貓源使用獨立 CatVod 引擎，與 JSON 模組、音樂 JS 源分開；只匯入你信任的來源。"))
+                        Text(localized("弹幕与字幕来源目前仅登记，本地字幕可保存与预览，播放匹配尚未接入。猫源使用独立 CatVod 引擎，与 JSON 模组、音乐 JS 源分开；只汇入你信任的来源。"))
                             .dsSectionFooter()
                     }
                 }
@@ -158,9 +158,9 @@ struct RuleModuleManagerView: View {
 
     private func mediaSubtitle(_ route: ModuleMediaRoute) -> String {
         switch route {
-        case .danmaku: localized("登記彈彈 play 相容來源；播放匹配尚未接入")
-        case .subtitles: localized("線上來源登記、本地 SRT / VTT 匯入與預覽")
-        case .catSources: localized("CatVod 影視來源與網盤帳號配置")
+        case .danmaku: localized("登记弹弹 play 相容来源；播放匹配尚未接入")
+        case .subtitles: localized("线上来源登记、本地 SRT / VTT 汇入与预览")
+        case .catSources: localized("CatVod 影视来源与网盘帐号配置")
         }
     }
 

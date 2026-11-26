@@ -163,11 +163,11 @@ enum MusicLyricsImportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedFile: return localized("請選擇 .lrc 歌詞檔。")
-        case .emptyFile: return localized("歌詞檔是空的。")
-        case .fileTooLarge: return localized("歌詞檔超過 2 MB 限制。")
-        case .invalidText: return localized("無法以 UTF-8 或 UTF-16 讀取歌詞檔。")
-        case .noLyrics: return localized("檔案中沒有可顯示的歌詞。")
+        case .unsupportedFile: return localized("请选择 .lrc 歌词档。")
+        case .emptyFile: return localized("歌词档是空的。")
+        case .fileTooLarge: return localized("歌词档超过 2 MB 限制。")
+        case .invalidText: return localized("无法以 UTF-8 或 UTF-16 读取歌词档。")
+        case .noLyrics: return localized("档案中没有可显示的歌词。")
         }
     }
 }

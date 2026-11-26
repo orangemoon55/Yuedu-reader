@@ -154,16 +154,16 @@ struct SettingsView: View {
                         NavigationLink {
                             MediaSettingsView(area: .video)
                         } label: {
-                            Label(localized("影視設定"), systemImage: "play.rectangle.fill")
+                            Label(localized("影视设置"), systemImage: "play.rectangle.fill")
                                 .foregroundColor(DSColor.textPrimary)
                                 .labelStyle(IconConsistentLabelStyle())
                         }
                         .accessibilityIdentifier("settings.media.video")
                     } header: {
-                        Text(localized("設定分組：影視"))
+                        Text(localized("设定分组：影视"))
                             .foregroundStyle(DSColor.textSecondary)
                     } footer: {
-                        Text(localized("影片播放與首頁展示偏好；來源匯入、Cookie、網路與快取沿用既有設定頁。"))
+                        Text(localized("影片播放与首页展示偏好；来源汇入、Cookie、网路与快取沿用既有设定页。"))
                             .dsSectionFooter()
                     }
                     .interfaceSectionSurface()
@@ -173,16 +173,16 @@ struct SettingsView: View {
                         NavigationLink {
                             MediaSettingsView(area: .music)
                         } label: {
-                            Label(localized("音樂設定"), systemImage: "music.note")
+                            Label(localized("音乐设置"), systemImage: "music.note")
                                 .foregroundColor(DSColor.textPrimary)
                                 .labelStyle(IconConsistentLabelStyle())
                         }
                         .accessibilityIdentifier("settings.media.music")
                     } header: {
-                        Text(localized("設定分組：音樂"))
+                        Text(localized("设定分组：音乐"))
                             .foregroundStyle(DSColor.textSecondary)
                     } footer: {
-                        Text(localized("音樂播放與封面偏好；來源與中繼資料分開管理，不顯示未實作的服務選項。"))
+                        Text(localized("音乐播放与封面偏好；来源与中继资料分开管理，不显示未实作的服务选项。"))
                             .dsSectionFooter()
                     }
                     .interfaceSectionSurface()

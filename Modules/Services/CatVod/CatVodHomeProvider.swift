@@ -6,7 +6,7 @@ import Foundation
 @MainActor
 final class CatVodHomeProvider: HomeSectionProviding {
     let instance = SourceInstanceKey(type: .module, id: "readcc:catvod:home")
-    var displayName: String { localized("貓源影視") }
+    var displayName: String { localized("猫源影视") }
     var availability: ProviderAvailability { .available }
     var hosts: [String] { [] }
     func loadPolicy(for section: HomeSection) -> SectionLoadPolicy? {

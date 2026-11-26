@@ -10,8 +10,8 @@ enum MusicCatalogKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .song: return "歌曲"
         case .artist: return "歌手"
-        case .album: return "專輯"
-        case .playlist: return "歌單"
+        case .album: return "专辑"
+        case .playlist: return "歌单"
         }
     }
     var searchType: String {
@@ -37,16 +37,16 @@ enum MusicCatalogPlatform: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .wy: return "網易雲音樂"
-        case .tx: return "QQ 音樂"
-        case .kg: return "酷狗音樂"
-        case .kw: return "酷我音樂"
-        case .mg: return "咪咕音樂"
-        case .sd: return "汽水音樂"
+        case .wy: return "网易云音乐"
+        case .tx: return "QQ 音乐"
+        case .kg: return "酷狗音乐"
+        case .kw: return "酷我音乐"
+        case .mg: return "咪咕音乐"
+        case .sd: return "汽水音乐"
         case .apple: return "Apple Music"
         }
     }
-    var providerName: String { title + " · 公開元資料" }
+    var providerName: String { title + " · 公开元资料" }
     var searchKinds: [MusicCatalogKind] {
         switch self {
         case .wy: return MusicCatalogKind.allCases
@@ -69,12 +69,12 @@ enum MusicCatalogPlatform: String, CaseIterable, Identifiable, Sendable {
     var hasResolverMapping: Bool { ![.sd, .apple].contains(self) }
     var capabilityNotice: String {
         switch self {
-        case .wy: return "支援歌曲、歌手、專輯、歌單搜尋與公開目錄。"
-        case .tx: return "QQ 目錄支援歌曲、專輯與歌單；暫不支援歌手搜尋／詳情。"
-        case .kg, .kw: return "支援公開歌曲搜尋；排行榜、歌單及集合詳情尚不支援。線上歌詞尚不支援。"
-        case .mg: return "提供匿名歌曲搜尋；服務可能拒絕未授權請求，屆時顯示錯誤，不繞過驗證。暫無首頁、集合詳情與線上歌詞。"
-        case .sd: return "僅支援輸入數字曲目 ID 查詢公開單曲。關鍵字搜尋、首頁、集合、JS 播放映射及線上歌詞尚未確認，已停用。"
-        case .apple: return "使用 Apple 公開 iTunes 美國商店目錄，支援歌曲、專輯、歌手。不是 Apple Music 播放授權；此處不提供播放、歌詞或歌單。"
+        case .wy: return "支援歌曲、歌手、专辑、歌单搜寻与公开目录。"
+        case .tx: return "QQ 目录支援歌曲、专辑与歌单；暂不支援歌手搜寻／详情。"
+        case .kg, .kw: return "支援公开歌曲搜寻；排行榜、歌单及集合详情尚不支援。线上歌词尚不支援。"
+        case .mg: return "提供匿名歌曲搜寻；服务可能拒绝未授权请求，届时显示错误，不绕过验证。暂无首页、集合详情与线上歌词。"
+        case .sd: return "仅支援输入数字曲目 ID 查询公开单曲。关键字搜寻、首页、集合、JS 播放映射及线上歌词尚未确认，已停用。"
+        case .apple: return "使用 Apple 公开 iTunes 美国商店目录，支援歌曲、专辑、歌手。不是 Apple Music 播放授权；此处不提供播放、歌词或歌单。"
         }
     }
 }
@@ -119,13 +119,13 @@ enum MusicCatalogError: LocalizedError, Equatable {
     case invalidResponse, http(Int), rejected(Int), unsupportedResolver, invalidQuery, invalidSongLookup, unsupportedCapability
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: return localized("音樂目錄回應格式不支援或超出安全上限。")
-        case .http(let status): return "公開音樂目錄 HTTP \(status)"
-        case .rejected(let code): return "公開音樂目錄暫不可用（服務代碼 \(code)）；不會嘗試登入或繞過限制。"
-        case .unsupportedResolver: return localized("此曲需要已實作身份映射、平台完全一致且支援 musicUrl 的 JS 音源。Apple 與汽水元資料不代表播放授權；切換目錄不會切換播放平台。")
-        case .invalidSongLookup: return localized("汽水目前僅支援數字曲目 ID 查詢；關鍵字搜尋協議尚未確認。")
-        case .unsupportedCapability: return localized("此平台尚未支援這類搜尋或詳情；不會使用其他平台的結果代替。")
-        case .invalidQuery: return localized("請輸入 1 至 300 字的搜尋內容。")
+        case .invalidResponse: return localized("音乐目录回应格式不支援或超出安全上限。")
+        case .http(let status): return "公开音乐目录 HTTP \(status)"
+        case .rejected(let code): return "公开音乐目录暂不可用（服务代码 \(code)）；不会尝试登入或绕过限制。"
+        case .unsupportedResolver: return localized("此曲需要已实作身份映射、平台完全一致且支援 musicUrl 的 JS 音源。Apple 与汽水元资料不代表播放授权；切换目录不会切换播放平台。")
+        case .invalidSongLookup: return localized("汽水目前仅支援数字曲目 ID 查询；关键字搜寻协议尚未确认。")
+        case .unsupportedCapability: return localized("此平台尚未支援这类搜寻或详情；不会使用其他平台的结果代替。")
+        case .invalidQuery: return localized("请输入 1 至 300 字的搜寻内容。")
         }
     }
 }
@@ -276,7 +276,7 @@ enum MusicCatalogResolverMapping {
 
 actor MusicPublicCatalog {
     static let shared = MusicPublicCatalog()
-    static let providerName = "網易雲音樂 · 公開元資料"
+    static let providerName = "网易云音乐 · 公开元资料"
     private let session: URLSession
     init() {
         let configuration = URLSessionConfiguration.ephemeral

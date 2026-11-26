@@ -10,8 +10,8 @@ struct MediaSettingsView: View {
 
         var title: String {
             switch self {
-            case .video: return localized("影視設定")
-            case .music: return localized("音樂設定")
+            case .video: return localized("影视设置")
+            case .music: return localized("音乐设置")
             }
         }
     }
@@ -89,13 +89,13 @@ struct MediaSettingsView: View {
                     Text(videoKernelTitle(kernel)).tag(kernel)
                 }
             } label: {
-                SettingsRowLabel(localized("播放內核"), systemImage: "play.rectangle")
+                SettingsRowLabel(localized("播放内核"), systemImage: "play.rectangle")
             }
             .pickerStyle(.menu)
             .accessibilityIdentifier("media.video.kernel")
 
             SettingsSliderRow(
-                title: localized("預設播放速度"),
+                title: localized("预设播放速度"),
                 systemImage: "speedometer",
                 valueText: rateText(videoDefaultRate),
                 value: $videoDefaultRate,
@@ -105,14 +105,14 @@ struct MediaSettingsView: View {
             .accessibilityIdentifier("media.video.defaultRate")
 
             Toggle(isOn: $videoResumeEnabled) {
-                SettingsRowLabel(localized("續播上次進度"), systemImage: "arrow.uturn.forward.circle")
+                SettingsRowLabel(localized("续播上次进度"), systemImage: "arrow.uturn.forward.circle")
             }
             .accessibilityIdentifier("media.video.resumeEnabled")
         } header: {
             Text(localized("播放"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("內核選擇於下次播放生效。自動模式可在 KSPlayer 無法使用或開啟失敗時改用 AVFoundation；強制 KSPlayer 失敗時會顯示錯誤，不會靜默切換。AVFoundation 只使用系統播放器。預設速度與續播偏好沿用既有播放進度保存與恢復。"))
+            Text(localized("内核选择于下次播放生效。自动模式可在 KSPlayer 无法使用或打开失败时改用 AVFoundation；强制 KSPlayer 失败时会显示错误，不会静默切换。AVFoundation 只使用系统播放器。默认速度与续播偏好沿用现有播放进度保存与恢复。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
@@ -123,29 +123,29 @@ struct MediaSettingsView: View {
                     Text(String(columns)).tag(columns)
                 }
             } label: {
-                SettingsRowLabel(localized("影視海報欄數"), systemImage: "square.grid.2x2")
+                SettingsRowLabel(localized("影视海报列数"), systemImage: "square.grid.2x2")
             }
             .pickerStyle(.menu)
             .accessibilityIdentifier("media.video.posterColumns")
 
             Toggle(isOn: $videoShowsFacts) {
-                SettingsRowLabel(localized("顯示影片資料行"), systemImage: "text.alignleft")
+                SettingsRowLabel(localized("显示影片资料行"), systemImage: "text.alignleft")
             }
             .accessibilityIdentifier("media.video.showsFacts")
 
             Picker(selection: $videoCardDensity) {
-                Text(localized("舒適")).tag(MediaVideoCardDensity.comfortable)
-                Text(localized("緊湊")).tag(MediaVideoCardDensity.compact)
+                Text(localized("舒适")).tag(MediaVideoCardDensity.comfortable)
+                Text(localized("紧凑")).tag(MediaVideoCardDensity.compact)
             } label: {
-                SettingsRowLabel(localized("卡片間距"), systemImage: "rectangle.grid.1x2")
+                SettingsRowLabel(localized("卡片间距"), systemImage: "rectangle.grid.1x2")
             }
             .pickerStyle(.menu)
             .accessibilityIdentifier("media.video.cardDensity")
         } header: {
-            Text(localized("影視佈局"))
+            Text(localized("影视布局"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("套用於影視首頁、分類、站點列表與搜尋，並即時更新。預設固定三欄，海報維持 2:3；欄數不隨螢幕寬度自動切換，不影響已收藏媒體庫或音樂。"))
+            Text(localized("应用于影视首页、分类、站点列表与搜索，并实时更新。默认固定三列，海报保持 2:3；列数不随屏幕宽度自动切换，不影响已收藏媒体库或音乐。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
@@ -156,35 +156,35 @@ struct MediaSettingsView: View {
                     Text(String(columns)).tag(columns)
                 }
             } label: {
-                SettingsRowLabel(localized("媒體庫海報欄數"), systemImage: "square.grid.2x2")
+                SettingsRowLabel(localized("媒体库海报列数"), systemImage: "square.grid.2x2")
             }
             .pickerStyle(.menu)
             .accessibilityIdentifier("media.home.posterColumns")
 
             Toggle(isOn: $homeShowsContinue) {
-                SettingsRowLabel(localized("顯示繼續觀看"), systemImage: "play.circle")
+                SettingsRowLabel(localized("显示继续观看"), systemImage: "play.circle")
             }
             .disabled(true)
-            .accessibilityValue(localized("待接線：目前只有書籤，尚無繼續觀看歷史"))
+            .accessibilityValue(localized("尚未接入：目前只有书签，暂无继续观看历史"))
             .accessibilityIdentifier("media.home.showsContinue")
         } header: {
-            Text(localized("已收藏影視"))
+            Text(localized("已收藏影视"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("此欄數僅套用於已收藏影視媒體庫，不影響影視首頁、分類與搜尋。繼續觀看尚無播放歷史資料，暫停使用。"))
+            Text(localized("此列数仅应用于已收藏影视媒体库，不影响影视首页、分类与搜索。继续观看尚无播放历史数据，暂不可用。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
 
         Section {
-            capabilityRow(title: localized("已實作"), detail: localized("播放內核選擇、速度與續播；影視固定欄數、資料行、間距與媒體庫獨立欄數"), systemImage: "checkmark.circle")
-            capabilityRow(title: localized("待接線"), detail: localized("繼續觀看：目前只有書籤資料，尚無繼續觀看歷史列表"), systemImage: "clock")
-            capabilityRow(title: localized("未提供"), detail: localized("本頁不提供字幕、彈幕供應器或未實作的畫質／解析兼容開關"), systemImage: "minus.circle")
+            capabilityRow(title: localized("已实现"), detail: localized("播放内核选择、速度与续播；影视固定列数、资料行、间距与媒体库独立列数"), systemImage: "checkmark.circle")
+            capabilityRow(title: localized("待接线"), detail: localized("继续观看：目前只有书签资料，尚无继续观看历史列表"), systemImage: "clock")
+            capabilityRow(title: localized("未提供"), detail: localized("本页不提供字幕、弹幕供应器或未实作的画质／解析兼容开关"), systemImage: "minus.circle")
         } header: {
-            Text(localized("能力範圍"))
+            Text(localized("能力范围"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("影視來源、播放解析與中繼資料是分開的能力；本頁不繞過存取限制，也不把靜態資源字串當作執行時證據。"))
+            Text(localized("影视来源、播放解析与中继资料是分开的能力；本页不绕过存取限制，也不把静态资源字串当作执行时证据。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
@@ -193,7 +193,7 @@ struct MediaSettingsView: View {
             NavigationLink {
                 TMDBSettingsView()
             } label: {
-                SettingsRowLabel(localized("TMDB 評分與憑證"), systemImage: "star.leadinghalf.filled")
+                SettingsRowLabel(localized("TMDB 评分与凭证"), systemImage: "star.leadinghalf.filled")
             }
             .accessibilityIdentifier("media.video.tmdbSettings")
         }
@@ -204,7 +204,7 @@ struct MediaSettingsView: View {
     private var musicSections: some View {
         Section {
             SettingsSliderRow(
-                title: localized("預設播放速度"),
+                title: localized("预设播放速度"),
                 systemImage: "speedometer",
                 valueText: rateText(musicDefaultRate),
                 value: $musicDefaultRate,
@@ -216,14 +216,14 @@ struct MediaSettingsView: View {
             .accessibilityIdentifier("media.music.defaultRate")
 
             Toggle(isOn: $musicResumeEnabled) {
-                SettingsRowLabel(localized("續播上次進度"), systemImage: "arrow.uturn.forward.circle")
+                SettingsRowLabel(localized("续播上次进度"), systemImage: "arrow.uturn.forward.circle")
             }
             .disabled(true)
             .accessibilityHint(musicPlaybackPendingHint)
             .accessibilityIdentifier("media.music.resumeEnabled")
 
             Toggle(isOn: $musicLoopCurrent) {
-                SettingsRowLabel(localized("單曲循環"), systemImage: "repeat.1")
+                SettingsRowLabel(localized("单曲循环"), systemImage: "repeat.1")
             }
             .disabled(true)
             .accessibilityHint(musicPlaybackPendingHint)
@@ -232,7 +232,7 @@ struct MediaSettingsView: View {
             Text(localized("播放"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("待播放器接入：目前沒有原生音樂播放器或音樂來源；此處只保留已保存的未來偏好，控件暫停使用，接入相容播放器後才會生效。"))
+            Text(localized("待播放器接入：目前没有原生音乐播放器或音乐来源；此处只保留已保存的未来偏好，控件暂停使用，接入相容播放器后才会生效。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
@@ -243,23 +243,23 @@ struct MediaSettingsView: View {
             }
             .accessibilityIdentifier("media.music.artworkSquare")
         } header: {
-            Text(localized("音樂展示"))
+            Text(localized("音乐展示"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("已實作：方形封面偏好即時保存，並由音樂媒體庫讀取；獨立音樂首頁與播放器佈局尚未提供。"))
+            Text(localized("已实作：方形封面偏好即时保存，并由音乐媒体库读取；独立音乐首页与播放器布局尚未提供。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
 
         Section {
-            capabilityRow(title: localized("已實作"), detail: localized("方形封面偏好；播放偏好值可隔離保存"), systemImage: "checkmark.circle")
-            capabilityRow(title: localized("待接線"), detail: localized("播放速度、續播與單曲循環：目前沒有相容的音樂播放器或來源"), systemImage: "clock")
-            capabilityRow(title: localized("未提供"), detail: localized("本頁不提供歌詞供應器、音樂來源供應器或未實作的音質兼容開關"), systemImage: "minus.circle")
+            capabilityRow(title: localized("已实现"), detail: localized("方形封面偏好；播放偏好值可隔离保存"), systemImage: "checkmark.circle")
+            capabilityRow(title: localized("待接线"), detail: localized("播放速度、续播与单曲循环：目前没有相容的音乐播放器或来源"), systemImage: "clock")
+            capabilityRow(title: localized("未提供"), detail: localized("本页不提供歌词供应器、音乐来源供应器或未实作的音质兼容开关"), systemImage: "minus.circle")
         } header: {
-            Text(localized("能力範圍"))
+            Text(localized("能力范围"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("音樂來源與中繼資料是分開的能力；本頁只保存原生偏好，不宣稱靜態 AOT 字串代表可達的執行時功能。"))
+            Text(localized("音乐来源与中继资料是分开的能力；本页只保存原生偏好，不宣称静态 AOT 字串代表可达的执行时功能。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
@@ -271,14 +271,14 @@ struct MediaSettingsView: View {
             NavigationLink {
                 Md5SourceManagerView()
             } label: {
-                SettingsRowLabel(localized("MD5 源與憑證"), systemImage: "shippingbox")
+                SettingsRowLabel(localized("MD5 源与凭证"), systemImage: "shippingbox")
             }
             .accessibilityIdentifier("media.sources.md5")
 
             Button {
                 showNetworkSettings = true
             } label: {
-                SettingsRowLabel(localized("網路設定"), systemImage: "network")
+                SettingsRowLabel(localized("网络设置"), systemImage: "network")
             }
             .accessibilityIdentifier("media.sources.network")
 
@@ -289,10 +289,10 @@ struct MediaSettingsView: View {
             }
             .accessibilityIdentifier("media.sources.cache")
         } header: {
-            Text(localized("來源與資料"))
+            Text(localized("来源与资料"))
                 .foregroundStyle(DSColor.textSecondary)
         } footer: {
-            Text(localized("來源匯入與來源內的 Cookie／憑證沿用既有 MD5 源頁，使用者資料只保存在本機；來源設定與中繼資料設定不混在一起。"))
+            Text(localized("来源汇入与来源内的 Cookie／凭证沿用既有 MD5 源页，使用者资料只保存在本机；来源设定与中继资料设定不混在一起。"))
                 .dsSectionFooter()
         }
         .interfaceSectionSurface()
@@ -311,7 +311,7 @@ struct MediaSettingsView: View {
 
     private func videoKernelTitle(_ kernel: VideoKernelPreference) -> String {
         switch kernel {
-        case .automatic: return localized("自動")
+        case .automatic: return localized("自动")
         case .ksPlayer: return localized("KSPlayer")
         case .avFoundation: return localized("AVFoundation")
         }
@@ -322,7 +322,7 @@ struct MediaSettingsView: View {
     }
 
     private var musicPlaybackPendingHint: String {
-        localized("已保存；待相容音樂播放器與來源接入後啟用")
+        localized("已保存；待相容音乐播放器与来源接入后启用")
     }
 
     private func normalizeStoredValues() {
@@ -340,14 +340,14 @@ struct MediaSettingsView: View {
     }
 }
 
-#Preview("影視") {
+#Preview("影视") {
     NavigationStack {
         MediaSettingsView(area: .video)
     }
     .environmentObject(BookStore())
 }
 
-#Preview("音樂") {
+#Preview("音乐") {
     NavigationStack {
         MediaSettingsView(area: .music)
     }

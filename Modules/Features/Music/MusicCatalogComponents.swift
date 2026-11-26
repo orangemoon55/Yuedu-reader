@@ -36,7 +36,7 @@ struct MusicCatalogStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(message, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.secondary)
-            Button(localized("重試"), action: retry).font(.subheadline)
+            Button(localized("重试"), action: retry).font(.subheadline)
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -67,7 +67,7 @@ struct MusicCatalogSongRow: View {
         .buttonStyle(.plain).disabled(busy)
         .contextMenu {
             Button(role: isSaved ? .destructive : nil, action: onSave) {
-                Label(localized(isSaved ? "移除收藏" : "加入媒體庫"), systemImage: isSaved ? "bookmark.slash" : "bookmark")
+                Label(localized(isSaved ? "移除收藏" : "加入媒体库"), systemImage: isSaved ? "bookmark.slash" : "bookmark")
             }
         }
     }
@@ -122,11 +122,11 @@ struct MusicCatalogCollectionView: View {
                         Text(localized(entry.platform.providerName)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if loading { ProgressView(localized("載入歌曲資料…")).frame(maxWidth: .infinity) }
+                if loading { ProgressView(localized("载入歌曲资料…")).frame(maxWidth: .infinity) }
                 else if let failure { MusicCatalogStatus(message: failure, retry: { refreshID = UUID() }) }
-                else if songs.isEmpty { Text(localized("服務未返回可顯示的歌曲。")) .foregroundStyle(.secondary) }
+                else if songs.isEmpty { Text(localized("服务未返回可显示的歌曲。")) .foregroundStyle(.secondary) }
                 else {
-                    Text(localized("僅顯示服務返回的前 100 首歌曲；部分內容可能需要授權，播放仍須由 JS 音源解析。"))
+                    Text(localized("仅显示服务返回的前 100 首歌曲；部分内容可能需要授权，播放仍须由 JS 音源解析。"))
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(songs) { song in
                         if let track = song.track {

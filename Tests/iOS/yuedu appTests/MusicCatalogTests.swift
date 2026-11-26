@@ -45,11 +45,11 @@ struct MusicCatalogTests {
     @Test func homeRailsShowCatalogOriginAndPreservePlaylistCreator() {
         let playlist = MusicCatalogEntry(identifier: "7", kind: .playlist, title: "Fixture list",
                                          subtitle: "Fixture creator", poster: "", track: nil)
-        #expect(MusicHomePresentation.catalogCaption(for: playlist, showingOrigin: true) == localized("網易雲音樂"))
+        #expect(MusicHomePresentation.catalogCaption(for: playlist, showingOrigin: true) == localized("网易云音乐"))
         #expect(MusicHomePresentation.catalogCaption(for: playlist, showingOrigin: false) == "Fixture creator")
         let anonymous = MusicCatalogEntry(identifier: "8", kind: .playlist, title: "Fixture list",
                                           subtitle: " \n ", poster: "", track: nil)
-        #expect(MusicHomePresentation.catalogCaption(for: anonymous, showingOrigin: false) == localized("網易雲音樂"))
+        #expect(MusicHomePresentation.catalogCaption(for: anonymous, showingOrigin: false) == localized("网易云音乐"))
     }
 
     @Test func continuationOnlyUsesRealMusicPlayerState() {

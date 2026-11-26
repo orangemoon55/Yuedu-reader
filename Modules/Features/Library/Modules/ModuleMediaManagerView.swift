@@ -15,7 +15,7 @@ struct ModuleMediaManagerView: View {
 
     private enum ImportAction { case automatic, registry, subtitle }
     private var isSubtitle: Bool { kind == .subtitle }
-    private var title: String { localized(isSubtitle ? "字幕" : "彈幕源") }
+    private var title: String { localized(isSubtitle ? "字幕" : "弹幕源") }
     private var sourceList: [ModuleRegisteredMediaSource] { store.sources(kind) }
     private var hasContent: Bool { !sourceList.isEmpty || (isSubtitle && !store.archive.files.isEmpty) }
     private var allowedTypes: [UTType] {
@@ -34,9 +34,9 @@ struct ModuleMediaManagerView: View {
                     VStack(spacing: DSSpacing.md) {
                         Image(systemName: isSubtitle ? "captions.bubble" : "bubble.left.and.bubble.right")
                             .font(.system(size: 42)).foregroundStyle(DSColor.textSecondary).accessibilityHidden(true)
-                        Text(localized(isSubtitle ? "還沒有字幕" : "還沒有彈幕源"))
+                        Text(localized(isSubtitle ? "还没有字幕" : "还没有弹幕源"))
                             .font(DSFont.headline).foregroundStyle(DSColor.textPrimary)
-                        Text(localized(isSubtitle ? "可登記線上字幕源，或匯入本地 .srt / .vtt 字幕並預覽。" : "可匯入彈彈 play 相容來源的 JSON 登記資料。"))
+                        Text(localized(isSubtitle ? "可登记线上字幕源，或汇入本地 .srt / .vtt 字幕并预览。" : "可汇入弹弹 play 相容来源的 JSON 登记资料。"))
                             .font(DSFont.subheadline).foregroundStyle(DSColor.textSecondary).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, DSSpacing.xl)
@@ -52,7 +52,7 @@ struct ModuleMediaManagerView: View {
                             Text(source.name).font(DSFont.headline)
                             Text(source.baseUrl).font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
                                 .lineLimit(2).textSelection(.enabled)
-                            Text(localized("僅登記，播放匹配尚未接入"))
+                            Text(localized("仅登记，播放匹配尚未接入"))
                                 .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
                         }
                         .accessibilityElement(children: .combine)
@@ -61,7 +61,7 @@ struct ModuleMediaManagerView: View {
                             Button(localized("移除"), role: .destructive) { perform { try store.removeSource(id: source.id, kind: kind) } }
                         }
                     }
-                } header: { Text(localized(isSubtitle ? "線上字幕源" : "彈幕源列表")) }
+                } header: { Text(localized(isSubtitle ? "线上字幕源" : "弹幕源列表")) }
                 .interfaceSectionSurface()
             }
             if isSubtitle && !store.archive.files.isEmpty {
@@ -72,7 +72,7 @@ struct ModuleMediaManagerView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                                 Text(file.title).foregroundStyle(DSColor.textPrimary)
-                                Text("\(file.cues.count) \(localized("個時間軸")) · \(file.encoding)")
+                                Text("\(file.cues.count) \(localized("个时间轴")) · \(file.encoding)")
                                     .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
                             }
                         }
@@ -86,25 +86,25 @@ struct ModuleMediaManagerView: View {
             }
             Section {
                 Button { pick(.registry) } label: {
-                    Label(localized(isSubtitle ? "匯入線上字幕源（檔案）" : "從檔案匯入"), systemImage: "square.and.arrow.down")
+                    Label(localized(isSubtitle ? "汇入线上字幕源（档案）" : "从文件导入"), systemImage: "square.and.arrow.down")
                 }.accessibilityIdentifier("moduleMedia.import.registryFile")
                 Button { paste(subtitle: false) } label: {
-                    Label(localized(isSubtitle ? "匯入線上字幕源（剪貼簿）" : "從剪貼簿匯入"), systemImage: "doc.on.clipboard")
+                    Label(localized(isSubtitle ? "汇入线上字幕源（剪贴簿）" : "从剪贴簿汇入"), systemImage: "doc.on.clipboard")
                 }.accessibilityIdentifier("moduleMedia.import.registryClipboard")
                 if isSubtitle {
                     Button { pick(.subtitle) } label: {
-                        Label(localized("匯入本地字幕檔案"), systemImage: "captions.bubble")
+                        Label(localized("汇入本地字幕档案"), systemImage: "captions.bubble")
                     }.accessibilityIdentifier("moduleMedia.import.subtitleFile")
                     Button { paste(subtitle: true) } label: {
-                        Label(localized("從剪貼簿匯入字幕文字"), systemImage: "doc.on.clipboard")
+                        Label(localized("从剪贴簿汇入字幕文字"), systemImage: "doc.on.clipboard")
                     }.accessibilityIdentifier("moduleMedia.import.subtitleClipboard")
                 }
-            } header: { Text(localized("匯入")) } footer: {
+            } header: { Text(localized("导入")) } footer: {
                 VStack(alignment: .leading, spacing: DSSpacing.xs) {
                     Text(localized(isSubtitle
-                        ? "SubtitleDB 相容來源設定：UTF-8 JSON 物件或陣列，每項包含字串 id、name、baseUrl。本地字幕支援 .srt / .vtt（UTF-8 或 GBK），每檔最多 4 MB。"
-                        : "彈彈 play 相容來源：UTF-8 JSON 陣列，每項包含字串 id、name、baseUrl；最多 256 KB、100 個來源。同 id 再次匯入會更新登記。"))
-                    Text(localized("僅登記來源與保存本地字幕，播放時的自動匹配、下載與字幕掛載尚未接入。不會在匯入時連線或執行腳本。"))
+                        ? "SubtitleDB 相容来源设定：UTF-8 JSON 物件或阵列，每项包含字串 id、name、baseUrl。本地字幕支援 .srt / .vtt（UTF-8 或 GBK），每档最多 4 MB。"
+                        : "弹弹 play 相容来源：UTF-8 JSON 阵列，每项包含字串 id、name、baseUrl；最多 256 KB、100 个来源。同 id 再次汇入会更新登记。"))
+                    Text(localized("仅登记来源与保存本地字幕，播放时的自动匹配、下载与字幕挂载尚未接入。不会在汇入时连线或执行脚本。"))
                 }.dsSectionFooter()
             }.interfaceSectionSurface()
         }
@@ -115,7 +115,7 @@ struct ModuleMediaManagerView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { pick(.automatic) } label: { Image(systemName: "doc.badge.plus").accessibilityHidden(true) }
-                    .accessibilityLabel(localized("匯入"))
+                    .accessibilityLabel(localized("导入"))
                     .accessibilityIdentifier("moduleMedia.import")
             }
         }
@@ -134,8 +134,8 @@ struct ModuleMediaManagerView: View {
                 try importData(Data(text.utf8), filename: textIsSubtitle ? filename : nil)
             }
         }
-        .alert(localized("媒體匯入"), isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
-            Button(localized("確定"), role: .cancel) {}
+        .alert(localized("媒体汇入"), isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
+            Button(localized("确定"), role: .cancel) {}
         } message: { Text(message ?? "") }
         .task { store.loadIfNeeded() }
         .accessibilityIdentifier(isSubtitle ? "moduleMedia.subtitles" : "moduleMedia.danmaku")
@@ -147,7 +147,7 @@ struct ModuleMediaManagerView: View {
         // Only access the clipboard after this explicit user action.
         let text = UIPasteboard.general.string ?? ""
         let limit = subtitle ? ModuleMediaImportParser.subtitleByteLimit : ModuleMediaImportParser.registryByteLimit
-        guard text.utf8.count <= limit else { message = localized("剪貼簿內容超過匯入大小限制。"); return }
+        guard text.utf8.count <= limit else { message = localized("剪贴簿内容超过汇入大小限制。"); return }
         textIsSubtitle = subtitle
         clipboardText = text
         showsText = true
@@ -168,7 +168,7 @@ private struct ModuleMediaTextImportSheet: View {
     let onImport: (String, String) throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
-    @State private var filename = "剪貼簿.srt"
+    @State private var filename = "剪贴簿.srt"
     @State private var failure: String?
 
     init(isSubtitle: Bool, initialText: String, onImport: @escaping (String, String) throws -> Void) {
@@ -182,7 +182,7 @@ private struct ModuleMediaTextImportSheet: View {
             Form {
                 if isSubtitle {
                     Section {
-                        TextField(localized("檔名（.srt 或 .vtt）"), text: $filename)
+                        TextField(localized("档名（.srt 或 .vtt）"), text: $filename)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .accessibilityIdentifier("moduleMedia.text.filename")
                     }.interfaceSectionSurface()
@@ -191,20 +191,20 @@ private struct ModuleMediaTextImportSheet: View {
                     TextEditor(text: $text).frame(minHeight: 220)
                         .font(.system(.body, design: .monospaced))
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .accessibilityLabel(localized(isSubtitle ? "字幕文字" : "來源 JSON"))
+                        .accessibilityLabel(localized(isSubtitle ? "字幕文字" : "来源 JSON"))
                         .accessibilityIdentifier("moduleMedia.text.content")
                 } footer: {
-                    Text(localized("確認後只保存至本機；不會自動連線或啟用播放匹配。"))
+                    Text(localized("确认后只保存至本机；不会自动连线或启用播放匹配。"))
                 }.interfaceSectionSurface()
                 if let failure { Section { Text(failure).foregroundStyle(DSColor.warning) }.interfaceSectionSurface() }
             }
-            .navigationTitle(localized(isSubtitle ? "匯入字幕文字" : "匯入來源 JSON"))
+            .navigationTitle(localized(isSubtitle ? "汇入字幕文字" : "汇入来源 JSON"))
             .toolbarTitleDisplayMode(.inline)
             .themedAppSurface(for: .settings)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(localized("取消")) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(localized("匯入")) {
+                    Button(localized("导入")) {
                         do { try onImport(text, filename); dismiss() } catch { failure = error.localizedDescription }
                     }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -220,9 +220,9 @@ private struct ModuleSubtitlePreviewView: View {
     var body: some View {
         List {
             Section {
-                LabeledContent(localized("檔案"), value: file.filename)
-                LabeledContent(localized("編碼"), value: file.encoding)
-                Text(localized("已保存本地字幕；播放掛載與自動匹配尚未接入。"))
+                LabeledContent(localized("档案"), value: file.filename)
+                LabeledContent(localized("编码"), value: file.encoding)
+                Text(localized("已保存本地字幕；播放挂载与自动匹配尚未接入。"))
                     .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
             }.interfaceSectionSurface()
             Section {
@@ -234,7 +234,7 @@ private struct ModuleSubtitlePreviewView: View {
                         Text(cue.text).textSelection(.enabled)
                     }.accessibilityElement(children: .combine)
                 }
-            } header: { Text(localized("時間軸預覽")) }.interfaceSectionSurface()
+            } header: { Text(localized("时间轴预览")) }.interfaceSectionSurface()
         }
         .listStyle(.insetGrouped)
         .navigationTitle(file.title).toolbarTitleDisplayMode(.inline)

@@ -41,7 +41,7 @@ struct RootTabMediaMenuItems: View {
         if !MediaHubKind.quickActionKinds(for: tab).isEmpty, let onDefault {
             Divider()
             Button { onDefault(tab == .bookshelf) } label: {
-                Label(localized(tab == .bookshelf ? "閱讀書架" : "閱讀首頁"), systemImage: "book")
+                Label(localized(tab == .bookshelf ? "阅读书架" : "阅读首页"), systemImage: "book")
             }
             .accessibilityIdentifier("rootTabMedia.\(tab.rawValue).reading")
         }

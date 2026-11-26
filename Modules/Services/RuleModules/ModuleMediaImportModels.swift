@@ -6,7 +6,7 @@ enum ModuleMediaRoute: String, CaseIterable, Identifiable {
     case danmaku, subtitles, catSources
     var id: String { rawValue }
     var titleKey: String {
-        switch self { case .danmaku: "彈幕源"; case .subtitles: "字幕"; case .catSources: "貓源" }
+        switch self { case .danmaku: "弹幕源"; case .subtitles: "字幕"; case .catSources: "猫源" }
     }
     var systemImage: String {
         switch self { case .danmaku: "bubble.left.and.bubble.right.fill"; case .subtitles: "captions.bubble.fill"; case .catSources: "tv.and.hifispeaker.fill" }
@@ -65,8 +65,8 @@ enum ModuleMediaImportParser {
     static let cueTextLimit = 16_384
 
     static func registry(_ data: Data, kind: ModuleMediaRegistryKind) throws -> [ModuleRegisteredMediaSource] {
-        guard !data.isEmpty, data.count <= registryByteLimit else { throw failure("來源 JSON 為空或超過 256 KB。") }
-        guard let text = String(data: data, encoding: .utf8) else { throw failure("來源 JSON 必須是 UTF-8。") }
+        guard !data.isEmpty, data.count <= registryByteLimit else { throw failure("来源 JSON 为空或超过 256 KB。") }
+        guard let text = String(data: data, encoding: .utf8) else { throw failure("来源 JSON 必须是 UTF-8。") }
         let clean = text.trimmingCharacters(in: CharacterSet(charactersIn: "\u{feff}").union(.whitespacesAndNewlines))
         let decoder = JSONDecoder()
         let normalized = Data(clean.utf8)
@@ -77,12 +77,12 @@ enum ModuleMediaImportParser {
             } else {
                 sources = try decoder.decode([ModuleRegisteredMediaSource].self, from: normalized)
             }
-        } catch { throw failure("JSON 格式錯誤；每項必須包含字串 id、name、baseUrl。彈幕源須為陣列。") }
-        guard !sources.isEmpty, sources.count <= sourceLimit else { throw failure("每次需匯入 1–100 個來源。") }
+        } catch { throw failure("JSON 格式错误；每项必须包含字串 id、name、baseUrl。弹幕源须为阵列。") }
+        guard !sources.isEmpty, sources.count <= sourceLimit else { throw failure("每次需汇入 1–100 个来源。") }
         var ids = Set<String>()
         for source in sources {
             try validate(source)
-            guard ids.insert(source.id).inserted else { throw failure("同一份 JSON 的來源 id 不可重複。") }
+            guard ids.insert(source.id).inserted else { throw failure("同一份 JSON 的来源 id 不可重复。") }
         }
         return sources
     }
@@ -91,31 +91,31 @@ enum ModuleMediaImportParser {
         for (value, limit) in [(source.id, 128), (source.name, 128), (source.baseUrl, 2048)] {
             guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   value.count <= limit, value.rangeOfCharacter(from: .controlCharacters) == nil else {
-                throw failure("來源欄位為空、過長或含控制字元。")
+                throw failure("来源栏位为空、过长或含控制字元。")
             }
         }
         guard let url = URLComponents(string: source.baseUrl),
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
               let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
               url.fragment == nil, url.url != nil else {
-            throw failure("baseUrl 必須是 HTTP(S) 網址，且不可含帳號、密碼或 fragment。")
+            throw failure("baseUrl 必须是 HTTP(S) 网址，且不可含帐号、密码或 fragment。")
         }
     }
 
     static func subtitle(_ data: Data, filename: String) throws -> ModuleLocalSubtitle {
-        guard !data.isEmpty, data.count <= subtitleByteLimit else { throw failure("字幕為空或超過 4 MB。") }
+        guard !data.isEmpty, data.count <= subtitleByteLimit else { throw failure("字幕为空或超过 4 MB。") }
         let filename = (filename as NSString).lastPathComponent
         let ext = (filename as NSString).pathExtension.lowercased()
-        guard ["srt", "vtt"].contains(ext), filename.count <= 255 else { throw failure("請選擇 .srt 或 .vtt 字幕檔案。") }
+        guard ["srt", "vtt"].contains(ext), filename.count <= 255 else { throw failure("请选择 .srt 或 .vtt 字幕档案。") }
         let gbk = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
         let decoded: String
         let encoding: String
         if let text = String(data: data, encoding: .utf8) { decoded = text; encoding = "UTF-8" }
         else if let text = String(data: data, encoding: gbk) { decoded = text; encoding = "GBK / GB18030" }
-        else { throw failure("字幕編碼無法辨識；僅支援 UTF-8 或 GBK。") }
+        else { throw failure("字幕编码无法辨识；仅支援 UTF-8 或 GBK。") }
         let text = decoded.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
             .trimmingCharacters(in: CharacterSet(charactersIn: "\u{feff}"))
-        guard !text.contains("\0") else { throw failure("字幕含有無效的二進位內容。") }
+        guard !text.contains("\0") else { throw failure("字幕含有无效的二进位内容。") }
         var blocks: [[String]] = []
         var block: [String] = []
         for line in text.components(separatedBy: "\n") {
@@ -127,7 +127,7 @@ enum ModuleMediaImportParser {
         if ext == "vtt" {
             guard let header = blocks.first?.first,
                   header == "WEBVTT" || header.hasPrefix("WEBVTT ") || header.hasPrefix("WEBVTT\t") else {
-                throw failure("VTT 缺少 WEBVTT 標頭。")
+                throw failure("VTT 缺少 WEBVTT 标头。")
             }
             blocks.removeFirst()
         }
@@ -136,27 +136,27 @@ enum ModuleMediaImportParser {
             if ext == "vtt", let first = lines.first,
                first == "NOTE" || first.hasPrefix("NOTE ") || first == "STYLE" || first == "REGION" { continue }
             guard let index = lines.prefix(2).firstIndex(where: { $0.contains("-->") }) else {
-                throw failure("字幕區塊缺少有效的時間軸。")
+                throw failure("字幕区块缺少有效的时间轴。")
             }
             let timeline = lines[index].components(separatedBy: "-->")
             guard timeline.count == 2,
-                  let endPart = timeline[1].split(whereSeparator: { $0.isWhitespace }).first else { throw failure("字幕時間軸格式錯誤。") }
+                  let endPart = timeline[1].split(whereSeparator: { $0.isWhitespace }).first else { throw failure("字幕时间轴格式错误。") }
             let start = try timestamp(timeline[0].trimmingCharacters(in: .whitespaces), allowsShort: ext == "vtt")
             let end = try timestamp(String(endPart), allowsShort: ext == "vtt")
             let cueText = lines.dropFirst(index + 1).joined(separator: "\n")
             guard end > start, end <= 7 * 24 * 3600, !cueText.isEmpty, cueText.utf8.count <= cueTextLimit else {
-                throw failure("字幕時間順序、文字長度或內容無效。")
+                throw failure("字幕时间顺序、文字长度或内容无效。")
             }
             cues.append(ModuleSubtitleCue(start: start, end: end, text: cueText))
-            guard cues.count <= cueLimit else { throw failure("字幕超過 20,000 個時間軸。") }
+            guard cues.count <= cueLimit else { throw failure("字幕超过 20,000 个时间轴。") }
         }
-        guard !cues.isEmpty else { throw failure("字幕沒有可匯入的時間軸。") }
+        guard !cues.isEmpty else { throw failure("字幕没有可汇入的时间轴。") }
         return ModuleLocalSubtitle(id: UUID(), filename: filename, encoding: encoding, cues: cues, importedAt: Date())
     }
 
     private static func timestamp(_ value: String, allowsShort: Bool) throws -> Double {
         let parts = value.replacingOccurrences(of: ",", with: ".").split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 3 || (allowsShort && parts.count == 2) else { throw failure("字幕時間格式錯誤。") }
+        guard parts.count == 3 || (allowsShort && parts.count == 2) else { throw failure("字幕时间格式错误。") }
         func integer(_ value: Substring) -> Int? {
             guard !value.isEmpty, value.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
             return Int(value)
@@ -166,11 +166,11 @@ enum ModuleMediaImportParser {
               let seconds = integer(secondsParts[0]), seconds < 60,
               let milliseconds = integer(secondsParts[1]),
               parts[parts.count - 2].count == 2, let minutes = integer(parts[parts.count - 2]), minutes < 60 else {
-            throw failure("字幕時間必須使用 時:分:秒,毫秒 或 VTT 分:秒.毫秒。")
+            throw failure("字幕时间必须使用 时:分:秒,毫秒 或 VTT 分:秒.毫秒。")
         }
         var hours = 0
         if parts.count == 3 {
-            guard parts[0].count >= 2, parts[0].count <= 3, let value = integer(parts[0]) else { throw failure("字幕小時格式錯誤。") }
+            guard parts[0].count >= 2, parts[0].count <= 3, let value = integer(parts[0]) else { throw failure("字幕小时格式错误。") }
             hours = value
         }
         return Double(hours * 3600 + minutes * 60 + seconds) + Double(milliseconds) / 1000

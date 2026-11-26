@@ -8,7 +8,7 @@ struct CatVodHomeSourceChoices: View {
     var body: some View {
         List {
             if library.isLoaded && library.sources.isEmpty {
-                Text(localized("請先在設定的模組中匯入 MD5 源。"))
+                Text(localized("请先在设置的模组中导入 MD5 源。"))
             }
             ForEach(library.sources) { source in
                 NavigationLink(source.title) {
@@ -16,7 +16,7 @@ struct CatVodHomeSourceChoices: View {
                 }
             }
         }
-        .navigationTitle(localized("貓源影視")).toolbarTitleDisplayMode(.inline)
+        .navigationTitle(localized("猫源影视")).toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .explore).task { library.loadIfNeeded() }
     }
 }
@@ -31,9 +31,9 @@ private struct CatVodSiteChoices: View {
     var body: some View {
         List {
             if let failure {
-                Text(failure); Button(localized("重試")) { attempt += 1 }
+                Text(failure); Button(localized("重试")) { attempt += 1 }
             } else if let sites {
-                if sites.isEmpty { Text(localized("源已不再提供此站點。")) }
+                if sites.isEmpty { Text(localized("此源已不再提供该站点。")) }
                 ForEach(sites.filter { filter.isEmpty || $0.name.localizedCaseInsensitiveContains(filter) || $0.key.localizedCaseInsensitiveContains(filter) }) { site in
                     NavigationLink(site.name) {
                         CatVodFeedChoices(source: source, site: site, current: current, choose: choose)
@@ -41,7 +41,7 @@ private struct CatVodSiteChoices: View {
                 }
             } else { ProgressView() }
         }
-        .searchable(text: $filter, prompt: Text(localized("站點")))
+        .searchable(text: $filter, prompt: Text(localized("站点")))
         .navigationTitle(source.title).toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .explore)
         .task(id: attempt) {
@@ -62,11 +62,11 @@ private struct CatVodFeedChoices: View {
     var body: some View {
         List {
             if let failure {
-                Text(failure); Button(localized("重試")) { attempt += 1 }
+                Text(failure); Button(localized("重试")) { attempt += 1 }
             } else if let home {
                 if !home.videos.isEmpty { choice(nil) }
                 ForEach(home.categories) { choice($0) }
-                if home.videos.isEmpty && home.categories.isEmpty { Text(localized("此站點沒有可加入首頁的清單。")) }
+                if home.videos.isEmpty && home.categories.isEmpty { Text(localized("此站点没有可添加到首页的列表。")) }
             } else { ProgressView() }
         }
         .navigationTitle(site.name).toolbarTitleDisplayMode(.inline)
@@ -82,7 +82,7 @@ private struct CatVodFeedChoices: View {
                                 categoryID: category?.id, categoryName: category?.name)
         return Button { choose(HomeContentChoice(binding: .catVod(ref), itemTitle: ref.title)) } label: {
             HStack {
-                Text(category?.name ?? localized("站點推薦"))
+                Text(category?.name ?? localized("站点推荐"))
                 if current == .catVod(ref) { Spacer(); Image(systemName: "checkmark").accessibilityLabel(localized("目前")) }
             }
         }
@@ -98,7 +98,7 @@ struct CatVodFeedPage: View {
     var body: some View {
         Group {
             if let site { CatVodSiteBrowserView(sourceID: ref.sourceID, site: site, initialCategory: ref.categoryID) }
-            else if let failure { VStack { Text(failure); Button(localized("重試")) { attempt += 1 } } }
+            else if let failure { VStack { Text(failure); Button(localized("重试")) { attempt += 1 } } }
             else { ProgressView() }
         }
         .navigationTitle(ref.title).toolbarTitleDisplayMode(.inline)

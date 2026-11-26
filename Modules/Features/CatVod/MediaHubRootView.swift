@@ -111,7 +111,7 @@ struct MediaHubRootView: View {
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: onClose) { Label(localized("關閉"), systemImage: "xmark") }
+                Button(action: onClose) { Label(localized("关闭"), systemImage: "xmark") }
                     .accessibilityIdentifier("mediaHub.close")
             }
             if let mediaMenuContext {
@@ -121,7 +121,7 @@ struct MediaHubRootView: View {
             if kind != .music {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { sourceSheetPresented = true } label: {
-                        Label(localized("來源與篩選"), systemImage: "slider.horizontal.3")
+                        Label(localized("来源与筛选"), systemImage: "slider.horizontal.3")
                     }
                     .accessibilityIdentifier("mediaHub.sourceControls")
                 }
@@ -130,9 +130,9 @@ struct MediaHubRootView: View {
         .themedAppSurface(for: .explore)
         .sheet(isPresented: $sourceSheetPresented) { sourceSheet }
         .sheet(item: $selectedMusicItem) { item in savedMusicSheet(item) }
-        .alert(localized("媒體庫保存失敗"), isPresented: Binding(
+        .alert(localized("媒体库保存失败"), isPresented: Binding(
             get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })) {
-            Button(localized("關閉"), role: .cancel) { saveFailure = nil }
+            Button(localized("关闭"), role: .cancel) { saveFailure = nil }
         } message: { Text(saveFailure ?? "") }
     }
 
@@ -157,7 +157,7 @@ struct MediaHubRootView: View {
                     enabled: selectedSite?.searchable == true && !loadingSites,
                     submit: submitSearch, clear: { searchText = ""; submitSearch() })
                 if let selectedSite {
-                    Text(localized("搜尋範圍") + " · " + selectedSite.name)
+                    Text(localized("搜寻范围") + " · " + selectedSite.name)
                         .font(DSFont.caption).foregroundStyle(DSColor.textSecondary)
                         .accessibilityIdentifier("mediaHub.video.searchScope")
                     categoryControls
@@ -197,24 +197,24 @@ struct MediaHubRootView: View {
 
     @ViewBuilder private var discoveryAvailability: some View {
         if kind != .video {
-            emptyCard(title: localized("尚無相容來源"),
-                      message: localized("目前接口只提供影視站點，尚未聲明此媒體類型。"), symbol: kind.systemImage)
+            emptyCard(title: localized("尚无相容来源"),
+                      message: localized("目前接口只提供影视站点，尚未声明此媒体类型。"), symbol: kind.systemImage)
         } else if loadingSites {
-            loadingCard(localized("載入站點"))
+            loadingCard(localized("载入站点"))
         } else if let siteFailure {
             retryCard(siteFailure) { siteRequestID = UUID() }
         } else if availableSources.isEmpty {
-            emptyCard(title: localized("尚無可用接口"),
-                      message: localized("請先在模組中導入 MD5 源。"), symbol: "square.stack.3d.up")
+            emptyCard(title: localized("尚无可用接口"),
+                      message: localized("请先在模组中导入 MD5 源。"), symbol: "square.stack.3d.up")
             importSourcesLink
         } else if selectedSource == nil {
-            emptyCard(title: localized("請選擇接口"), message: localized("此頁只使用已導入的 MD5 源。"), symbol: "globe")
-            Button(localized("選擇接口")) { sourceSheetPresented = true }.buttonStyle(.bordered)
+            emptyCard(title: localized("请选择接口"), message: localized("此页只使用已导入的 MD5 源。"), symbol: "globe")
+            Button(localized("选择接口")) { sourceSheetPresented = true }.buttonStyle(.bordered)
         } else if sites.isEmpty {
-            emptyCard(title: localized("此接口沒有可用站點"), message: localized("源未回傳可用的影視站點。"), symbol: "film")
+            emptyCard(title: localized("此接口没有可用站点"), message: localized("源未回传可用的影视站点。"), symbol: "film")
         } else {
-            emptyCard(title: localized("請選擇站點"), message: localized("選擇站點後即可載入發現內容。"), symbol: "globe")
-            Button(localized("選擇站點")) { sourceSheetPresented = true }.buttonStyle(.bordered)
+            emptyCard(title: localized("请选择站点"), message: localized("选择站点后即可载入发现内容。"), symbol: "globe")
+            Button(localized("选择站点")) { sourceSheetPresented = true }.buttonStyle(.bordered)
         }
     }
 
@@ -223,8 +223,8 @@ struct MediaHubRootView: View {
             // The same system menu as the settings Picker, opened directly at the badge.
             // UIKit supplies scrolling for long site lists and a checkmark for the selection.
             Menu {
-                Picker(localized("選擇站點"), selection: siteBinding) {
-                    Text(localized("選擇站點")).tag(nil as String?)
+                Picker(localized("选择站点"), selection: siteBinding) {
+                    Text(localized("选择站点")).tag(nil as String?)
                     ForEach(sites) { site in Text(site.name).tag(Optional(site.key)) }
                 }
                 .pickerStyle(.inline)
@@ -232,7 +232,7 @@ struct MediaHubRootView: View {
             .menuOrder(.fixed)
             .disabled(loadingSites)
             .accessibilityIdentifier("mediaHub.activeSource")
-            .accessibilityValue(selectedSite?.name ?? localized("選擇站點"))
+            .accessibilityValue(selectedSite?.name ?? localized("选择站点"))
         } else {
             Button { sourceSheetPresented = true } label: { sourceBadgeLabel }
                 .buttonStyle(.plain).accessibilityIdentifier("mediaHub.activeSource")
@@ -240,14 +240,14 @@ struct MediaHubRootView: View {
     }
 
     private var sourceBadgeLabel: some View {
-        MediaHubVideoSourceLabel(title: selectedSite?.name ?? selectedSource?.title ?? localized("選擇接口"),
+        MediaHubVideoSourceLabel(title: selectedSite?.name ?? selectedSource?.title ?? localized("选择接口"),
                                  selectable: true)
     }
 
     private func searchField(music: Bool) -> some View {
         HStack(spacing: DSSpacing.sm) {
             Image(systemName: "magnifyingglass").foregroundStyle(DSColor.textSecondary)
-            TextField(localized(music ? "搜尋已收藏音樂" : isLibrary ? "搜尋媒體庫" : "片名搜索"), text: $searchText)
+            TextField(localized(music ? "搜寻已收藏音乐" : isLibrary ? "搜寻媒体库" : "片名搜索"), text: $searchText)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .onSubmit { if !music && !isLibrary { submitSearch() } }
@@ -305,11 +305,11 @@ struct MediaHubRootView: View {
             if let failure {
                 retryCard(failure) { requestID = UUID() }
             } else if discoveryVideos.isEmpty && !loadingContent && !loadingRails {
-                emptyCard(title: localized(submittedSearch.isEmpty ? "暫無發現內容" : "沒有搜尋結果。"),
-                    message: localized("可嘗試上方分類或切換站點。"), symbol: "film")
+                emptyCard(title: localized(submittedSearch.isEmpty ? "暂无发现内容" : "没有搜寻结果。"),
+                    message: localized("可尝试上方分类或切换站点。"), symbol: "film")
             }
             if isHomeFeed {
-                if loadingRails { loadingCard(localized("載入分類")) }
+                if loadingRails { loadingCard(localized("载入分类")) }
                 if let home {
                     ForEach(MediaHubPresentation.categoryCandidates(home.categories)) { category in
                         if let message = railFailures[category.id] {
@@ -334,7 +334,7 @@ struct MediaHubRootView: View {
             if mediaLibrary.contains(sourceID: selectedSourceID ?? "", siteKey: selectedSiteKey ?? "", videoID: video.id) {
                 Button(role: .destructive) { removeVideo(video) } label: { Label(localized("移除收藏"), systemImage: "trash") }
             } else {
-                Button { saveVideo(video, category: category) } label: { Label(localized("加入媒體庫"), systemImage: "bookmark") }
+                Button { saveVideo(video, category: category) } label: { Label(localized("加入媒体库"), systemImage: "bookmark") }
             }
         }.accessibilityIdentifier("mediaHub.video.\(video.id)")
     }
@@ -345,11 +345,11 @@ struct MediaHubRootView: View {
     }
 
     @ViewBuilder private var resultsFooter: some View {
-        if loadingContent { loadingCard(localized("載入中")) }
+        if loadingContent { loadingCard(localized("加载中…")) }
         else if let failure { retryCard(failure) { requestID = UUID() } }
         else if hasMore {
             Button { Task { await loadMore() } } label: {
-                Label(localized("載入更多"), systemImage: "arrow.down.circle").frame(maxWidth: .infinity, minHeight: 44)
+                Label(localized("加载更多"), systemImage: "arrow.down.circle").frame(maxWidth: .infinity, minHeight: 44)
             }.accessibilityIdentifier("mediaHub.loadMore")
         }
     }
@@ -360,8 +360,8 @@ struct MediaHubRootView: View {
                 searchField(music: false).padding(.horizontal, DSSpacing.md)
                 libraryFailure
                 if visibleItems.isEmpty && mediaLibrary.loadFailure == nil {
-                    emptyCard(title: localized(searchText.isEmpty && librarySourceID == nil ? "媒體庫是空的" : "沒有搜尋結果。"),
-                        message: localized("在影視首頁長按海報，或在詳情頁加入媒體庫。收藏不是觀看紀錄。"), symbol: "bookmark")
+                    emptyCard(title: localized(searchText.isEmpty && librarySourceID == nil ? "媒体库是空的" : "没有搜寻结果。"),
+                        message: localized("在影视首页长按海报，或在详情页加入媒体库。收藏不是观看纪录。"), symbol: "bookmark")
                         .padding(.horizontal, DSSpacing.md)
                 } else if !visibleItems.isEmpty {
                     recentBookmarks
@@ -477,7 +477,7 @@ struct MediaHubRootView: View {
                     .accessibilityIdentifier("mediaHub.music.latestSaved")
                     ForEach(MediaHubPresentation.savedRails(visibleItems)) { rail in savedRail(rail) }
                 } else if !searchText.isEmpty || librarySourceID != nil {
-                    emptyCard(title: localized("沒有搜尋結果。"), message: localized("搜尋僅涵蓋已收藏的音樂。"), symbol: "magnifyingglass")
+                    emptyCard(title: localized("没有搜寻结果。"), message: localized("搜寻仅涵盖已收藏的音乐。"), symbol: "magnifyingglass")
                         .padding(.horizontal, DSSpacing.md)
                 }
                 musicAvailability.padding(.horizontal, DSSpacing.md)
@@ -488,12 +488,12 @@ struct MediaHubRootView: View {
     private var musicImportControls: some View {
         HStack(spacing: DSSpacing.sm) {
             Button { musicImportPresented = true } label: {
-                Label(localized("導入音訊 / M3U"), systemImage: "square.and.arrow.down")
+                Label(localized("导入音讯 / M3U"), systemImage: "square.and.arrow.down")
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("mediaHub.music.importFile")
             Button { musicDirectImportPresented = true } label: {
-                Label(localized("加入直鏈"), systemImage: "link")
+                Label(localized("加入直链"), systemImage: "link")
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("mediaHub.music.importURL")
@@ -541,15 +541,15 @@ struct MediaHubRootView: View {
                 Image(systemName: "waveform").font(DSFont.title).foregroundStyle(DSColor.textSecondary.opacity(0.5))
                     .accessibilityHidden(true)
             }
-            Text(localized("可導入本機音訊、M3U/M3U8 或有授權的 HTTP(S) 直鏈"))
+            Text(localized("可导入本机音讯、M3U/M3U8 或有授权的 HTTP(S) 直链"))
                 .font(DSFont.subheadline).foregroundStyle(DSColor.textSecondary).fixedSize(horizontal: false, vertical: true)
-            Text(localized("播放使用系統 AVPlayer / AVQueuePlayer，支援背景音訊、隊列、鎖屏控制；來源失敗會顯示具體 AVPlayer 錯誤。"))
+            Text(localized("播放使用系统 AVPlayer / AVQueuePlayer，支援背景音讯、队列、锁屏控制；来源失败会显示具体 AVPlayer 错误。"))
                 .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
             if mediaLibrary.items.contains(where: { $0.kind == .music }) {
-                Text(localized("已導入的音樂會保存在本機媒體庫；本機檔案會複製到 app 儲存區。"))
+                Text(localized("已导入的音乐会保存在本机媒体库；本机档案会复制到 app 储存区。"))
                     .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
             }
-            Button { sourceSheetPresented = true } label: { Label(localized("來源與篩選"), systemImage: "slider.horizontal.3") }
+            Button { sourceSheetPresented = true } label: { Label(localized("来源与筛选"), systemImage: "slider.horizontal.3") }
                 .buttonStyle(.bordered)
         }
         .padding(DSSpacing.lg)
@@ -577,46 +577,46 @@ struct MediaHubRootView: View {
                 if kind == .video && !isLibrary {
                     Section {
                         Picker(localized("接口"), selection: sourceBinding) {
-                            Text(localized("選擇接口")).tag(nil as String?)
+                            Text(localized("选择接口")).tag(nil as String?)
                             ForEach(availableSources) { source in Text(source.title).tag(Optional(source.id)) }
                         }.accessibilityIdentifier("mediaHub.sourcePicker")
-                        Picker(localized("站點"), selection: siteBinding) {
-                            Text(localized("選擇站點")).tag(nil as String?)
+                        Picker(localized("站点"), selection: siteBinding) {
+                            Text(localized("选择站点")).tag(nil as String?)
                             ForEach(sites) { site in Text(site.name).tag(Optional(site.key)) }
                         }
                         .disabled(selectedSource == nil || sites.isEmpty || loadingSites)
                         .accessibilityIdentifier("mediaHub.sitePicker")
-                        if loadingSites { ProgressView(localized("載入站點")) }
+                        if loadingSites { ProgressView(localized("载入站点")) }
                         if let siteFailure { retryCard(siteFailure) { siteRequestID = UUID() } }
-                    } header: { Text(localized("影視來源")) } footer: {
-                        Text(localized("內容與分類直接來自所選站點；不會自動替換已移除的接口。"))
+                    } header: { Text(localized("影视来源")) } footer: {
+                        Text(localized("内容与分类直接来自所选站点；不会自动替换已移除的接口。"))
                     }
                     Section { importSourcesLink }
                 } else if kind == .music {
                     Section {
-                        Label(localized("尚無相容音樂源"), systemImage: "music.note")
-                        Text(localized("CatVod 的 video.sites 不是音樂接口，影視站點不會被列為音樂來源。"))
+                        Label(localized("尚无相容音乐源"), systemImage: "music.note")
+                        Text(localized("CatVod 的 video.sites 不是音乐接口，影视站点不会被列为音乐来源。"))
                             .font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
                     }
                 } else if !isLibrary {
-                    Section { Text(localized("目前接口尚未聲明此媒體類型。")) }
+                    Section { Text(localized("目前接口尚未声明此媒体类型。")) }
                 }
                 if isLibrary || kind == .music {
                     Section {
-                        Picker(localized("收藏來源"), selection: $librarySourceID) {
+                        Picker(localized("收藏来源"), selection: $librarySourceID) {
                             Text(localized("全部")).tag(nil as String?)
                             ForEach(librarySourceOptions) { item in
                                 Text(sourceLibrary.sources.first { $0.id == item.sourceID }?.title ?? item.siteName)
                                     .tag(Optional(item.sourceID))
                             }
                         }.accessibilityIdentifier("mediaHub.librarySourcePicker")
-                    } footer: { Text(localized("僅篩選此媒體類型的真實收藏，不會向其他類型來源搜尋。")) }
+                    } footer: { Text(localized("仅筛选此媒体类型的真实收藏，不会向其他类型来源搜寻。")) }
                 }
             }
-            .navigationTitle(localized("來源與篩選")).toolbarTitleDisplayMode(.inline)
+            .navigationTitle(localized("来源与筛选")).toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(localized("關閉")) { sourceSheetPresented = false }
+                    Button(localized("关闭")) { sourceSheetPresented = false }
                 }
             }
             .themedAppSurface(for: .explore)
@@ -630,7 +630,7 @@ struct MediaHubRootView: View {
 
     private var importSourcesLink: some View {
         NavigationLink { Md5SourceManagerView(library: sourceLibrary) } label: {
-            Label(localized("前往模組導入"), systemImage: "square.and.arrow.down")
+            Label(localized("前往模组导入"), systemImage: "square.and.arrow.down")
         }.accessibilityIdentifier("mediaHub.importSources")
     }
 
@@ -664,10 +664,10 @@ struct MediaHubRootView: View {
 
     private func retryCard(_ message: String, retry: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: DSSpacing.sm) {
-            Label(localized("載入失敗"), systemImage: "exclamationmark.circle").font(DSFont.headline)
+            Label(localized("加载失败"), systemImage: "exclamationmark.circle").font(DSFont.headline)
             Text(message).font(DSFont.footnote).foregroundStyle(DSColor.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(action: retry) { Label(localized("重試"), systemImage: "arrow.clockwise") }.buttonStyle(.bordered)
+            Button(action: retry) { Label(localized("重试"), systemImage: "arrow.clockwise") }.buttonStyle(.bordered)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(DSSpacing.md)
         .floatingSurfaceBackground(in: RoundedRectangle(cornerRadius: DSRadius.lg, style: .continuous))
@@ -959,7 +959,7 @@ private struct MediaHubHeroCard: View {
         }
         .clipped()
         .accessibilityElement(children: .combine)
-        .accessibilityHint(localized("開啟詳情"))
+        .accessibilityHint(localized("开启详情"))
     }
 
     private var artwork: some View {

@@ -6,7 +6,7 @@ enum MovieRatingProvider: String, Sendable, Hashable {
     case source, douban, imdb, tmdb
     var titleKey: String {
         switch self {
-        case .source: return "片源評分"
+        case .source: return "片源评分"
         case .douban: return "豆瓣"
         case .imdb: return "IMDb"
         case .tmdb: return "TMDB"

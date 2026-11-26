@@ -10,17 +10,17 @@ enum MediaHubKind: String, CaseIterable, Codable, Hashable, Identifiable, Sendab
 
     var titleKey: String {
         switch self {
-        case .video: return "影視"
-        case .music: return "音樂"
-        case .drama: return "短劇"
+        case .video: return "影视"
+        case .music: return "音乐"
+        case .drama: return "短剧"
         }
     }
 
     var libraryTitleKey: String {
         switch self {
-        case .video: return "影視庫"
-        case .music: return "音樂庫"
-        case .drama: return "短劇庫"
+        case .video: return "影视库"
+        case .music: return "音乐库"
+        case .drama: return "短剧库"
         }
     }
 

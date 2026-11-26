@@ -482,9 +482,9 @@ enum MusicPlayerError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidTrack: return localized("這筆音樂沒有可播放的授權網址或本機檔案。")
-        case .localFileMissing: return localized("找不到已導入的本機音訊檔案。")
-        case .avPlayer(let code): return String(format: localized("音訊播放失敗（AVPlayer 錯誤 %d）。"), code)
+        case .invalidTrack: return localized("这笔音乐没有可播放的授权网址或本机档案。")
+        case .localFileMissing: return localized("找不到已导入的本机音讯档案。")
+        case .avPlayer(let code): return String(format: localized("音讯播放失败（AVPlayer 错误 %d）。"), code)
         }
     }
 }

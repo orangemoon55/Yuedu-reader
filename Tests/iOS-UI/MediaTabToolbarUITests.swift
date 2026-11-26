@@ -31,7 +31,7 @@ final class MediaTabToolbarUITests: XCTestCase {
         try withWideApp { app in
             sidebarTab("explore", in: app).press(forDuration: 1.0)
             let exploreMenu = try nativeSidebarMenu(for: "explore", in: app)
-            try XCTUnwrap(exploreMenu["影視"]).tap()
+            try XCTUnwrap(exploreMenu["影视"]).tap()
             assertVisible("mediaHub.videoHome", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertReadingHome(in: app)
@@ -40,7 +40,7 @@ final class MediaTabToolbarUITests: XCTestCase {
             assertVisible("home_options_menu", in: app)
             sidebarTab("bookshelf", in: app).press(forDuration: 1.0)
             let bookshelfMenu = try nativeSidebarMenu(for: "bookshelf", in: app)
-            try XCTUnwrap(bookshelfMenu["音樂庫"]).tap()
+            try XCTUnwrap(bookshelfMenu["音乐库"]).tap()
             assertVisible("mediaHub.musicLibrary", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertVisible("home_options_menu", in: app)
@@ -217,8 +217,8 @@ final class MediaTabToolbarUITests: XCTestCase {
     private func nativeSidebarMenu(for tab: String, in app: XCUIApplication) throws -> [String: XCUIElement] {
         let expectedLabels: [String]
         switch tab {
-        case "explore": expectedLabels = ["影視", "音樂", "閱讀首頁"]
-        case "bookshelf": expectedLabels = ["影視庫", "音樂庫", "閱讀書架"]
+        case "explore": expectedLabels = ["影视", "音乐", "阅读首页"]
+        case "bookshelf": expectedLabels = ["影视库", "音乐库", "阅读书架"]
         default:
             XCTFail("Unexpected native media-menu root: \(tab)")
             return [:]
@@ -247,8 +247,8 @@ final class MediaTabToolbarUITests: XCTestCase {
         }
 
         // The exact three-label set excludes short drama and cross-root menu entries.
-        XCTAssertFalse(container.buttons["短劇"].exists)
-        XCTAssertFalse(container.buttons["短劇庫"].exists)
+        XCTAssertFalse(container.buttons["短剧"].exists)
+        XCTAssertFalse(container.buttons["短剧库"].exists)
         let otherRoot = tab == "explore" ? "bookshelf" : "explore"
         XCTAssertFalse(app.buttons["rootTabMedia.\(otherRoot).video"].exists,
                        "Inactive root media items leaked into the native menu")

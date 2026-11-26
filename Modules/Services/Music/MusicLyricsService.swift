@@ -62,10 +62,10 @@ enum MusicOnlineLyricsError: LocalizedError {
     case invalidIdentity, invalidResponse, responseTooLarge, httpStatus
     var errorDescription: String? {
         switch self {
-        case .invalidIdentity: return localized("此曲缺少可用的原平台歌曲識別碼。")
-        case .invalidResponse: return localized("線上歌詞回應格式無效，請重試或匯入本地 LRC。")
-        case .responseTooLarge: return localized("線上歌詞超過大小限制。")
-        case .httpStatus: return localized("歌詞平台暫時無法提供此曲歌詞。")
+        case .invalidIdentity: return localized("此曲缺少可用的原平台歌曲识别码。")
+        case .invalidResponse: return localized("线上歌词回应格式无效，请重试或汇入本地 LRC。")
+        case .responseTooLarge: return localized("线上歌词超过大小限制。")
+        case .httpStatus: return localized("歌词平台暂时无法提供此曲歌词。")
         }
     }
 }
@@ -287,7 +287,7 @@ final class MusicLyricsModel: ObservableObject {
                       self.generation == token, self.identity == target else { return }
                 self.lyrics = nil
                 self.state = .failed((error as? MusicOnlineLyricsError)?.localizedDescription
-                    ?? localized("無法載入線上歌詞，請檢查連線後重試。"))
+                    ?? localized("无法载入线上歌词，请检查连线后重试。"))
                 self.loadTask = nil
             }
         }

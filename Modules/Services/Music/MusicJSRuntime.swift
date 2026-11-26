@@ -6,11 +6,11 @@ enum MusicJSError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupported: return localized("目前只接受 LX 格式的 JS 音源。")
-        case .invalidScript: return localized("音源無法初始化，請檢查 JS 格式。")
-        case .timeout: return localized("音源執行逾時，請重試或切換音源。")
-        case .sourceFailed: return localized("音源請求失敗，請重試或切換平台。")
-        case .invalidResponse: return localized("音源沒有返回有效的歌曲或播放地址。")
-        case .removed: return localized("此 JS 音源已移除，請重新導入。")
+        case .invalidScript: return localized("音源无法初始化，请检查 JS 格式。")
+        case .timeout: return localized("音源执行逾时，请重试或切换音源。")
+        case .sourceFailed: return localized("音源请求失败，请重试或切换平台。")
+        case .invalidResponse: return localized("音源没有返回有效的歌曲或播放地址。")
+        case .removed: return localized("此 JS 音源已移除，请重新导入。")
         }
     }
 }

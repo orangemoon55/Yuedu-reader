@@ -63,14 +63,14 @@ struct MusicJSSourceView: View {
                             catalogRail(title: "排行榜", entries: catalog.charts, loading: catalog.chartsLoading, error: catalog.chartsError, showingOrigin: true)
                         }
                         if metadataPlatform.hasPlaylists {
-                            catalogRail(title: "推薦歌單", entries: catalog.playlists, loading: catalog.playlistsLoading, error: catalog.playlistsError)
-                            Text(localized("歌單來自") + localized(metadataPlatform.title) + localized("公開熱門目錄，並非個人化推薦。"))
+                            catalogRail(title: "推荐歌单", entries: catalog.playlists, loading: catalog.playlistsLoading, error: catalog.playlistsError)
+                            Text(localized("歌单来自") + localized(metadataPlatform.title) + localized("公开热门目录，并非个人化推荐。"))
                                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
                         } else {
                             VStack(alignment: .leading, spacing: 8) {
-                                Label(localized(metadataPlatform == .sd ? "輸入汽水曲目 ID 開始查詢" : "輸入關鍵字開始搜尋"), systemImage: "magnifyingglass")
+                                Label(localized(metadataPlatform == .sd ? "输入汽水曲目 ID 开始查询" : "输入关键字开始搜寻"), systemImage: "magnifyingglass")
                                     .font(.headline)
-                                Text(localized("此平台未提供已實作的熱門首頁，不會用任意搜尋冒充排行榜或推薦。"))
+                                Text(localized("此平台未提供已实作的热门首页，不会用任意搜寻冒充排行榜或推荐。"))
                                     .font(.caption).foregroundStyle(.secondary)
                             }.padding(16)
                         }
@@ -78,7 +78,7 @@ struct MusicJSSourceView: View {
                     }
                     metadataNotice
                 }
-                if busy { ProgressView(localized("正在透過 JS 音源解析播放…")).frame(maxWidth: .infinity) }
+                if busy { ProgressView(localized("正在透过 JS 音源解析播放…")).frame(maxWidth: .infinity) }
                 if let error = store.loadFailure ?? library.loadFailure {
                     Text(error).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 20)
                 }
@@ -91,7 +91,7 @@ struct MusicJSSourceView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { settings = true } label: {
-                    Label(localized("音樂設定"), systemImage: "slider.horizontal.3")
+                    Label(localized("音乐设置"), systemImage: "slider.horizontal.3")
                         .font(.title2).foregroundStyle(.primary)
                 }
                     .accessibilityIdentifier("mediaHub.music.settings")
@@ -101,8 +101,8 @@ struct MusicJSSourceView: View {
             MusicSourceSettingsView(selectedSourceID: $selectedSourceID, providerID: $providerID, quality: $quality)
         }
         .sheet(item: $playing) { item in MusicPlayerView(item: item, queue: [item], autoPlay: true) }
-        .alert(localized("音樂操作失敗"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
-            Button(localized("關閉"), role: .cancel) { failure = nil }
+        .alert(localized("音乐操作失败"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button(localized("关闭"), role: .cancel) { failure = nil }
         } message: { Text(failure ?? "") }
         .task {
             library.reload()
@@ -131,7 +131,7 @@ struct MusicJSSourceView: View {
 
     private var metadataPicker: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Picker(localized("公開元資料平台"), selection: $metadataPlatform) {
+            Picker(localized("公开元资料平台"), selection: $metadataPlatform) {
                 ForEach(MusicCatalogPlatform.allCases) { platform in
                     Text(localized(platform.title)).tag(platform)
                 }
@@ -146,17 +146,17 @@ struct MusicJSSourceView: View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(localized(isLibrary ? "搜尋已收藏音樂" : (metadataPlatform == .sd ? "汽水曲目 ID" : "歌曲、歌手、專輯或歌單")), text: $query)
+                TextField(localized(isLibrary ? "搜寻已收藏音乐" : (metadataPlatform == .sd ? "汽水曲目 ID" : "歌曲、歌手、专辑或歌单")), text: $query)
                     .submitLabel(.search).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { if !isLibrary { search() } }
                     .accessibilityIdentifier("mediaHub.music.sourceSearch")
                 if !query.isEmpty {
                     Button { query = ""; submitted = false } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                        .accessibilityLabel(localized("清除搜尋"))
+                        .accessibilityLabel(localized("清除搜寻"))
                 }
                 if !isLibrary && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button(action: search) { Image(systemName: "arrow.right.circle.fill").font(.title3) }
-                        .accessibilityLabel(localized("搜尋"))
+                        .accessibilityLabel(localized("搜寻"))
                 }
             }
             .font(isLibrary ? .body : .callout.weight(.semibold))
@@ -166,13 +166,13 @@ struct MusicJSSourceView: View {
             .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: isLibrary ? 16 : 10))
             if !isLibrary && (!query.isEmpty || submitted) {
                 if provider?.canSearch == true {
-                    Picker(localized("搜尋目錄"), selection: $searchInScript) {
-                        Text(localized(metadataPlatform.title) + localized("目錄")).tag(false)
+                    Picker(localized("搜寻目录"), selection: $searchInScript) {
+                        Text(localized(metadataPlatform.title) + localized("目录")).tag(false)
                         Text(localized("目前 JS 音源")).tag(true)
                     }.pickerStyle(.segmented)
                 }
                 if !searchInScript {
-                    Picker(localized("搜尋類型"), selection: $searchKind) {
+                    Picker(localized("搜寻类型"), selection: $searchKind) {
                         ForEach(metadataPlatform.searchKinds) { Text(localized($0.title)).tag($0) }
                     }.pickerStyle(.segmented)
                 }
@@ -191,7 +191,7 @@ struct MusicJSSourceView: View {
             HStack(spacing: 14) {
                 MusicCatalogArtwork(poster: item.poster, size: 66, cornerRadius: 6)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(localized(player.isPlaying ? "正在播放" : "繼續播放")).font(.caption2.weight(.semibold))
+                    Text(localized(player.isPlaying ? "正在播放" : "继续播放")).font(.caption2.weight(.semibold))
                     Text(item.title).font(.headline).lineLimit(1)
                     Text([item.remarks ?? "", localized("停在") + " " + MusicHomePresentation.time(player.currentTime)]
                         .filter { !$0.isEmpty }.joined(separator: " · "))
@@ -224,11 +224,11 @@ struct MusicJSSourceView: View {
             .buttonStyle(.plain).disabled(entries.isEmpty).padding(.horizontal, 16)
             .accessibilityIdentifier(showingOrigin ? "mediaHub.music.charts" : "mediaHub.music.playlists")
             if loading && entries.isEmpty {
-                ProgressView(localized("載入公開音樂目錄…")).frame(maxWidth: .infinity, minHeight: 148)
+                ProgressView(localized("载入公开音乐目录…")).frame(maxWidth: .infinity, minHeight: 148)
             } else if let error {
                 MusicCatalogStatus(message: error, retry: { refreshID = UUID() }).padding(.horizontal, 16)
             } else if entries.isEmpty {
-                Text(localized("目錄暫無內容。")) .font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 16)
+                Text(localized("目录暂无内容。")) .font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 16)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
@@ -256,9 +256,9 @@ struct MusicJSSourceView: View {
     private var metadataNotice: some View {
         VStack(alignment: .leading, spacing: 5) {
             Label(localized(metadataPlatform.providerName), systemImage: "info.circle")
-            Text(localized("目錄只提供歌曲資料；播放網址僅由你導入的 JS 音源解析。需具備相應播放權限。"))
+            Text(localized("目录只提供歌曲资料；播放网址仅由你导入的 JS 音源解析。需具备相应播放权限。"))
             if !MusicHomePresentation.canResolveCatalog(source: source, providerID: providerID, platform: metadataPlatform) {
-                Button(localized("選擇支援") + " \(metadataPlatform.rawValue) " + localized("的 JS 音源以播放")) { settings = true }
+                Button(localized("选择支援") + " \(metadataPlatform.rawValue) " + localized("的 JS 音源以播放")) { settings = true }
             }
         }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20)
     }
@@ -266,15 +266,15 @@ struct MusicJSSourceView: View {
     private var searchResults: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(localized("搜尋結果")).font(.title2.bold())
+                Text(localized("搜索结果")).font(.title2.bold())
                 Spacer()
-                Button(localized("返回發現")) { cancelSearch(); submitted = false }
+                Button(localized("返回发现")) { cancelSearch(); submitted = false }
             }
             Text((searchInScript ? (source?.name ?? localized("JS 音源")) : localized(metadataPlatform.providerName)) + " · " + submittedQuery)
                 .font(.caption).foregroundStyle(.secondary)
-            if searchLoading { ProgressView(localized("搜尋中…")) }
+            if searchLoading { ProgressView(localized("搜寻中…")) }
             else if let searchFailure { MusicCatalogStatus(message: searchFailure, retry: search) }
-            else if catalogResults.isEmpty && scriptResults.isEmpty { Text(localized("沒有搜尋結果。")).foregroundStyle(.secondary) }
+            else if catalogResults.isEmpty && scriptResults.isEmpty { Text(localized("没有搜寻结果。")).foregroundStyle(.secondary) }
             if searchInScript {
                 ForEach(scriptResults) { song in songRow(song, isSaved: false) }
             } else {
@@ -299,15 +299,15 @@ struct MusicJSSourceView: View {
                     }
                     Divider()
                 }
-                if !catalogResults.isEmpty { Text(localized("顯示服務返回的前 30 筆結果。")) .font(.caption).foregroundStyle(.secondary) }
+                if !catalogResults.isEmpty { Text(localized("显示服务返回的前 30 笔结果。")) .font(.caption).foregroundStyle(.secondary) }
             }
         }.padding(.horizontal, 20)
     }
 
     private var librarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(localized("已收藏音樂")).font(.title2.bold())
-            if saved.isEmpty { Text(localized("尚無收藏")).foregroundStyle(.secondary) }
+            Text(localized("已收藏音乐")).font(.title2.bold())
+            if saved.isEmpty { Text(localized("尚无收藏")).foregroundStyle(.secondary) }
             ForEach(saved) { song in songRow(song, isSaved: true); Divider() }
         }.padding(.horizontal, 20)
     }

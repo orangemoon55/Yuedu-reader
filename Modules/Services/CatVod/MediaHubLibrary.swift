@@ -94,8 +94,8 @@ enum MediaHubLibraryError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidItem: return localized("無法保存：內容識別資訊不完整。")
-        case .persistence(let reason): return String(format: localized("媒體庫保存失敗：%@"), reason)
+        case .invalidItem: return localized("无法保存：内容识别资讯不完整。")
+        case .persistence(let reason): return String(format: localized("媒体库保存失败：%@"), reason)
         }
     }
 }

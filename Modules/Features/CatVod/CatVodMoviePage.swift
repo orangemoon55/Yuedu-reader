@@ -125,7 +125,7 @@ struct CatVodMovieDetailPresentation: View {
         return values
     }
     private var playAction: BookDetailAction {
-        BookDetailAction(title: localized("開始播放"), systemImage: "play.fill",
+        BookDetailAction(title: localized("开始播放"), systemImage: "play.fill",
                          isBusy: isResolving, isEnabled: route?.episodes.isEmpty == false,
                          detail: route?.episodes.first?.title) {
             guard !isResolving, let route, let episode = route.episodes.first else { return }
@@ -146,7 +146,7 @@ struct CatVodMovieDetailPresentation: View {
                         Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
                             .modifier(VideoHeroCapsuleIcon())
                     }
-                    .accessibilityLabel(isBookmarked ? localized("移除收藏") : localized("加入媒體庫"))
+                    .accessibilityLabel(isBookmarked ? localized("移除收藏") : localized("加入媒体库"))
                     .accessibilityIdentifier("catvod.detail.bookmark")
                 }
             } intro: {
@@ -211,7 +211,7 @@ struct CatVodMovieDetailPresentation: View {
             VStack(alignment: .leading, spacing: DSSpacing.sm) {
                 if detail.routes.count > 1, let route {
                     Menu {
-                        Picker(localized("播放線路"), selection: $selectedRoute) {
+                        Picker(localized("播放线路"), selection: $selectedRoute) {
                             ForEach(detail.routes) { Text($0.name).tag($0.id) }
                         }
                     } label: {
@@ -225,15 +225,15 @@ struct CatVodMovieDetailPresentation: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isResolving)
-                    .accessibilityLabel(localized("播放線路"))
+                    .accessibilityLabel(localized("播放线路"))
                     .accessibilityValue(route.name)
                     .accessibilityIdentifier("catvod.detail.route")
                 } else {
-                    Text(localized("選集")).font(DSFont.headline.weight(.bold))
+                    Text(localized("选集")).font(DSFont.headline.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                 }
                 if isResolving {
-                    ProgressView(localized("載入中"))
+                    ProgressView(localized("加载中…"))
                         .accessibilityIdentifier("catvod.detail.resolving")
                 }
                 if let playFailure { errorText(playFailure, id: "catvod.detail.playError") }
@@ -242,7 +242,7 @@ struct CatVodMovieDetailPresentation: View {
             if let route, !route.episodes.isEmpty {
                 episodeCards(route)
             } else {
-                Text(localized("這部影片沒有可播放的集數"))
+                Text(localized("这部视频没有可播放的集数"))
                     .font(DSFont.subheadline).foregroundStyle(DSColor.textSecondary)
                     .frame(maxWidth: .infinity, minHeight: DSLayout.videoEpisodeCardHeight)
                     .padding(.horizontal, DSLayout.videoDetailMargin)
@@ -305,13 +305,13 @@ struct CatVodMovieLoadState: View {
                 Text(failure).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("catvod.detail.loadError")
                 Button(action: onRetry) {
-                    Text(localized("重試"))
+                    Text(localized("重试"))
                         .frame(minWidth: DSLayout.minimumTapTarget, minHeight: DSLayout.minimumTapTarget)
                         .contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("catvod.detail.retry")
             } else {
-                ProgressView(localized("載入中"))
+                ProgressView(localized("加载中…"))
                     .accessibilityIdentifier("catvod.detail.loading")
             }
         }

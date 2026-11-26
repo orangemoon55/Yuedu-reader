@@ -43,7 +43,7 @@ enum MediaHubVideoLayout {
         switch (path as NSString).pathExtension.lowercased() {
         case "js", "mjs", "cjs": return localized("JavaScript 源")
         case "py": return localized("Python 源")
-        default: return String(format: localized("CatVod 源 · 類型 %d"), site.type)
+        default: return String(format: localized("CatVod 源 · 类型 %d"), site.type)
         }
     }
 
@@ -82,7 +82,7 @@ struct MediaHubVideoSourceKindPill: View {
             .frame(minHeight: 44)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
             .accessibilityIdentifier("mediaHub.video.sourceKind")
-            .accessibilityHint(localized("類型來自所選站點的接口聲明，不代表新增本機執行環境。"))
+            .accessibilityHint(localized("类型来自所选站点的接口声明，不代表新增本机执行环境。"))
     }
 }
 
@@ -138,7 +138,7 @@ struct MediaHubVideoPosterCard: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityHint(localized("開啟詳情"))
+        .accessibilityHint(localized("开启详情"))
     }
 }
 
@@ -164,7 +164,7 @@ struct MediaHubVideoSkeletonGrid: View {
         }
         .foregroundStyle(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(localized("載入中"))
+        .accessibilityLabel(localized("加载中…"))
         .accessibilityIdentifier("mediaHub.video.loadingGrid")
     }
 }
@@ -174,7 +174,7 @@ struct MediaHubVideoSearchField: View {
     @Binding var text: String
     let loading: Bool
     var enabled = true
-    var prompt = "搜尋本站片名"
+    var prompt = "搜寻本站片名"
     var fieldIdentifier = "mediaHub.searchField"
     var buttonIdentifier = "mediaHub.video.searchSubmit"
     let submit: () -> Void
@@ -211,7 +211,7 @@ struct MediaHubVideoSearchField: View {
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             Button(action: submit) {
                 Group {
-                    if loading { ProgressView().accessibilityLabel(localized("載入中")) }
+                    if loading { ProgressView().accessibilityLabel(localized("加载中…")) }
                     else { Text(localized("搜索")).font(.subheadline.weight(.semibold)) }
                 }
                 .frame(minWidth: 52, minHeight: 48)
@@ -221,7 +221,7 @@ struct MediaHubVideoSearchField: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSubmit)
-            .accessibilityLabel(localized(loading ? "載入中" : "搜索"))
+            .accessibilityLabel(localized(loading ? "加载中…" : "搜索"))
             .accessibilityIdentifier(buttonIdentifier)
         }
     }

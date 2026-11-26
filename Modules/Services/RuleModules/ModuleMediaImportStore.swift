@@ -38,7 +38,7 @@ final class ModuleMediaImportStore: ObservableObject {
             archive = value
         } catch {
             // Do not silently replace a corrupt/unknown-version archive on the next import.
-            loadFailure = "無法讀取已保存的媒體匯入資料；原檔已保留，暫停寫入。\n" + error.localizedDescription
+            loadFailure = "无法读取已保存的媒体汇入资料；原档已保留，暂停写入。\n" + error.localizedDescription
         }
     }
 
@@ -90,17 +90,17 @@ final class ModuleMediaImportStore: ObservableObject {
         guard loadFailure == nil else { throw ModuleMediaImportError.invalid(loadFailure!) }
         try validate(next)
         let data = try JSONEncoder().encode(next)
-        guard data.count <= Self.archiveByteLimit else { throw ModuleMediaImportError.invalid("本機匯入資料總量超過 24 MB，請先移除不需要的字幕。") }
+        guard data.count <= Self.archiveByteLimit else { throw ModuleMediaImportError.invalid("本机汇入资料总量超过 24 MB，请先移除不需要的字幕。") }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try data.write(to: archiveURL, options: .atomic)
         archive = next
     }
 
     private func validate(_ value: Archive) throws {
-        guard value.version == 1 else { throw ModuleMediaImportError.invalid("不支援的媒體匯入資料版本。") }
+        guard value.version == 1 else { throw ModuleMediaImportError.invalid("不支援的媒体汇入资料版本。") }
         for list in [value.danmaku, value.subtitle] {
             guard list.count <= ModuleMediaImportParser.sourceLimit, Set(list.map(\.id)).count == list.count else {
-                throw ModuleMediaImportError.invalid("每類最多保存 100 個來源，id 不可重複。")
+                throw ModuleMediaImportError.invalid("每类最多保存 100 个来源，id 不可重复。")
             }
             for source in list { try ModuleMediaImportParser.validate(source) }
         }
@@ -110,13 +110,13 @@ final class ModuleMediaImportStore: ObservableObject {
         for file in value.files {
             guard file.filename.count <= 255, ["srt", "vtt"].contains((file.filename as NSString).pathExtension.lowercased()),
                   !file.cues.isEmpty, file.cues.count <= ModuleMediaImportParser.cueLimit else {
-                throw ModuleMediaImportError.invalid("保存的字幕資料無效。")
+                throw ModuleMediaImportError.invalid("保存的字幕资料无效。")
             }
             for cue in file.cues {
                 guard cue.start.isFinite, cue.end.isFinite, cue.start >= 0, cue.end > cue.start,
                       cue.end <= 7 * 24 * 3600, !cue.text.isEmpty,
                       cue.text.utf8.count <= ModuleMediaImportParser.cueTextLimit else {
-                    throw ModuleMediaImportError.invalid("保存的字幕時間軸無效。")
+                    throw ModuleMediaImportError.invalid("保存的字幕时间轴无效。")
                 }
             }
         }
@@ -132,7 +132,7 @@ final class ModuleMediaImportStore: ObservableObject {
             if chunk.isEmpty { break }
             data.append(chunk)
         }
-        guard data.count <= limit else { throw ModuleMediaImportError.invalid("匯入檔案超過大小限制。") }
+        guard data.count <= limit else { throw ModuleMediaImportError.invalid("汇入档案超过大小限制。") }
         return data
     }
 }

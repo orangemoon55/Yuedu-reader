@@ -124,8 +124,8 @@ enum TMDBClientError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: localized("TMDB 評分服務暫時無法使用。")
-        case .invalidResponse: localized("TMDB 回應無法辨識。")
+        case .unavailable: localized("TMDB 评分服务暂时无法使用。")
+        case .invalidResponse: localized("无法识别 TMDB 响应。")
         }
     }
 }

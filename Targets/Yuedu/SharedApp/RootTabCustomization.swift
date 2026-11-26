@@ -27,7 +27,7 @@ enum RootTabItem: String, CaseIterable, Codable, Hashable, Identifiable {
     var titleKey: String {
         switch self {
         case .bookshelf: return "書架"
-        case .explore: return "主頁"
+        case .explore: return "主页"
         case .library: return "資源庫"
         case .rss: return "RSS 訂閱"
         case .settings: return "設定"

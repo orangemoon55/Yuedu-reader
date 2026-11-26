@@ -17,7 +17,7 @@ struct CatVodSiteBrowserView: View {
                     enabled: model.site.searchable, fieldIdentifier: "catvod.site.search",
                     buttonIdentifier: "catvod.site.searchSubmit",
                     submit: { searchPresented = true }, clear: { draft = "" })
-                Text(localized("搜尋範圍") + " · " + model.site.name)
+                Text(localized("搜寻范围") + " · " + model.site.name)
                     .font(DSFont.caption).foregroundStyle(DSColor.textSecondary)
                 categoryControls
                 if MediaHubVideoLayout.showsSkeleton(loading: model.loading, itemCount: model.videos.count) {
@@ -26,16 +26,16 @@ struct CatVodSiteBrowserView: View {
                     MediaHubVideoGrid(videos: model.videos, identifier: "catvod.site.fixedGrid") { video in
                         CatVodMovieLink(sourceID: model.sourceID, siteKey: model.site.key, video: video)
                     }
-                    if model.loading { ProgressView(localized("載入中")) }
+                    if model.loading { ProgressView(localized("加载中…")) }
                     else if let failure = model.failure {
                         Text(failure).foregroundStyle(DSColor.textSecondary)
                             .accessibilityIdentifier("catvod.site.error")
-                        Button(localized("重試")) { Task { await model.open(force: true) } }
+                        Button(localized("重试")) { Task { await model.open(force: true) } }
                     } else if model.videos.isEmpty && model.home != nil {
-                        Text(localized("暫無發現內容")).foregroundStyle(DSColor.textSecondary)
+                        Text(localized("暂无发现内容")).foregroundStyle(DSColor.textSecondary)
                             .accessibilityIdentifier("catvod.site.empty")
                     } else if model.hasMore {
-                        Button(localized("載入更多")) { Task { await model.more() } }
+                        Button(localized("加载更多")) { Task { await model.more() } }
                             .frame(minHeight: 44).accessibilityIdentifier("catvod.site.loadMore")
                     }
                 }
@@ -58,10 +58,10 @@ struct CatVodSiteBrowserView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: DSSpacing.sm) {
                     if !home.categories.isEmpty {
-                        Picker(localized("分類"), selection: Binding<String?>(get: { model.categoryID }, set: { value in
+                        Picker(localized("分类"), selection: Binding<String?>(get: { model.categoryID }, set: { value in
                             Task { await model.select(value) }
                         })) {
-                            if !home.videos.isEmpty { Text(localized("站點推薦")).tag(nil as String?) }
+                            if !home.videos.isEmpty { Text(localized("站点推荐")).tag(nil as String?) }
                             ForEach(home.categories) { Text($0.name).tag(Optional($0.id)) }
                         }.pickerStyle(.menu).accessibilityIdentifier("catvod.site.category")
                     }
@@ -129,7 +129,7 @@ private struct CatVodSearchPage: View {
                 MediaHubVideoSearchField(text: $draft, loading: loading, enabled: site.searchable,
                     fieldIdentifier: "catvod.search.field", buttonIdentifier: "catvod.search.submit",
                     submit: submit, clear: clear)
-                Text(localized("搜尋範圍") + " · " + site.name)
+                Text(localized("搜寻范围") + " · " + site.name)
                     .font(DSFont.caption).foregroundStyle(DSColor.textSecondary)
                 if MediaHubVideoLayout.showsSkeleton(loading: loading, itemCount: results.count) {
                     MediaHubVideoSkeletonGrid()
@@ -137,14 +137,14 @@ private struct CatVodSearchPage: View {
                     MediaHubVideoGrid(videos: results, identifier: "catvod.search.fixedGrid") { video in
                         CatVodMovieLink(sourceID: sourceID, siteKey: site.key, video: video)
                     }
-                    if loading { ProgressView(localized("載入中")) }
+                    if loading { ProgressView(localized("加载中…")) }
                     else if let failure {
                         Text(failure).accessibilityIdentifier("catvod.search.error")
-                        Button(localized("重試")) { generation = UUID() }
+                        Button(localized("重试")) { generation = UUID() }
                     } else if !submitted.isEmpty && results.isEmpty {
-                        Text(localized("沒有搜尋結果")).accessibilityIdentifier("catvod.search.empty")
+                        Text(localized("没有搜索结果")).accessibilityIdentifier("catvod.search.empty")
                     } else if more {
-                        Button(localized("載入更多")) { requestedPage = page + 1; generation = UUID() }
+                        Button(localized("加载更多")) { requestedPage = page + 1; generation = UUID() }
                             .frame(minHeight: 44).accessibilityIdentifier("catvod.search.loadMore")
                     }
                 }
@@ -153,7 +153,7 @@ private struct CatVodSearchPage: View {
             .padding(.vertical, DSSpacing.sm)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(localized("搜尋本站影片")).toolbarTitleDisplayMode(.inline)
+        .navigationTitle(localized("搜索本站影片")).toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .explore)
         .task(id: generation) {
             let query = submitted, token = generation, n = requestedPage

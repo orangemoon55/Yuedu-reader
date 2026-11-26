@@ -20,7 +20,7 @@ struct Md5SourceManagerView: View {
             Section {
                 if library.sources.isEmpty {
                     VStack(alignment: .leading, spacing: DSSpacing.xs) {
-                        Text(localized("還沒有貓源"))
+                        Text(localized("还没有猫源"))
                             .foregroundStyle(DSColor.textPrimary)
                         Text(localized("按右上角的 + 加入 .js.md5 網址，例如 https://host/cat/index.js.md5。"))
                             .font(DSFont.footnote)
@@ -46,7 +46,7 @@ struct Md5SourceManagerView: View {
                         .foregroundStyle(DSColor.textSecondary)
                 }
             } header: {
-                Text(localized("貓源列表")).foregroundStyle(DSColor.textSecondary)
+                Text(localized("猫源列表")).foregroundStyle(DSColor.textSecondary)
             } footer: {
                 Text(localized("MD5 源是 CatVod 的 JS 打包檔，與 JSON 模組分開存放；下載後會核對 .md5 校驗，執行時只在本機 Node 環境內跑。"))
                     .dsSectionFooter()
@@ -57,32 +57,32 @@ struct Md5SourceManagerView: View {
                 NavigationLink {
                     Md5CloudAccountsView(library: library)
                 } label: {
-                    Label(localized("網盤帳號配置"), systemImage: "person.badge.key")
+                    Label(localized("网盘帐号配置"), systemImage: "person.badge.key")
                 }
                 .accessibilityIdentifier("md5source.accounts")
                 Button {
                     importAddress = ""
                     showsImport = true
                 } label: {
-                    Label(localized("從網址匯入貓源"), systemImage: "square.and.arrow.down")
+                    Label(localized("从网址汇入猫源"), systemImage: "square.and.arrow.down")
                 }
                 Button {
                     let address = UIPasteboard.general.string ?? ""
-                    guard address.utf8.count <= 8192 else { failure = localized("剪貼簿網址過長。"); return }
+                    guard address.utf8.count <= 8192 else { failure = localized("剪贴簿网址过长。"); return }
                     importAddress = address
                     showsImport = true
                 } label: {
-                    Label(localized("從剪貼簿匯入"), systemImage: "doc.on.clipboard")
+                    Label(localized("从剪贴簿汇入"), systemImage: "doc.on.clipboard")
                 }
                 .accessibilityIdentifier("md5source.clipboard")
             } footer: {
-                Text(localized("僅支援現有 CatVod JS / .js.md5 網址匯入。帳號配置會先讓你選擇來源，明確啟動後再開啟該來源的配置中心；來源之間不共用登入資料。"))
+                Text(localized("仅支援现有 CatVod JS / .js.md5 网址汇入。帐号配置会先让你选择来源，明确启动后再开启该来源的配置中心；来源之间不共用登入资料。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
         }
         .softScrollEdges()
-        .navigationTitle(localized("貓源"))
+        .navigationTitle(localized("猫源"))
         .toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .settings)
         .toolbar {
@@ -93,7 +93,7 @@ struct Md5SourceManagerView: View {
                 } label: {
                     Image(systemName: "plus").accessibilityHidden(true)
                 }
-                .accessibilityLabel(localized("新增貓源"))
+                .accessibilityLabel(localized("新增猫源"))
                 .accessibilityIdentifier("md5source.add")
             }
         }
@@ -185,7 +185,7 @@ struct Md5SourceImportSheet: View {
                 content
             }
             .softScrollEdges()
-            .navigationTitle(localized("新增貓源"))
+            .navigationTitle(localized("新增猫源"))
             .toolbarTitleDisplayMode(.inline)
             .themedAppSurface(for: .settings)
             .toolbar {
@@ -196,7 +196,7 @@ struct Md5SourceImportSheet: View {
                 if case .preview = model.phase {
                     ToolbarItem(placement: .confirmationAction) {
                         Button { Task { await model.commit() } } label: { Image(systemName: "checkmark").accessibilityHidden(true) }
-                            .accessibilityLabel(localized("加入貓源"))
+                            .accessibilityLabel(localized("加入猫源"))
                             .disabled(model.isLoading)
                             .accessibilityIdentifier("md5source.import.commit")
                     }
@@ -240,7 +240,7 @@ struct Md5SourceImportSheet: View {
             } header: {
                 Text(localized("已讀取")).foregroundStyle(DSColor.textSecondary)
             } footer: {
-                Text(localized("確認後會存到「模組 → 貓源」，不會寫進 JSON 模組。"))
+                Text(localized("确认后会存到「模组 → 猫源」，不会写进 JSON 模组。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
@@ -290,7 +290,7 @@ struct Md5SourceDetailView: View {
                     Button {
                         Task { await run() }
                     } label: {
-                        Label(localized(opensAccounts ? "啟動來源以配置網盤帳號" : "啟動並讀取站點"), systemImage: "play.circle")
+                        Label(localized(opensAccounts ? "启动来源以配置网盘帐号" : "启动并读取站点"), systemImage: "play.circle")
                     }
                     .accessibilityIdentifier("md5source.detail.run")
                 case .loading:

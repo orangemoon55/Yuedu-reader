@@ -24,11 +24,11 @@ enum CatVodUseError: LocalizedError {
     case removed, noSite, notSearchable, parsePage, inUse
     var errorDescription: String? {
         switch self {
-        case .removed: localized("這個 MD5 源已移除，請重新選擇內容來源。")
-        case .noSite: localized("源已不再提供此站點。")
-        case .notSearchable: localized("這個站點不支援搜尋。")
-        case .parsePage: localized("此線路需要網頁解析，請換一條提供直連的線路。")
-        case .inUse: localized("另一個貓源正在播放，關閉播放器後再試。")
+        case .removed: localized("此 MD5 源已移除，请重新选择内容来源。")
+        case .noSite: localized("此源已不再提供该站点。")
+        case .notSearchable: localized("此站点不支持搜索。")
+        case .parsePage: localized("此线路需要网页解析，请换一条提供直连的线路。")
+        case .inUse: localized("另一个 CatVod 源正在播放，请关闭播放器后重试。")
         }
     }
 }

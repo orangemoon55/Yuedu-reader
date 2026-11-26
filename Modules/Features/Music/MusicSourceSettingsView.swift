@@ -22,13 +22,13 @@ struct MusicSourceSettingsView: View {
             Form {
                 Section {
                     Label(localized(MusicPublicCatalog.providerName), systemImage: "music.note.list")
-                    Text(localized("首頁排行榜、公開熱門歌單及搜尋由獨立目錄提供，不依賴 JS 音源是否宣告 search。此目錄不提供音訊網址，也不代表播放授權。"))
+                    Text(localized("首页排行榜、公开热门歌单及搜寻由独立目录提供，不依赖 JS 音源是否宣告 search。此目录不提供音讯网址，也不代表播放授权。"))
                         .font(.footnote).foregroundStyle(.secondary)
-                } header: { Text(localized("音樂目錄")) }
-                Section(header: Text(localized("播放解析")), footer: Text(localized("只可導入可信的 LX 格式 .js 檔案。腳本可存取其音樂服務；Readcc 不會繞過付費、登入或 DRM 限制。"))) {
-                    Button { importing = true } label: { Label(localized("導入 JS 音源"), systemImage: "square.and.arrow.down") }
+                } header: { Text(localized("音乐目录")) }
+                Section(header: Text(localized("播放解析")), footer: Text(localized("只可导入可信的 LX 格式 .js 档案。脚本可存取其音乐服务；Readcc 不会绕过付费、登入或 DRM 限制。"))) {
+                    Button { importing = true } label: { Label(localized("导入 JS 音源"), systemImage: "square.and.arrow.down") }
                         .disabled(busy).accessibilityIdentifier("mediaHub.music.importJS")
-                    if store.sources.isEmpty { Text(localized("尚未導入 JS 音源；仍可瀏覽與搜尋公開目錄。")) .foregroundStyle(.secondary) }
+                    if store.sources.isEmpty { Text(localized("尚未导入 JS 音源；仍可浏览与搜寻公开目录。")) .foregroundStyle(.secondary) }
                     else {
                         Picker(localized("JS 音源"), selection: $selectedSourceID) {
                             ForEach(store.sources) { Text($0.name).tag($0.id) }
@@ -39,18 +39,18 @@ struct MusicSourceSettingsView: View {
                             }.accessibilityIdentifier("mediaHub.music.providerPicker")
                         }
                         if let provider {
-                            Picker(localized("音質"), selection: $quality) {
+                            Picker(localized("音质"), selection: $quality) {
                                 ForEach(provider.qualities, id: \.self) { Text($0).tag($0) }
                             }
-                            Text(localized(provider.canSearch ? "此平台支援 JS 搜尋及播放解析。" : "此平台僅提供播放解析；首頁仍可使用公開目錄搜尋。"))
+                            Text(localized(provider.canSearch ? "此平台支援 JS 搜寻及播放解析。" : "此平台仅提供播放解析；首页仍可使用公开目录搜寻。"))
                                 .font(.footnote).foregroundStyle(.secondary)
                             if provider.id != "wy" {
-                                Text(localized("網易雲目錄歌曲僅能交由 wy 平台解析，不會混用其他平台 ID。"))
+                                Text(localized("网易云目录歌曲仅能交由 wy 平台解析，不会混用其他平台 ID。"))
                                     .font(.footnote).foregroundStyle(.secondary)
                             }
                         }
                     }
-                    if busy { ProgressView(localized("導入中…")) }
+                    if busy { ProgressView(localized("导入中…")) }
                 }
                 if !store.sources.isEmpty {
                     Section(localized("管理音源")) {
@@ -70,12 +70,12 @@ struct MusicSourceSettingsView: View {
                 }
                 if let error = store.loadFailure { Text(error).foregroundStyle(.secondary) }
             }
-            .navigationTitle(localized("音樂設定")).toolbarTitleDisplayMode(.inline)
+            .navigationTitle(localized("音乐设置")).toolbarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(localized("完成")) { dismiss() } } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [UTType(filenameExtension: "js") ?? .javaScript],
                           allowsMultipleSelection: false, onCompletion: importSource)
-            .alert(localized("音樂導入失敗"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
-                Button(localized("關閉"), role: .cancel) { failure = nil }
+            .alert(localized("音乐导入失败"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+                Button(localized("关闭"), role: .cancel) { failure = nil }
             } message: { Text(failure ?? "") }
         }
         .onDisappear { task?.cancel(); generation = UUID() }

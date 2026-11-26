@@ -8,7 +8,7 @@ struct Md5CloudAccountsView: View {
         Form {
             Section {
                 if library.sources.isEmpty {
-                    Text(localized("請先在貓源頁加入一個來源，再配置該來源的網盤帳號。"))
+                    Text(localized("请先在猫源页加入一个来源，再配置该来源的网盘帐号。"))
                         .foregroundStyle(DSColor.textSecondary)
                 }
                 ForEach(library.sources) { source in
@@ -22,14 +22,14 @@ struct Md5CloudAccountsView: View {
                     }
                     .accessibilityIdentifier("md5source.accounts.\(source.id.prefix(8))")
                 }
-            } header: { Text(localized("選擇貓源")) } footer: {
-                Text(localized("網盤帳號由所選貓源的配置中心管理。選擇後需明確啟動來源；只有啟動成功才會進入既有帳號編輯頁。"))
+            } header: { Text(localized("选择猫源")) } footer: {
+                Text(localized("网盘帐号由所选猫源的配置中心管理。选择后需明确启动来源；只有启动成功才会进入既有帐号编辑页。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
         }
         .softScrollEdges()
-        .navigationTitle(localized("網盤帳號配置"))
+        .navigationTitle(localized("网盘帐号配置"))
         .toolbarTitleDisplayMode(.inline)
         .themedAppSurface(for: .settings)
         .task { library.loadIfNeeded() }

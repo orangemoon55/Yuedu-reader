@@ -55,7 +55,7 @@ struct MusicPlayerView: View {
                         player.currentTrack?.id == displayedTrack.id ? player.currentTime : 0
                     }, set: { player.seek(to: $0) }), in: 0...max(1, player.duration))
                     .disabled(player.currentTrack?.id != displayedTrack.id || player.duration <= 0)
-                    .accessibilityLabel(localized("播放進度"))
+                    .accessibilityLabel(localized("播放进度"))
                     .accessibilityValue(Self.time(player.currentTime) + " / " + Self.time(player.duration))
                     HStack {
                         Text(Self.time(player.currentTrack?.id == displayedTrack.id ? player.currentTime : 0))
@@ -81,7 +81,7 @@ struct MusicPlayerView: View {
                                 .frame(width: 58, height: 58)
                         }
                         .buttonStyle(.onAccentProminent)
-                        .accessibilityLabel(localized(player.isPlaying ? "暫停" : "播放"))
+                        .accessibilityLabel(localized(player.isPlaying ? "暂停" : "播放"))
                         .accessibilityIdentifier("mediaHub.music.play")
                         Button { player.next() } label: {
                             Image(systemName: "forward.fill").font(DSFont.title2)
@@ -98,7 +98,7 @@ struct MusicPlayerView: View {
                 }
                 .padding(DSSpacing.lg)
             }
-            .navigationTitle(localized("音樂播放"))
+            .navigationTitle(localized("音乐播放"))
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -131,11 +131,11 @@ struct MusicPlayerView: View {
     private var lyricsPanel: some View {
         VStack(spacing: DSSpacing.sm) {
             HStack {
-                Text(localized("歌詞")).font(DSFont.subheadline.weight(.semibold))
+                Text(localized("歌词")).font(DSFont.subheadline.weight(.semibold))
                     .foregroundStyle(DSColor.textPrimary)
                 Spacer()
                 Button(action: beginLyricsImport) {
-                    Label(localized("匯入本地 LRC"), systemImage: "doc.badge.plus")
+                    Label(localized("汇入本地 LRC"), systemImage: "doc.badge.plus")
                         .font(DSFont.caption)
                 }
                 .accessibilityIdentifier("mediaHub.music.lyrics.import")
@@ -161,7 +161,7 @@ struct MusicPlayerView: View {
                     if player.currentTrack != nil {
                         switch lyricsModel.state {
                         case .failed, .unavailable, .instrumental:
-                            Button(localized("重試線上歌詞")) { Task { await lyricsModel.retry() } }
+                            Button(localized("重试线上歌词")) { Task { await lyricsModel.retry() } }
                                 .font(DSFont.caption)
                                 .accessibilityIdentifier("mediaHub.music.lyrics.retry")
                         default: EmptyView()
@@ -180,12 +180,12 @@ struct MusicPlayerView: View {
 
     private var lyricsStatusMessage: String {
         switch lyricsModel.state {
-        case .idle: return localized("開始播放後可載入原平台歌詞，或匯入你有權使用的本地 LRC。")
-        case .loading: return localized("正在載入原平台歌詞…")
-        case .ready: return localized("此曲暫無可顯示的歌詞。")
-        case .instrumental: return localized("平台標記此曲為純音樂，沒有歌詞。")
-        case .unavailable: return localized("原平台暫未收錄此曲歌詞；可重試或匯入本地 LRC。")
-        case .unsupported: return localized("此曲無可用的網易雲／QQ 原平台識別碼；可匯入本地 LRC。")
+        case .idle: return localized("开始播放后可载入原平台歌词，或汇入你有权使用的本地 LRC。")
+        case .loading: return localized("正在载入原平台歌词…")
+        case .ready: return localized("此曲暂无可显示的歌词。")
+        case .instrumental: return localized("平台标记此曲为纯音乐，没有歌词。")
+        case .unavailable: return localized("原平台暂未收录此曲歌词；可重试或汇入本地 LRC。")
+        case .unsupported: return localized("此曲无可用的网易云／QQ 原平台识别码；可汇入本地 LRC。")
         case .failed(let message): return message
         }
     }
@@ -318,30 +318,30 @@ struct MusicDirectImportSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(localized("音訊直鏈（http/https）"), text: $url)
+                    TextField(localized("音讯直链（http/https）"), text: $url)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                         .accessibilityIdentifier("mediaHub.music.directURL")
-                    TextField(localized("標題（可選）"), text: $title)
-                    TextField(localized("演出者（可選）"), text: $artist)
-                    TextField(localized("請求頭 JSON（可選）"), text: $headersJSON, axis: .vertical)
+                    TextField(localized("标题（可选）"), text: $title)
+                    TextField(localized("演出者（可选）"), text: $artist)
+                    TextField(localized("请求头 JSON（可选）"), text: $headersJSON, axis: .vertical)
                         .lineLimit(2...5)
                         .textInputAutocapitalization(.never)
                 } footer: {
-                    Text(localized("只會播放你有權使用的直鏈；Readcc 不代替來源取得授權或繞過限制。"))
+                    Text(localized("只会播放你有权使用的直链；Readcc 不代替来源取得授权或绕过限制。"))
                 }
                 Section {
                     Button {
                         onImport(url, title, artist, headersJSON)
                         dismiss()
                     } label: {
-                        Label(localized("加入並播放"), systemImage: "plus.circle.fill")
+                        Label(localized("加入并播放"), systemImage: "plus.circle.fill")
                     }
                     .disabled(url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationTitle(localized("加入音樂直鏈"))
+            .navigationTitle(localized("加入音乐直链"))
             .toolbarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(localized("取消")) { dismiss() } } }
         }

@@ -10,33 +10,33 @@ struct TMDBSettingsView: View {
         Form {
             Section {
                 Toggle(isOn: $enabled) {
-                    SettingsRowLabel(localized("啟用 TMDB 評分"), systemImage: "star.circle")
+                    SettingsRowLabel(localized("启用 TMDB 评分"), systemImage: "star.circle")
                 }
                 .accessibilityIdentifier("media.tmdb.enabled")
 
-                SecureField(localized("TMDB API 金鑰或 Read Access Token"), text: $credentialDraft)
+                SecureField(localized("TMDB API 密钥或 Read Access Token"), text: $credentialDraft)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("media.tmdb.credential")
-                Button(localized("儲存 TMDB 憑證"), action: saveCredential)
+                Button(localized("保存 TMDB 凭证"), action: saveCredential)
                     .disabled(credentialDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("media.tmdb.save")
                 if hasCredential {
-                    LabeledContent(localized("憑證狀態")) {
-                        Text(localized("已安全儲存；不會顯示憑證內容"))
+                    LabeledContent(localized("凭证状态")) {
+                        Text(localized("已安全保存；不会显示凭证内容"))
                             .foregroundStyle(DSColor.textSecondary)
                     }
-                    Button(localized("移除 TMDB 憑證"), role: .destructive, action: removeCredential)
+                    Button(localized("移除 TMDB 凭证"), role: .destructive, action: removeCredential)
                         .accessibilityIdentifier("media.tmdb.remove")
                 }
                 Link(destination: URL(string: "https://www.themoviedb.org/settings/api")!) {
-                    Label(localized("前往 TMDB 官方 API 金鑰頁面"), systemImage: "arrow.up.right.square")
+                    Label(localized("前往 TMDB 官方 API 密钥页面"), systemImage: "arrow.up.right.square")
                 }
             } header: {
-                Text(localized("TMDB 帳戶"))
+                Text(localized("TMDB 账户"))
                     .foregroundStyle(DSColor.textSecondary)
             } footer: {
-                Text(localized("憑證只保存在此裝置的 Keychain，不會寫入偏好設定或日誌。查詢只傳送至 TMDB 官方 HTTPS API；關閉評分或未設定憑證時不會發出請求。v3 金鑰以查詢參數傳送，v4 Read Access Token 以授權標頭傳送。"))
+                Text(localized("凭证只保存在此设备的 Keychain，不写入偏好设置或日志。查询仅发送至 TMDB 官方 HTTPS API；关闭评分或未配置凭证时不会请求。v3 密钥通过查询参数发送，v4 Read Access Token 通过授权标头发送。"))
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
@@ -46,17 +46,17 @@ struct TMDBSettingsView: View {
                     .font(DSFont.caption)
                     .foregroundStyle(DSColor.textSecondary)
             } header: {
-                Text(localized("資料來源與 attribution"))
+                Text(localized("数据来源与署名"))
                     .foregroundStyle(DSColor.textSecondary)
             }
             .interfaceSectionSurface()
         }
         .softScrollEdges()
         .themedAppSurface(for: .settings)
-        .navigationTitle(localized("TMDB 評分"))
+        .navigationTitle(localized("TMDB 评分"))
         .toolbarTitleDisplayMode(.inline)
         .onAppear { hasCredential = TMDBSettings.credential?.isEmpty == false }
-        .alert(localized("TMDB 憑證"), isPresented: Binding(
+        .alert(localized("TMDB 凭证"), isPresented: Binding(
             get: { message != nil }, set: { if !$0 { message = nil } }
         )) {
             Button(localized("好"), role: .cancel) { message = nil }
@@ -71,7 +71,7 @@ struct TMDBSettingsView: View {
             credentialDraft = ""
             hasCredential = true
         } catch {
-            message = localized("無法安全儲存 TMDB 憑證，請稍後再試。")
+            message = localized("无法安全保存 TMDB 凭证，请稍后重试。")
         }
     }
 
@@ -81,7 +81,7 @@ struct TMDBSettingsView: View {
             credentialDraft = ""
             hasCredential = false
         } catch {
-            message = localized("無法移除 TMDB 憑證，原設定未變更。")
+            message = localized("无法移除 TMDB 凭证，原设置未更改。")
         }
     }
 }

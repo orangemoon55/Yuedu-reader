@@ -26,7 +26,7 @@ struct MusicTrackDescriptor: Codable, Hashable, Identifiable, Sendable {
     func libraryItem(sourceID: String = MusicImportService.sourceID,
                     siteKey: String = MusicImportService.siteKey) -> MediaHubLibraryItem {
         MediaHubLibraryItem(sourceID: sourceID, siteKey: siteKey, videoID: id,
-            title: title, poster: "", kind: .music, siteName: "本機音樂",
+            title: title, poster: "", kind: .music, siteName: "本机音乐",
             categoryName: album.isEmpty ? nil : album,
             remarks: artist.isEmpty ? nil : artist,
             musicURL: urlString, musicHeaders: headers.isEmpty ? nil : headers)
@@ -62,11 +62,11 @@ enum MusicImportError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedFile: return localized("不支援的音訊或播放列表格式。")
-        case .invalidURL: return localized("只接受有效的 http(s) 音樂直鏈；不會代替來源繞過授權。")
-        case .emptyPlaylist: return localized("播放列表沒有可播放的音訊項。")
-        case .cannotCopy(let reason): return String(format: localized("無法導入音訊：%@"), reason)
-        case .malformedHeaders: return localized("請求頭必須是 JSON 對象，例如 {\"Referer\":\"https://example.com\"}。")
+        case .unsupportedFile: return localized("不支援的音讯或播放列表格式。")
+        case .invalidURL: return localized("只接受有效的 http(s) 音乐直链；不会代替来源绕过授权。")
+        case .emptyPlaylist: return localized("播放列表没有可播放的音讯项。")
+        case .cannotCopy(let reason): return String(format: localized("无法导入音讯：%@"), reason)
+        case .malformedHeaders: return localized("请求头必须是 JSON 对象，例如 {\"Referer\":\"https://example.com\"}。")
         }
     }
 }
@@ -202,6 +202,6 @@ enum MusicImportService {
     private static func titleFromURL(_ url: URL) -> String {
         let raw = url.deletingPathExtension().lastPathComponent
         let value = raw.removingPercentEncoding ?? raw
-        return value.isEmpty ? localized("未命名音訊") : value
+        return value.isEmpty ? localized("未命名音讯") : value
     }
 }

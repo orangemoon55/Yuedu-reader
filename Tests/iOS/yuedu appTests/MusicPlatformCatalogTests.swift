@@ -109,7 +109,7 @@ struct MusicPlatformCatalogTests {
         let b = MusicCatalogEntry(identifier: "7", kind: .playlist, title: "QQ", subtitle: "", poster: "", track: nil, platform: .tx)
         #expect(a.id != b.id)
         #expect(throws: MusicCatalogError.invalidResponse) { try MusicQQCatalog.makeRequest(.tracks(a)) }
-        #expect(MusicHomePresentation.catalogCaption(for: b, showingOrigin: true) == localized("QQ 音樂"))
+        #expect(MusicHomePresentation.catalogCaption(for: b, showingOrigin: true) == localized("QQ 音乐"))
     }
     @Test func invalidIDsURLsMissingSchemasAndServiceFailuresAreNotEmptySuccess() throws {
         for value in ["", "../escape", "id?token=secret", "a/b", String(repeating: "x", count: 65)] {

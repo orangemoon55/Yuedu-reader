@@ -40,12 +40,12 @@ struct MovieRatingsView: View {
             if !compact, completedRequest == request, let failure {
                 HStack {
                     Text(failure).font(DSFont.caption).foregroundStyle(DSColor.textSecondary)
-                    Button(localized("重試")) { retry += 1 }.font(DSFont.caption)
+                    Button(localized("重试")) { retry += 1 }.font(DSFont.caption)
                 }
                 .accessibilityIdentifier("movie.ratings.retry")
             }
             if ratings.contains(where: { $0.origin == .tmdbAPI }) {
-                Text(localized("TMDB 資料；本產品未經 TMDB 認可或認證。"))
+                Text(localized("TMDB 数据；本产品未经 TMDB 认可或认证。"))
                     .font(DSFont.caption2).foregroundStyle(.secondary)
                     .multilineTextAlignment(centered ? .center : .leading)
             }
@@ -63,7 +63,7 @@ struct MovieRatingsView: View {
             } catch {
                 guard !Task.isCancelled, started == request else { return }
                 // Never print URLs, source credentials or errors carrying an API-key query.
-                failure = localized("TMDB 評分暫時無法載入，片源與播放不受影響。")
+                failure = localized("TMDB 评分暂时无法加载，片源与播放不受影响。")
                 completedRequest = started
             }
         }
@@ -80,7 +80,7 @@ struct MovieRatingsView: View {
                 Text(localized(rating.origin == .tmdbAPI ? "由 TMDB 提供" : "由片源提供"))
                     .font(DSFont.caption2).foregroundStyle(.secondary)
                 if let count = rating.voteCount {
-                    Text(String(format: localized("%d 人評分"), count))
+                    Text(String(format: localized("%d 人评分"), count))
                         .font(DSFont.caption2).foregroundStyle(.secondary)
                 }
             }
