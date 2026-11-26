@@ -234,10 +234,12 @@ final class MusicPlayer: ObservableObject {
     ) -> AnyCancellable {
         // KVO stays installed through readyToPlay. A later status-only failure must reach the
         // same terminal-event policy even when AVFoundation posts no failed-to-end notification.
-        let observation = item.observe(\.status, options: [.initial, .new]) { _, change in
-            let rawStatus = change.newValue?.rawValue
+        let observation = item.observe(\.status, options: [.initial, .new]) { observedItem, _ in
+            // Read the observed property itself: an optional KVO change payload must not
+            // silently discard a real status. Snapshot before hopping to the main actor.
+            let rawStatus = observedItem.status.rawValue
             Task { @MainActor in
-                guard let rawStatus, let status = AVPlayerItem.Status(rawValue: rawStatus) else { return }
+                guard let status = AVPlayerItem.Status(rawValue: rawStatus) else { return }
                 deliver(status)
             }
         }

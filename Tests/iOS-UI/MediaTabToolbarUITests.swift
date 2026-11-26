@@ -3,6 +3,8 @@ import XCTest
 
 /// Visible toolbar fallback on wide iPads, plus the separate iPadOS 18+ sidebar gesture.
 final class MediaTabToolbarUITests: XCTestCase {
+    @MainActor private var notificationInterruptionCount = 0
+
     @MainActor
     func testWideLayoutOffersHomeAndLibraryMediaMenusWithoutReplacingRoots() throws {
         try withWideApp { app in
@@ -84,12 +86,15 @@ final class MediaTabToolbarUITests: XCTestCase {
             assertVisible("mediaHub.videoHome", in: app)
             choose("reading", for: "explore", in: app)
             assertReadingHome(in: app)
+            assertGone("mediaHub.videoHome", in: app)
             assertGone("mediaHub.close", in: app)
             selectTab("bookshelf", in: app)
             choose("music", for: "bookshelf", in: app)
             assertVisible("mediaHub.musicLibrary", in: app)
             choose("reading", for: "bookshelf", in: app)
             assertVisible("home_options_menu", in: app)
+            assertGone("mediaHub.musicLibrary", in: app)
+            assertGone("mediaHub.close", in: app)
             XCTAssertEqual(app.state, .runningForeground)
         }
     }
@@ -102,6 +107,11 @@ final class MediaTabToolbarUITests: XCTestCase {
         let device = XCUIDevice.shared
         let previousOrientation = device.orientation
         device.orientation = .landscapeLeft
+        notificationInterruptionCount = 0
+        let notificationMonitor = addUIInterruptionMonitor(withDescription: "Readcc notification permission") { alert in
+            self.handleNotificationPrompt(alert)
+        }
+        defer { removeUIInterruptionMonitor(notificationMonitor) }
         let app = XCUIApplication()
         // No media-content defaults arguments: those would mask the values under test.
         app.launchArguments = ["-onboarding.completed", "YES", "-debug-force-pro",
@@ -113,8 +123,9 @@ final class MediaTabToolbarUITests: XCTestCase {
             app.terminate()
             device.orientation = previousOrientation
         }
-        // StoreKit reset does not clear UserDefaults. Reset both roots through actual UI once,
-        // before the scenario, never between terminate/launch assertions.
+        dismissPendingNotificationPrompt()
+        // Start both in-memory routes in reading through the same UI used by the scenario;
+        // never reset them between terminate/launch assertions.
         choose("reading", for: "explore", in: app)
         selectTab("bookshelf", in: app)
         choose("reading", for: "bookshelf", in: app)
@@ -156,12 +167,50 @@ final class MediaTabToolbarUITests: XCTestCase {
 
     @MainActor
     private func choose(_ kind: String, for tab: String, in app: XCUIApplication) {
-        let menu = app.buttons["rootTabMediaMenu.\(tab)"].firstMatch
-        XCTAssertTrue(menu.waitForExistence(timeout: 20), "Missing visible \(tab) toolbar menu: \(app.debugDescription)")
-        XCTAssertTrue(menu.isHittable)
-        menu.tap()
-        assertMenu(for: tab, in: app)
-        app.buttons["rootTabMedia.\(tab).\(kind)"].firstMatch.tap()
+        // A permission prompt can invalidate an already-open menu's activation point.
+        // Retry only after our narrowly matched notification handler actually ran;
+        // never retry an application failure or infer success from a hidden toolbar.
+        for _ in 0..<2 {
+            dismissPendingNotificationPrompt()
+            let interruptionsBeforeTap = notificationInterruptionCount
+            let action = app.buttons["rootTabMedia.\(tab).\(kind)"].firstMatch
+            if !action.exists || !action.isHittable {
+                let menu = app.buttons["rootTabMediaMenu.\(tab)"].firstMatch
+                XCTAssertTrue(menu.waitForExistence(timeout: 20), "Missing visible \(tab) toolbar menu: \(app.debugDescription)")
+                XCTAssertTrue(menu.isHittable)
+                menu.tap()
+            }
+            dismissPendingNotificationPrompt()
+            if notificationInterruptionCount != interruptionsBeforeTap { continue }
+            assertMenu(for: tab, in: app)
+            // Requery after interruption handling instead of reusing a pre-alert element.
+            app.buttons["rootTabMedia.\(tab).\(kind)"].firstMatch.tap()
+            dismissPendingNotificationPrompt()
+            if notificationInterruptionCount == interruptionsBeforeTap { return }
+        }
+        XCTFail("Notification permission repeatedly interrupted \(tab)/\(kind): \(app.debugDescription)")
+    }
+
+    @MainActor
+    @discardableResult
+    private func handleNotificationPrompt(_ alert: XCUIElement) -> Bool {
+        guard alert.exists else { return false }
+        let title = alert.label.lowercased()
+        guard title.contains("readcc"), title.contains("notification") || title.contains("通知") else { return false }
+        let allow = alert.buttons.matching(NSPredicate(format: "label IN %@", ["Allow", "允许", "允許"])).firstMatch
+        guard allow.exists, allow.isHittable else { return false }
+        allow.tap()
+        notificationInterruptionCount += 1
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+        let dismissed = XCTWaiter.wait(for: [gone], timeout: 5) == .completed
+        XCTAssertTrue(dismissed, "Notification alert did not dismiss")
+        return dismissed
+    }
+
+    @MainActor
+    private func dismissPendingNotificationPrompt() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        _ = handleNotificationPrompt(springboard.alerts.firstMatch)
     }
 
     @MainActor
@@ -240,8 +289,20 @@ final class MediaTabToolbarUITests: XCTestCase {
     private func assertGone(_ identifier: String, in app: XCUIApplication) {
         let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
-        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 10), .completed,
-                       "\(identifier) remained after returning to reading")
+        guard XCTWaiter.wait(for: [gone], timeout: 10) == .completed else {
+            let matches = app.descendants(matching: .any).matching(identifier: identifier).allElementsBoundByIndex
+            let residue = matches.map { "exists=\($0.exists), hittable=\($0.isHittable), frame=\($0.frame)" }
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "reading-\(identifier)-residue"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            let hierarchy = XCTAttachment(string: "state=\(app.state), notificationsHandled=\(notificationInterruptionCount), matches=\(residue)\n\(app.debugDescription)\nSpringBoard alerts:\n\(XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.debugDescription)")
+            hierarchy.name = "reading-\(identifier)-AX-residue"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+            XCTFail("\(identifier) remained after returning to reading (must not exist): \(residue)")
+            return
+        }
     }
 
     @MainActor
@@ -255,6 +316,7 @@ final class MediaTabToolbarUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        dismissPendingNotificationPrompt()
     }
 
     /// Do not mask the original failure with teardown assertions; next setup also resets both.

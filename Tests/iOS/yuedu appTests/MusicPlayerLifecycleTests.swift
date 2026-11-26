@@ -7,6 +7,35 @@ import XCTest
 /// Adds to the already selected XCTest class, so the media51 CI scope executes these tests.
 extension MusicPlayerPlaybackTests {
     @MainActor
+    func testDefaultStatusBridgeDeliversInitialAndRealReadyOnMainActor() async throws {
+        let fixture = try LifecycleAudioFixture(probe: MusicStatusProbe())
+        defer { fixture.cleanup() }
+        let item = AVPlayerItem(asset: AVURLAsset(url: fixture.file))
+        XCTAssertEqual(item.status, .unknown)
+        let received = RealStatusRecorder()
+        let observation = yuedu_app.MusicPlayer.observeStatus(of: item) { status in
+            received.values.append(status.rawValue)
+        }
+        defer { observation.cancel() }
+        // Verify the initial notification independently, before playback can change status.
+        let initialDeadline = Date().addingTimeInterval(2)
+        while received.values.isEmpty, Date() < initialDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(received.values.first, AVPlayerItem.Status.unknown.rawValue,
+                       "Production KVO bridge must deliver its initial status")
+        fixture.native.insert(item, after: nil)
+        fixture.native.play()
+        let readyDeadline = Date().addingTimeInterval(10)
+        while !received.values.contains(AVPlayerItem.Status.readyToPlay.rawValue), Date() < readyDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(received.values.contains(AVPlayerItem.Status.readyToPlay.rawValue),
+                      "Production KVO bridge missed real local PCM readiness: \(received.values)")
+        XCTAssertEqual(item.status, .readyToPlay)
+    }
+
+    @MainActor
     func testDefaultStatusBridgeDeliversRealAVFoundationFailureOnMainActor() async throws {
         let file = FileManager.default.temporaryDirectory
             .appendingPathComponent("music-kvo-invalid-\(UUID().uuidString).wav")

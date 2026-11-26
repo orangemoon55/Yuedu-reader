@@ -1098,11 +1098,13 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
                 .allowsHitTesting(!showsMedia)
                 .accessibilityHidden(showsMedia)
 
-            // Keep exactly one media stack at a stable structural identity. Changing
-            // kinds replaces only its root content, and clearing a route cancels that
-            // destination's scoped tasks without dismantling the NavigationStack host.
-            NavigationStack {
-                if let route {
+            // Opacity/AX hiding does not relinquish a mounted stack's navigation bar
+            // or toolbar preferences. Remove the media toolbar's owner when its route
+            // closes, rather than leaving an empty, hidden NavigationStack over reading.
+            // Its identity stays stable across media kinds; the original root above
+            // stays mounted across every route change.
+            if let route {
+                NavigationStack {
                     MediaHubRootView(
                         kind: route.kind,
                         isLibrary: isLibrary,
@@ -1110,13 +1112,8 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
                         embedsNavigationStack: false
                     )
                     .id(route.id)
-                } else {
-                    Color.clear
                 }
             }
-            .opacity(showsMedia ? 1 : 0)
-            .allowsHitTesting(showsMedia)
-            .accessibilityHidden(!showsMedia)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

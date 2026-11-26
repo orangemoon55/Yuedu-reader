@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wraps menu-driven route updates in a non-animated transaction. The hosting
+/// Wraps menu-driven route updates in a non-animated transaction. The original root
 /// NavigationStacks remain mounted; this helper deliberately has no timer or task.
 @MainActor
 struct RootTabMediaActionCoordinator {
