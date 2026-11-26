@@ -1,0 +1,10 @@
+# Additional public music metadata adapters
+
+`MusicAdditionalCatalogs.swift` and new kg/kw/mg resolver field mappings in `MusicPublicCatalog.swift` add catalogue metadata, not audio access or playback authorization.
+
+The Kuwo and Migu request/response field mappings adapt the public protocol structure in Yingxia / 映匣 `jo32/tvbox-silicon`, fixed commit `a6bcc00bbbdbd7c6af7b7223ca2fa6018d6d685c`, `Sources/TVCore/MusicMiguKuwo.swift` and `MusicLXSources.swift`.
+Copyright (C) 2026 jo32 and Yingxia contributors. Adapted portions retain GPL-3.0-only. Full license is preserved in sibling `MusicQQCatalog.COPYING` and `LICENSES/Yingxia-GPL-3.0-only.txt`. Corresponding source accompanies the source archive; this notice does not relicense those portions under MPL-2.0. No signing constants, private keys, synthetic device identity, upstream audio resolver or scripts were copied.
+
+Kugou metadata field mapping is independently implemented from anonymous public search responses. Soda is independently implemented from observed public H5 `track_v2` metadata; neither a decompilation nor a transplant of proprietary Swift code. Soda keyword-search response/authentication is unconfirmed and NOT enabled: a user must supply a numeric track ID. Apple uses the documented public iTunes Search API in the explicitly labelled US storefront, not MusicKit playback or a user's Apple account/library: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html . Preview/audio URLs are ignored.
+
+Local changes: strict seven-platform identity; per-platform supported capabilities; ephemeral cookie/credential-free bounded HTTPS transport and redirects; 2 MiB incremental response cap; cancellation; metadata-only parser; no cross-platform fallback, paid bypass, authentication workaround, or hidden permanent loading. Anonymous requests can be refused by the provider; a fixture does not establish live reachability. Soda/Apple do not claim a working JS playback mapping; new platforms do not claim online lyric support.

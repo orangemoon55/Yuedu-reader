@@ -19,7 +19,7 @@ enum MusicHomePresentation {
             ? localized(entry.platform.title) : entry.subtitle
     }
     static func canResolveCatalog(source: MusicJSSource?, providerID: String, platform: MusicCatalogPlatform = .wy) -> Bool {
-        providerID == platform.rawValue && source?.providers.contains(where: { $0.id == platform.rawValue && $0.actions.contains("musicUrl") }) == true
+        platform.hasResolverMapping && providerID == platform.rawValue && source?.providers.contains(where: { $0.id == platform.rawValue && $0.actions.contains("musicUrl") }) == true
     }
 }
 
@@ -49,7 +49,7 @@ final class MusicHomeCatalogModel: ObservableObject {
         guard !Task.isCancelled else { return }
         let token = UUID(); generation = token
         charts = []; playlists = []
-        chartsLoading = true; playlistsLoading = true
+        chartsLoading = platform.hasCharts; playlistsLoading = platform.hasPlaylists
         chartsError = nil; playlistsError = nil
         async let first: Void = loadCharts(token, platform: platform)
         async let second: Void = loadPlaylists(token, platform: platform)
@@ -57,6 +57,7 @@ final class MusicHomeCatalogModel: ObservableObject {
     }
     private func loadCharts(_ token: UUID, platform: MusicCatalogPlatform) async {
         defer { if generation == token { chartsLoading = false } }
+        guard platform.hasCharts else { return }
         do {
             let values = try await chartLoader(platform)
             guard !Task.isCancelled, generation == token else { return }
@@ -68,6 +69,7 @@ final class MusicHomeCatalogModel: ObservableObject {
     }
     private func loadPlaylists(_ token: UUID, platform: MusicCatalogPlatform) async {
         defer { if generation == token { playlistsLoading = false } }
+        guard platform.hasPlaylists else { return }
         do {
             let values = try await playlistLoader(platform)
             guard !Task.isCancelled, generation == token else { return }

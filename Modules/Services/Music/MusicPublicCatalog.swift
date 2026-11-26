@@ -33,12 +33,50 @@ enum MusicCatalogKind: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum MusicCatalogPlatform: String, CaseIterable, Identifiable, Sendable {
-    case wy, tx
+    case wy, tx, kg, kw, mg, sd, apple
     var id: String { rawValue }
-    var title: String { self == .wy ? "網易雲音樂" : "QQ 音樂" }
+    var title: String {
+        switch self {
+        case .wy: return "網易雲音樂"
+        case .tx: return "QQ 音樂"
+        case .kg: return "酷狗音樂"
+        case .kw: return "酷我音樂"
+        case .mg: return "咪咕音樂"
+        case .sd: return "汽水音樂"
+        case .apple: return "Apple Music"
+        }
+    }
     var providerName: String { title + " · 公開元資料" }
-    // QQ artist search/detail has not been implemented; never masquerade it as an empty success.
-    var searchKinds: [MusicCatalogKind] { self == .wy ? MusicCatalogKind.allCases : [.song, .album, .playlist] }
+    var searchKinds: [MusicCatalogKind] {
+        switch self {
+        case .wy: return MusicCatalogKind.allCases
+        case .tx: return [.song, .album, .playlist]
+        case .apple: return [.song, .album, .artist]
+        case .kg, .kw, .mg, .sd: return [.song]
+        }
+    }
+    var detailKinds: [MusicCatalogKind] {
+        switch self {
+        case .wy: return [.artist, .album, .playlist]
+        case .tx: return [.album, .playlist]
+        case .apple: return [.artist, .album]
+        case .kg, .kw, .mg, .sd: return []
+        }
+    }
+    var hasCharts: Bool { self == .wy || self == .tx }
+    var hasPlaylists: Bool { self == .wy || self == .tx }
+    /// Only providers with a known LX identity mapping may be offered for resolution.
+    var hasResolverMapping: Bool { ![.sd, .apple].contains(self) }
+    var capabilityNotice: String {
+        switch self {
+        case .wy: return "支援歌曲、歌手、專輯、歌單搜尋與公開目錄。"
+        case .tx: return "QQ 目錄支援歌曲、專輯與歌單；暫不支援歌手搜尋／詳情。"
+        case .kg, .kw: return "支援公開歌曲搜尋；排行榜、歌單及集合詳情尚不支援。線上歌詞尚不支援。"
+        case .mg: return "提供匿名歌曲搜尋；服務可能拒絕未授權請求，屆時顯示錯誤，不繞過驗證。暫無首頁、集合詳情與線上歌詞。"
+        case .sd: return "僅支援輸入數字曲目 ID 查詢公開單曲。關鍵字搜尋、首頁、集合、JS 播放映射及線上歌詞尚未確認，已停用。"
+        case .apple: return "使用 Apple 公開 iTunes 美國商店目錄，支援歌曲、專輯、歌手。不是 Apple Music 播放授權；此處不提供播放、歌詞或歌單。"
+        }
+    }
 }
 
 struct MusicCatalogTrack: Hashable, Identifiable, Sendable {
@@ -78,13 +116,14 @@ struct MusicCatalogEntry: Hashable, Identifiable, Sendable {
 }
 
 enum MusicCatalogError: LocalizedError, Equatable {
-    case invalidResponse, http(Int), rejected(Int), unsupportedResolver, invalidQuery, unsupportedCapability
+    case invalidResponse, http(Int), rejected(Int), unsupportedResolver, invalidQuery, invalidSongLookup, unsupportedCapability
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return localized("音樂目錄回應格式不支援或超出安全上限。")
         case .http(let status): return "公開音樂目錄 HTTP \(status)"
         case .rejected(let code): return "公開音樂目錄暫不可用（服務代碼 \(code)）；不會嘗試登入或繞過限制。"
-        case .unsupportedResolver: return localized("請在設定選擇與歌曲所屬平台（wy / tx）一致且支援 musicUrl 的 JS 音源；切換元資料不會切換播放解析平台。")
+        case .unsupportedResolver: return localized("此曲需要已實作身份映射、平台完全一致且支援 musicUrl 的 JS 音源。Apple 與汽水元資料不代表播放授權；切換目錄不會切換播放平台。")
+        case .invalidSongLookup: return localized("汽水目前僅支援數字曲目 ID 查詢；關鍵字搜尋協議尚未確認。")
         case .unsupportedCapability: return localized("此平台尚未支援這類搜尋或詳情；不會使用其他平台的結果代替。")
         case .invalidQuery: return localized("請輸入 1 至 300 字的搜尋內容。")
         }
@@ -198,7 +237,7 @@ enum MusicCatalogParser {
 enum MusicCatalogResolverMapping {
     static func song(_ track: MusicCatalogTrack, source: MusicJSSource?, providerID: String) throws -> MusicJSSong {
         let platform = track.platform.rawValue
-        guard let source, providerID == platform,
+        guard track.platform.hasResolverMapping, let source, providerID == platform,
               source.providers.contains(where: { $0.id == platform && $0.actions.contains("musicUrl") }) else {
             throw MusicCatalogError.unsupportedResolver
         }
@@ -217,6 +256,17 @@ enum MusicCatalogResolverMapping {
             info["mid"] = mid
             info["strMediaMid"] = track.mediaMid.flatMap(MusicQQCatalogParser.mid) ?? mid
             info["meta"] = ["songId": mid, "albumName": track.album, "picUrl": track.poster]
+        case .kg:
+            guard let hash = MusicKugouCatalog.hash(track.identifier) else { throw MusicCatalogError.invalidResponse }
+            info["hash"] = hash; info["songmid"] = hash
+        case .kw:
+            guard let rid = MusicCatalogParser.identifier(track.identifier) else { throw MusicCatalogError.invalidResponse }
+            info["rid"] = rid; info["songmid"] = rid
+        case .mg:
+            guard let ids = MusicMiguCatalog.ids(track.identifier) else { throw MusicCatalogError.invalidResponse }
+            info["songmid"] = ids.copyright; info["copyrightId"] = ids.copyright; info["contentId"] = ids.content
+        case .sd, .apple:
+            throw MusicCatalogError.unsupportedResolver
         }
         let data = try JSONSerialization.data(withJSONObject: info, options: [.sortedKeys])
         return MusicJSSong(sourceID: source.id, provider: platform, title: track.title, artist: track.artist,

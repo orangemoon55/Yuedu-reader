@@ -10,12 +10,14 @@ enum MusicPlatformCatalog {
         switch platform {
         case .wy: return try await MusicPublicCatalog.shared.charts()
         case .tx: return try await MusicQQCatalog.shared.charts()
+        case .kg, .kw, .mg, .sd, .apple: throw MusicCatalogError.unsupportedCapability
         }
     }
     static func playlists(platform: MusicCatalogPlatform) async throws -> [MusicCatalogEntry] {
         switch platform {
         case .wy: return try await MusicPublicCatalog.shared.playlists()
         case .tx: return try await MusicQQCatalog.shared.playlists()
+        case .kg, .kw, .mg, .sd, .apple: throw MusicCatalogError.unsupportedCapability
         }
     }
     static func search(_ query: String, kind: MusicCatalogKind, platform: MusicCatalogPlatform) async throws -> [MusicCatalogEntry] {
@@ -23,12 +25,20 @@ enum MusicPlatformCatalog {
         switch platform {
         case .wy: return try await MusicPublicCatalog.shared.search(query, kind: kind)
         case .tx: return try await MusicQQCatalog.shared.search(query, kind: kind)
+        case .kg: return try await MusicKugouCatalog.search(query)
+        case .kw: return try await MusicKuwoCatalog.search(query)
+        case .mg: return try await MusicMiguCatalog.search(query)
+        case .sd: return try await MusicSodaCatalog.lookup(query)
+        case .apple: return try await MusicAppleCatalog.search(query, kind: kind)
         }
     }
     static func tracks(in entry: MusicCatalogEntry) async throws -> [MusicCatalogEntry] {
+        guard entry.platform.detailKinds.contains(entry.kind) else { throw MusicCatalogError.unsupportedCapability }
         switch entry.platform {
         case .wy: return try await MusicPublicCatalog.shared.tracks(in: entry)
         case .tx: return try await MusicQQCatalog.shared.tracks(in: entry)
+        case .apple: return try await MusicAppleCatalog.tracks(in: entry)
+        case .kg, .kw, .mg, .sd: throw MusicCatalogError.unsupportedCapability
         }
     }
 }

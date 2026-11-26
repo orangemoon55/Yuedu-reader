@@ -11,7 +11,6 @@ struct MediaHubRootView: View {
     @ObservedObject private var mediaLibrary = MediaHubLibrary.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.rootTabMediaMenuContext) private var mediaMenuContext
-    @AppStorage(MediaPreferences.homeShowsHeroKey) private var homeShowsHero = MediaPreferences.homeShowsHero
     @AppStorage(MediaPreferences.posterColumnsKey) private var posterColumns = MediaPreferences.posterColumns
     @AppStorage(MediaPreferences.musicArtworkSquareKey) private var musicArtworkSquare = MediaPreferences.musicArtworkSquare
     // No continue row: library records are bookmarks, not evidence of playback.
@@ -23,7 +22,6 @@ struct MediaHubRootView: View {
     @State private var rails: [MediaHubVideoRail] = []
     @State private var railFailures: [String: String] = [:]
     @State private var selectedCategoryID: String?
-    @State private var homeSearchActive = false
     @State private var searchText = ""
     @State private var submittedSearch = ""
     @State private var page = 1
@@ -63,7 +61,6 @@ struct MediaHubRootView: View {
         MediaHubPresentation.savedItems(mediaLibrary.items, kind: kind,
             query: isLibrary || kind == .music ? searchText : "", sourceID: librarySourceID)
     }
-    private var heroVideos: [CatVodVideo] { MediaHubPresentation.heroVideos(home?.videos ?? []) }
     private var isHomeFeed: Bool { submittedSearch.isEmpty && selectedCategoryID == nil }
     private var columnCount: Int {
         MediaHubPresentation.posterColumnCount(posterColumns, accessibility: dynamicTypeSize.isAccessibilitySize)
@@ -71,9 +68,6 @@ struct MediaHubRootView: View {
     private var cardWidth: CGFloat {
         if dynamicTypeSize.isAccessibilitySize { return min(240, max(180, viewportWidth - 64)) }
         return min(210, max(88, (viewportWidth - 32 - CGFloat(columnCount - 1) * DSSpacing.md) / CGFloat(columnCount)))
-    }
-    private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: DSSpacing.md, alignment: .top), count: columnCount)
     }
 
     var body: some View {
@@ -113,7 +107,7 @@ struct MediaHubRootView: View {
             else { discoveryBody }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
-        .navigationTitle(localized(kind == .video && !isLibrary && isHomeFeed ? "" : (isLibrary ? kind.libraryTitleKey : kind.titleKey)))
+        .navigationTitle(localized(isLibrary ? kind.libraryTitleKey : kind.titleKey))
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -123,13 +117,6 @@ struct MediaHubRootView: View {
             if let mediaMenuContext {
                 RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
                                     onDefault: mediaMenuContext.onDefault)
-            }
-            if kind == .video, !isLibrary {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { homeSearchActive.toggle() } label: {
-                        Label(localized("搜尋影片"), systemImage: "magnifyingglass")
-                    }.accessibilityIdentifier("mediaHub.homeSearchToggle")
-                }
             }
             if kind != .music {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -164,29 +151,48 @@ struct MediaHubRootView: View {
 
     private var videoDiscoveryBody: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: DSSpacing.lg) {
-                if kind == .video, selectedSite != nil {
-                    if isHomeFeed, homeShowsHero, !heroVideos.isEmpty { heroCarousel }
-                    if !isHomeFeed {
-                        VStack(alignment: .leading, spacing: DSSpacing.md) {
-                            sourceBadge
-                            searchField(music: false)
-                            categoryControls
-                        }.padding(.horizontal, DSSpacing.md)
-                    } else if homeSearchActive {
-                        searchField(music: false).padding(.horizontal, DSSpacing.md)
-                    }
+            LazyVStack(alignment: .leading, spacing: DSSpacing.md) {
+                videoSourceHeader
+                MediaHubVideoSearchField(text: $searchText, loading: loadingContent || loadingSites,
+                    enabled: selectedSite?.searchable == true && !loadingSites,
+                    submit: submitSearch, clear: { searchText = ""; submitSearch() })
+                if let selectedSite {
+                    Text(localized("搜尋範圍") + " · " + selectedSite.name)
+                        .font(DSFont.caption).foregroundStyle(DSColor.textSecondary)
+                        .accessibilityIdentifier("mediaHub.video.searchScope")
+                    categoryControls
                     contentBody
                 } else {
-                    sourceBadge.padding(.horizontal, DSSpacing.md)
-                    discoveryAvailability.padding(.horizontal, DSSpacing.md)
+                    discoveryAvailability
                 }
             }
-            .padding(.top, isHomeFeed ? 0 : DSSpacing.sm)
+            .padding(.horizontal, MediaHubVideoLayout.horizontalPadding)
+            .padding(.top, DSSpacing.sm)
             .padding(.bottom, DSSpacing.lg)
         }
+        .background(Color(uiColor: .systemGroupedBackground))
         .accessibilityIdentifier("mediaHub.videoHome")
         .refreshable { if selectedSite != nil { requestID = UUID() } }
+    }
+
+    private var videoSourceHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: DSSpacing.sm) {
+                sourceBadge
+                if let selectedSite { MediaHubVideoSourceKindPill(site: selectedSite) }
+                Spacer(minLength: 0)
+            }
+            VStack(alignment: .leading, spacing: DSSpacing.xs) {
+                sourceBadge
+                if let selectedSite { MediaHubVideoSourceKindPill(site: selectedSite) }
+            }
+        }
+        .accessibilityIdentifier("mediaHub.video.sourceHeader")
+    }
+
+    /// Flatten existing real home/category samples into the same three-column template.
+    private var discoveryVideos: [CatVodVideo] {
+        isHomeFeed ? MediaHubPresentation.uniqueVideos(videos + rails.flatMap(\.videos)) : videos
     }
 
     @ViewBuilder private var discoveryAvailability: some View {
@@ -212,46 +218,6 @@ struct MediaHubRootView: View {
         }
     }
 
-    private var heroCarousel: some View {
-        VStack(spacing: DSSpacing.sm) {
-            if dynamicTypeSize.isAccessibilitySize {
-                if let video = heroVideos.first {
-                    NavigationLink { moviePage(video) } label: {
-                        MediaHubHeroCard(sourceID: selectedSourceID ?? "", video: video, expanded: true)
-                    }.buttonStyle(.plain)
-                }
-            } else {
-                TabView(selection: $heroIndex) {
-                    ForEach(Array(heroVideos.enumerated()), id: \.element.id) { index, video in
-                        NavigationLink { moviePage(video) } label: {
-                            MediaHubHeroCard(sourceID: selectedSourceID ?? "", video: video, expanded: false)
-                        }
-                        .buttonStyle(.plain)
-                        .tag(index)
-                        .accessibilityIdentifier("mediaHub.hero.\(video.id)")
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(height: heroHeight)
-                if heroVideos.count > 1 {
-                    HStack(spacing: DSSpacing.xs) {
-                        ForEach(heroVideos.indices, id: \.self) { index in
-                            Button { withAnimation { heroIndex = index } } label: {
-                                Circle().fill(index == heroIndex ? DSColor.accent : DSColor.textSecondary.opacity(0.35))
-                                    .frame(width: 7, height: 7)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(format: localized("第 %d 項，共 %d 項"), index + 1, heroVideos.count))
-                            .accessibilityAddTraits(index == heroIndex ? .isSelected : [])
-                        }
-                    }.accessibilityIdentifier("mediaHub.heroDots")
-                }
-            }
-        }.accessibilityIdentifier("mediaHub.hero")
-    }
-
     @ViewBuilder private var sourceBadge: some View {
         if kind == .video, selectedSource != nil, !sites.isEmpty {
             // The same system menu as the settings Picker, opened directly at the badge.
@@ -274,16 +240,8 @@ struct MediaHubRootView: View {
     }
 
     private var sourceBadgeLabel: some View {
-        HStack(spacing: DSSpacing.xs) {
-            Image(systemName: "globe")
-            Text(selectedSite.map { $0.name } ?? selectedSource?.title ?? localized("選擇接口"))
-                .lineLimit(1)
-            Image(systemName: "chevron.down").font(DSFont.caption2)
-            Spacer(minLength: 0)
-        }
-        .font(DSFont.footnote.weight(.semibold)).foregroundStyle(DSColor.textSecondary)
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
+        MediaHubVideoSourceLabel(title: selectedSite?.name ?? selectedSource?.title ?? localized("選擇接口"),
+                                 selectable: true)
     }
 
     private func searchField(music: Bool) -> some View {
@@ -333,70 +291,43 @@ struct MediaHubRootView: View {
     }
 
     @ViewBuilder private var contentBody: some View {
-        if loadingContent && videos.isEmpty {
-            loadingCard(localized("載入中")).padding(.horizontal, DSSpacing.md)
-        } else if let failure, videos.isEmpty {
-            retryCard(failure) { requestID = UUID() }.padding(.horizontal, DSSpacing.md)
-        } else if isHomeFeed {
-            if let failure { retryCard(failure) { requestID = UUID() }.padding(.horizontal, DSSpacing.md) }
-            if !videos.isEmpty { videoRail(title: localized("站點推薦"), items: videos, category: nil) }
-            ForEach(rails) { rail in videoRail(title: rail.category.name, items: rail.videos, category: rail.category) }
-            if loadingRails { loadingCard(localized("載入分類")).padding(.horizontal, DSSpacing.md) }
-            if let home {
-                ForEach(MediaHubPresentation.categoryCandidates(home.categories)) { category in
-                    if let message = railFailures[category.id] {
-                        VStack(alignment: .leading, spacing: DSSpacing.sm) {
-                            Text(category.name).font(DSFont.headline)
-                            retryCard(message) { requestID = UUID() }
-                        }.padding(.horizontal, DSSpacing.md)
-                    }
-                }
-            }
-            if videos.isEmpty && rails.isEmpty && !loadingRails {
-                emptyCard(title: localized("暫無發現內容"), message: localized("可嘗試上方分類或切換站點。"), symbol: "film")
-                    .padding(.horizontal, DSSpacing.md)
-            }
+        if MediaHubVideoLayout.showsSkeleton(loading: loadingContent || loadingRails,
+                                             itemCount: discoveryVideos.count) {
+            MediaHubVideoSkeletonGrid()
         } else {
-            VStack(alignment: .leading, spacing: DSSpacing.md) {
-                Text(submittedSearch.isEmpty ? (home?.categories.first { $0.id == selectedCategoryID }?.name ?? localized("全部")) : localized("搜尋結果"))
-                    .font(DSFont.title2.weight(.bold))
-                if videos.isEmpty {
-                    emptyCard(title: localized("暫無發現內容"), message: localized("沒有搜尋結果。"), symbol: "magnifyingglass")
-                } else {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: DSSpacing.lg) {
-                        ForEach(videos) { video in videoLink(video, category: selectedCategory) }
-                    }
-                    resultsFooter
+            if !discoveryVideos.isEmpty {
+                MediaHubVideoGrid(videos: discoveryVideos, identifier: "mediaHub.video.fixedGrid") { video in
+                    videoLink(video, category: selectedCategory ?? rails.first(where: {
+                        $0.videos.contains(where: { $0.id == video.id })
+                    })?.category)
                 }
-            }.padding(.horizontal, DSSpacing.md)
+            }
+            if let failure {
+                retryCard(failure) { requestID = UUID() }
+            } else if discoveryVideos.isEmpty && !loadingContent && !loadingRails {
+                emptyCard(title: localized(submittedSearch.isEmpty ? "暫無發現內容" : "沒有搜尋結果。"),
+                    message: localized("可嘗試上方分類或切換站點。"), symbol: "film")
+            }
+            if isHomeFeed {
+                if loadingRails { loadingCard(localized("載入分類")) }
+                if let home {
+                    ForEach(MediaHubPresentation.categoryCandidates(home.categories)) { category in
+                        if let message = railFailures[category.id] {
+                            retryCard(category.name + " · " + message) { requestID = UUID() }
+                        }
+                    }
+                }
+            } else if failure == nil {
+                resultsFooter
+            }
         }
     }
 
     private var selectedCategory: CatVodCategory? { home?.categories.first { $0.id == selectedCategoryID } }
 
-    private func videoRail(title: String, items: [CatVodVideo], category: CatVodCategory?) -> some View {
-        VStack(alignment: .leading, spacing: DSSpacing.sm) {
-            HStack {
-                Text(title).font(DSFont.title2.weight(.bold)).foregroundStyle(DSColor.textPrimary)
-                Spacer()
-                if let category {
-                    Button { chooseCategory(category.id) } label: {
-                        Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44)
-                    }.accessibilityLabel(localized("查看全部") + " · " + title)
-                }
-            }.padding(.horizontal, DSSpacing.md)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: DSSpacing.md) {
-                    ForEach(items) { video in videoLink(video, category: category).frame(width: cardWidth) }
-                }.padding(.horizontal, DSSpacing.md).padding(.bottom, DSSpacing.xs)
-            }
-        }.accessibilityIdentifier("mediaHub.rail.\(category?.id ?? "home")")
-    }
-
     private func videoLink(_ video: CatVodVideo, category: CatVodCategory?) -> some View {
         NavigationLink { moviePage(video) } label: {
-            MediaHubArtworkCard(sourceID: selectedSourceID ?? "", poster: video.poster,
-                title: video.title, subtitle: MediaHubPresentation.facts(for: video), kind: kind, square: false)
+            MediaHubVideoPosterCard(sourceID: selectedSourceID ?? "", video: video)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -1066,7 +997,7 @@ private struct MediaHubHeroCard: View {
 }
 
 /// Uses the catalog's source-aware URL resolver and the app's native cover surface tokens.
-private struct MediaHubPoster: View {
+struct MediaHubPoster: View {
     let sourceID: String
     let rawURL: String
     let fallback: String

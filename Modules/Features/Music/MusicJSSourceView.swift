@@ -59,10 +59,21 @@ struct MusicJSSourceView: View {
                     if submitted { searchResults }
                     else {
                         if let item = MusicHomePresentation.continuation(currentTrack: player.currentTrack) { continueCard(item) }
-                        catalogRail(title: "排行榜", entries: catalog.charts, loading: catalog.chartsLoading, error: catalog.chartsError, showingOrigin: true)
-                        catalogRail(title: "推薦歌單", entries: catalog.playlists, loading: catalog.playlistsLoading, error: catalog.playlistsError)
-                        Text(localized("歌單來自") + localized(metadataPlatform.title) + localized("公開熱門目錄，並非個人化推薦。"))
-                            .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+                        if metadataPlatform.hasCharts {
+                            catalogRail(title: "排行榜", entries: catalog.charts, loading: catalog.chartsLoading, error: catalog.chartsError, showingOrigin: true)
+                        }
+                        if metadataPlatform.hasPlaylists {
+                            catalogRail(title: "推薦歌單", entries: catalog.playlists, loading: catalog.playlistsLoading, error: catalog.playlistsError)
+                            Text(localized("歌單來自") + localized(metadataPlatform.title) + localized("公開熱門目錄，並非個人化推薦。"))
+                                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label(localized(metadataPlatform == .sd ? "輸入汽水曲目 ID 開始查詢" : "輸入關鍵字開始搜尋"), systemImage: "magnifyingglass")
+                                    .font(.headline)
+                                Text(localized("此平台未提供已實作的熱門首頁，不會用任意搜尋冒充排行榜或推薦。"))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }.padding(16)
+                        }
                         if !saved.isEmpty { librarySection }
                     }
                     metadataNotice
@@ -109,7 +120,7 @@ struct MusicJSSourceView: View {
         .onChange(of: metadataPlatform) { _, platform in
             // Discovery selection never writes selectedSourceID / providerID / quality or the queue.
             cancelSearch(); cancelActions(); catalog.reset()
-            catalogResults = []; scriptResults = []; searchFailure = nil; submitted = false
+            catalogResults = []; scriptResults = []; searchFailure = nil; submitted = false; searchInScript = false
             if !platform.searchKinds.contains(searchKind) { searchKind = .song }
             refreshID = UUID()
         }
@@ -124,14 +135,10 @@ struct MusicJSSourceView: View {
                 ForEach(MusicCatalogPlatform.allCases) { platform in
                     Text(localized(platform.title)).tag(platform)
                 }
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.menu)
                 .accessibilityIdentifier("mediaHub.music.metadataPlatform")
-            Text(localized("只切換目錄資料；播放仍使用設定中的 JS 音源與平台。"))
-                .font(.caption).foregroundStyle(.secondary)
-            if metadataPlatform == .tx {
-                Text(localized("QQ 目錄支援歌曲、專輯與歌單；暫不支援歌手搜尋／詳情。"))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(localized(metadataPlatform.capabilityNotice))
         }.padding(.horizontal, 16)
     }
 
@@ -139,7 +146,7 @@ struct MusicJSSourceView: View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(localized(isLibrary ? "搜尋已收藏音樂" : "歌曲、歌手、專輯或歌單"), text: $query)
+                TextField(localized(isLibrary ? "搜尋已收藏音樂" : (metadataPlatform == .sd ? "汽水曲目 ID" : "歌曲、歌手、專輯或歌單")), text: $query)
                     .submitLabel(.search).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { if !isLibrary { search() } }
                     .accessibilityIdentifier("mediaHub.music.sourceSearch")
