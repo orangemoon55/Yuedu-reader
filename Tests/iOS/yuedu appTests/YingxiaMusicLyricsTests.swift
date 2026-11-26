@@ -64,6 +64,31 @@ struct YingxiaMusicLyricsTests {
             currentTrackID: "track-a", currentGeneration: initialGeneration))
     }
 
+    @Test func translationUsesTheSameOffsetCorrectedClock() throws {
+        let pairs = [
+            ("[offset:1000]\n[00:03.00]Original", "[offset:1000]\n[00:03.00]譯文"),
+            ("[offset:1000]\n[00:03.00]Original", "[00:02.00]譯文"),
+            ("[00:02.00]Original", "[offset:1000]\n[00:03.00]譯文"),
+            ("[offset:-1000]\n[00:01.00]Original", "[00:02.00]譯文"),
+            ("[00:02.00]Original", "[offset:-1000]\n[00:01.00]譯文")
+        ]
+        for (original, translated) in pairs {
+            let value = try #require(YingxiaMusicLyrics.parse(original, translation: translated))
+            #expect(value.lines.first?.time == 2)
+            #expect(value.lines.first?.translation == "譯文")
+        }
+    }
+
+    @Test func boundsLinesTimestampsAndTextBeforeTranslationMatching() {
+        let tooMany = Array(repeating: "[00:01.00]Line", count: YingxiaMusicLyrics.maximumLines + 1).joined(separator: "\n")
+        #expect(YingxiaMusicLyrics.parse(tooMany) == nil)
+        #expect(YingxiaMusicLyrics.parse("[00:01.00]Line", translation: tooMany) == nil)
+        let repeated = String(repeating: String(repeating: "[00:01.00]", count: 1_501) + "Line\n", count: 4)
+        #expect(YingxiaMusicLyrics.parse(repeated) == nil)
+        #expect(YingxiaMusicLyrics.parse(String(repeating: "x", count: YingxiaMusicLyrics.maximumTextBytes + 1)) == nil)
+        #expect(YingxiaMusicLyrics.parse(String(repeating: "x", count: 16_385)) == nil)
+    }
+
     @Test func loadsOnlyExplicitLocalLRCFiles() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

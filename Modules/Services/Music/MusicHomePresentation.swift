@@ -12,14 +12,14 @@ enum MusicHomePresentation {
         let seconds = Int(value)
         return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
     }
-    /// Charts are supplied by the NetEase catalogue, not by the selected JS resolver.
+    /// Charts are supplied by the entry's catalogue, not by the selected JS resolver.
     /// Playlist creators remain the provider's metadata; no screenshot names are seeded.
     static func catalogCaption(for entry: MusicCatalogEntry, showingOrigin: Bool) -> String {
         showingOrigin || entry.subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? localized("網易雲音樂") : entry.subtitle
+            ? localized(entry.platform.title) : entry.subtitle
     }
-    static func canResolveCatalog(source: MusicJSSource?, providerID: String) -> Bool {
-        providerID == "wy" && source?.providers.contains(where: { $0.id == "wy" && $0.actions.contains("musicUrl") }) == true
+    static func canResolveCatalog(source: MusicJSSource?, providerID: String, platform: MusicCatalogPlatform = .wy) -> Bool {
+        providerID == platform.rawValue && source?.providers.contains(where: { $0.id == platform.rawValue && $0.actions.contains("musicUrl") }) == true
     }
 }
 
@@ -32,19 +32,33 @@ final class MusicHomeCatalogModel: ObservableObject {
     @Published private(set) var chartsError: String?
     @Published private(set) var playlistsError: String?
     private var generation = UUID()
+    typealias Loader = @Sendable (MusicCatalogPlatform) async throws -> [MusicCatalogEntry]
+    private let chartLoader: Loader
+    private let playlistLoader: Loader
+    init(chartLoader: @escaping Loader = { try await MusicPlatformCatalog.charts(platform: $0) },
+         playlistLoader: @escaping Loader = { try await MusicPlatformCatalog.playlists(platform: $0) }) {
+        self.chartLoader = chartLoader; self.playlistLoader = playlistLoader
+    }
 
-    func load() async {
+    func reset() {
+        generation = UUID()
+        charts = []; playlists = []; chartsError = nil; playlistsError = nil
+        chartsLoading = false; playlistsLoading = false
+    }
+    func load(platform: MusicCatalogPlatform = .wy) async {
+        guard !Task.isCancelled else { return }
         let token = UUID(); generation = token
+        charts = []; playlists = []
         chartsLoading = true; playlistsLoading = true
         chartsError = nil; playlistsError = nil
-        async let first: Void = loadCharts(token)
-        async let second: Void = loadPlaylists(token)
+        async let first: Void = loadCharts(token, platform: platform)
+        async let second: Void = loadPlaylists(token, platform: platform)
         _ = await (first, second)
     }
-    private func loadCharts(_ token: UUID) async {
+    private func loadCharts(_ token: UUID, platform: MusicCatalogPlatform) async {
         defer { if generation == token { chartsLoading = false } }
         do {
-            let values = try await MusicPublicCatalog.shared.charts()
+            let values = try await chartLoader(platform)
             guard !Task.isCancelled, generation == token else { return }
             charts = values
         } catch {
@@ -52,10 +66,10 @@ final class MusicHomeCatalogModel: ObservableObject {
             charts = []; chartsError = error.localizedDescription
         }
     }
-    private func loadPlaylists(_ token: UUID) async {
+    private func loadPlaylists(_ token: UUID, platform: MusicCatalogPlatform) async {
         defer { if generation == token { playlistsLoading = false } }
         do {
-            let values = try await MusicPublicCatalog.shared.playlists()
+            let values = try await playlistLoader(platform)
             guard !Task.isCancelled, generation == token else { return }
             playlists = values
         } catch {

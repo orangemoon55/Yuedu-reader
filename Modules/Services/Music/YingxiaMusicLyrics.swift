@@ -33,8 +33,12 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
 
     /// Parses timed or plain LRC, repeated timestamps, offset tags and optional translations.
     /// Metadata-only/empty input returns nil.
+    static let maximumLines = 6_000
+    static let maximumTextBytes = 2 * 1024 * 1024
+
     static func parse(_ lrc: String, translation: String? = nil) -> YingxiaMusicLyrics? {
-        let (timed, plain, offset) = lines(of: lrc)
+        guard lrc.utf8.count <= maximumTextBytes,
+              let (timed, plain, offset) = lines(of: lrc) else { return nil }
         if timed.isEmpty {
             let text = plain.filter { !$0.isEmpty }
             return text.isEmpty ? nil : YingxiaMusicLyrics(
@@ -50,13 +54,27 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
         guard result.contains(where: { !$0.text.isEmpty }) else { return nil }
 
         if let translation {
-            let (translated, _, translatedOffset) = lines(of: translation)
+            guard translation.utf8.count <= maximumTextBytes,
+                  let (translated, _, translatedOffset) = lines(of: translation) else { return nil }
             let usable = translated.filter { !$0.text.isEmpty && $0.text != "//" }
                 .map { (time: max(0, $0.time - translatedOffset), text: $0.text) }
+                .sorted { $0.time < $1.time }
             for index in result.indices where !result[index].text.isEmpty {
-                let time = result[index].time + offset
-                if let match = usable.min(by: { abs($0.time - time) < abs($1.time - time) }),
-                   abs(match.time - time) < 0.35, match.text != result[index].text {
+                guard !Task.isCancelled else { return nil }
+                // Both sides are already offset-corrected. Bound matching to O(N log M),
+                // not a full translation scan for every original line.
+                let time = result[index].time
+                var low = 0, high = usable.count
+                while low < high {
+                    let mid = (low + high) / 2
+                    if usable[mid].time < time { low = mid + 1 } else { high = mid }
+                }
+                var match: (time: Double, text: String)? = low < usable.count ? usable[low] : nil
+                if low > 0 {
+                    let earlier = usable[low - 1]
+                    if match == nil || abs(earlier.time - time) <= abs(match!.time - time) { match = earlier }
+                }
+                if let match, abs(match.time - time) < 0.35, match.text != result[index].text {
                     result[index].translation = match.text
                 }
             }
@@ -96,16 +114,20 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
         return creditLine.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
     }
 
-    private static func lines(of lrc: String) -> (timed: [(time: Double, text: String)], plain: [String], offset: Double) {
+    private static func lines(of lrc: String) -> (timed: [(time: Double, text: String)], plain: [String], offset: Double)? {
         var timed: [(time: Double, text: String)] = [], plain: [String] = [], offset = 0.0
         let normalized = lrc.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-        for raw in normalized.components(separatedBy: "\n") {
+        let rawLines = normalized.components(separatedBy: "\n")
+        guard rawLines.count <= maximumLines else { return nil }
+        for raw in rawLines {
+            guard !Task.isCancelled, raw.utf8.count <= 16_384 else { return nil }
             let line = raw.trimmingCharacters(in: .whitespaces)
             let range = NSRange(line.startIndex..., in: line)
             if let match = tag.firstMatch(in: line, range: range),
                let name = Range(match.range(at: 1), in: line), let value = Range(match.range(at: 2), in: line) {
                 if line[name].lowercased() == "offset",
-                   let milliseconds = Double(line[value].trimmingCharacters(in: .whitespaces)) {
+                   let milliseconds = Double(line[value].trimmingCharacters(in: .whitespaces)),
+                   milliseconds.isFinite, abs(milliseconds) <= 86_400_000 {
                     offset = milliseconds / 1000
                 }
                 continue
@@ -121,6 +143,7 @@ struct YingxiaMusicLyrics: Hashable, Sendable {
                     fraction = value / pow(10, Double(digits.count))
                 }
                 times.append(minutes * 60 + seconds + fraction)
+                guard timed.count + times.count <= maximumLines else { return nil }
                 end = whole.upperBound
             }
             let text = String(line[end...]).trimmingCharacters(in: .whitespaces)

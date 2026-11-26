@@ -12,6 +12,7 @@ struct MusicJSSourceView: View {
     @AppStorage("readcc.musicJS.selectedProvider.v1") private var providerID = ""
     @AppStorage("readcc.musicJS.selectedQuality.v1") private var quality = "128k"
     @State private var query = ""
+    @State private var metadataPlatform: MusicCatalogPlatform = .wy
     @State private var searchKind = MusicCatalogKind.song
     @State private var searchInScript = false
     @State private var catalogResults: [MusicCatalogEntry] = []
@@ -52,6 +53,7 @@ struct MusicJSSourceView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: isLibrary ? 26 : 24) {
                 searchField.padding(.bottom, isLibrary || submitted ? 0 : 8)
+                if !isLibrary { metadataPicker }
                 if isLibrary { librarySection }
                 else {
                     if submitted { searchResults }
@@ -59,7 +61,7 @@ struct MusicJSSourceView: View {
                         if let item = MusicHomePresentation.continuation(currentTrack: player.currentTrack) { continueCard(item) }
                         catalogRail(title: "排行榜", entries: catalog.charts, loading: catalog.chartsLoading, error: catalog.chartsError, showingOrigin: true)
                         catalogRail(title: "推薦歌單", entries: catalog.playlists, loading: catalog.playlistsLoading, error: catalog.playlistsError)
-                        Text(localized("歌單來自網易雲音樂公開熱門目錄，並非個人化推薦。"))
+                        Text(localized("歌單來自") + localized(metadataPlatform.title) + localized("公開熱門目錄，並非個人化推薦。"))
                             .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
                         if !saved.isEmpty { librarySection }
                     }
@@ -95,7 +97,7 @@ struct MusicJSSourceView: View {
             library.reload()
             normalizeSelection()
         }
-        .task(id: refreshID) { if !isLibrary { await catalog.load() } }
+        .task(id: refreshID) { if !isLibrary { await catalog.load(platform: metadataPlatform) } }
         .refreshable { if !isLibrary { refreshID = UUID() } }
         .onChange(of: selectedSourceID) { _, _ in selectionChanged() }
         .onChange(of: providerID) { _, _ in selectionChanged() }
@@ -104,9 +106,33 @@ struct MusicJSSourceView: View {
             cancelSearch(); catalogResults = []; scriptResults = []; searchFailure = nil
             submitted = false
         }
+        .onChange(of: metadataPlatform) { _, platform in
+            // Discovery selection never writes selectedSourceID / providerID / quality or the queue.
+            cancelSearch(); cancelActions(); catalog.reset()
+            catalogResults = []; scriptResults = []; searchFailure = nil; submitted = false
+            if !platform.searchKinds.contains(searchKind) { searchKind = .song }
+            refreshID = UUID()
+        }
         .onChange(of: searchKind) { _, _ in if submitted { search() } }
         .onChange(of: searchInScript) { _, _ in if submitted { search() } }
         .onDisappear { cancelSearch(); cancelActions() }
+    }
+
+    private var metadataPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker(localized("公開元資料平台"), selection: $metadataPlatform) {
+                ForEach(MusicCatalogPlatform.allCases) { platform in
+                    Text(localized(platform.title)).tag(platform)
+                }
+            }.pickerStyle(.segmented)
+                .accessibilityIdentifier("mediaHub.music.metadataPlatform")
+            Text(localized("只切換目錄資料；播放仍使用設定中的 JS 音源與平台。"))
+                .font(.caption).foregroundStyle(.secondary)
+            if metadataPlatform == .tx {
+                Text(localized("QQ 目錄支援歌曲、專輯與歌單；暫不支援歌手搜尋／詳情。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(.horizontal, 16)
     }
 
     private var searchField: some View {
@@ -134,13 +160,13 @@ struct MusicJSSourceView: View {
             if !isLibrary && (!query.isEmpty || submitted) {
                 if provider?.canSearch == true {
                     Picker(localized("搜尋目錄"), selection: $searchInScript) {
-                        Text(localized("網易雲目錄")).tag(false)
+                        Text(localized(metadataPlatform.title) + localized("目錄")).tag(false)
                         Text(localized("目前 JS 音源")).tag(true)
                     }.pickerStyle(.segmented)
                 }
                 if !searchInScript {
                     Picker(localized("搜尋類型"), selection: $searchKind) {
-                        ForEach(MusicCatalogKind.allCases) { Text(localized($0.title)).tag($0) }
+                        ForEach(metadataPlatform.searchKinds) { Text(localized($0.title)).tag($0) }
                     }.pickerStyle(.segmented)
                 }
             }
@@ -222,10 +248,10 @@ struct MusicJSSourceView: View {
 
     private var metadataNotice: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Label(localized(MusicPublicCatalog.providerName), systemImage: "info.circle")
+            Label(localized(metadataPlatform.providerName), systemImage: "info.circle")
             Text(localized("目錄只提供歌曲資料；播放網址僅由你導入的 JS 音源解析。需具備相應播放權限。"))
-            if !MusicHomePresentation.canResolveCatalog(source: source, providerID: providerID) {
-                Button(localized("選擇支援網易雲 wy 的 JS 音源以播放")) { settings = true }
+            if !MusicHomePresentation.canResolveCatalog(source: source, providerID: providerID, platform: metadataPlatform) {
+                Button(localized("選擇支援") + " \(metadataPlatform.rawValue) " + localized("的 JS 音源以播放")) { settings = true }
             }
         }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20)
     }
@@ -237,7 +263,7 @@ struct MusicJSSourceView: View {
                 Spacer()
                 Button(localized("返回發現")) { cancelSearch(); submitted = false }
             }
-            Text((searchInScript ? (source?.name ?? localized("JS 音源")) : localized(MusicPublicCatalog.providerName)) + " · " + submittedQuery)
+            Text((searchInScript ? (source?.name ?? localized("JS 音源")) : localized(metadataPlatform.providerName)) + " · " + submittedQuery)
                 .font(.caption).foregroundStyle(.secondary)
             if searchLoading { ProgressView(localized("搜尋中…")) }
             else if let searchFailure { MusicCatalogStatus(message: searchFailure, retry: search) }
@@ -321,6 +347,7 @@ struct MusicJSSourceView: View {
         scriptResults = []; catalogResults = []
         let useScript = searchInScript && provider?.canSearch == true
         let sourceID = selectedSourceID, platform = providerID, kind = searchKind
+        let catalogPlatform = metadataPlatform
         searchTask = Task { @MainActor in
             defer { if searchGeneration == token { searchLoading = false } }
             do {
@@ -329,7 +356,7 @@ struct MusicJSSourceView: View {
                     guard !Task.isCancelled, searchGeneration == token else { return }
                     scriptResults = found
                 } else {
-                    let found = try await MusicPublicCatalog.shared.search(keyword, kind: kind)
+                    let found = try await MusicPlatformCatalog.search(keyword, kind: kind, platform: catalogPlatform)
                     guard !Task.isCancelled, searchGeneration == token else { return }
                     catalogResults = found
                 }

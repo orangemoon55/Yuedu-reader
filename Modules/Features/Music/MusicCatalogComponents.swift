@@ -119,7 +119,7 @@ struct MusicCatalogCollectionView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(entry.title).font(.title3.bold())
                         Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary)
-                        Text(localized(MusicPublicCatalog.providerName)).font(.caption).foregroundStyle(.secondary)
+                        Text(localized(entry.platform.providerName)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if loading { ProgressView(localized("載入歌曲資料…")).frame(maxWidth: .infinity) }
@@ -145,7 +145,7 @@ struct MusicCatalogCollectionView: View {
             let token = UUID(); generation = token
             loading = true; failure = nil; songs = []
             do {
-                let values = try await MusicPublicCatalog.shared.tracks(in: entry)
+                let values = try await MusicPlatformCatalog.tracks(in: entry)
                 guard !Task.isCancelled, generation == token else { return }
                 songs = values; loading = false
             } catch {

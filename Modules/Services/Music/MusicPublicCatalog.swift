@@ -32,7 +32,27 @@ enum MusicCatalogKind: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-struct MusicCatalogTrack: Hashable, Sendable {
+enum MusicCatalogPlatform: String, CaseIterable, Identifiable, Sendable {
+    case wy, tx
+    var id: String { rawValue }
+    var title: String { self == .wy ? "網易雲音樂" : "QQ 音樂" }
+    var providerName: String { title + " · 公開元資料" }
+    // QQ artist search/detail has not been implemented; never masquerade it as an empty success.
+    var searchKinds: [MusicCatalogKind] { self == .wy ? MusicCatalogKind.allCases : [.song, .album, .playlist] }
+}
+
+struct MusicCatalogTrack: Hashable, Identifiable, Sendable {
+    let platform: MusicCatalogPlatform
+    let numericSongID: String?
+    let mediaMid: String?
+    var id: String { platform.rawValue + ":song:" + identifier }
+    init(identifier: String, title: String, artist: String, album: String, poster: String,
+         durationMilliseconds: Int, platform: MusicCatalogPlatform = .wy,
+         numericSongID: String? = nil, mediaMid: String? = nil) {
+        self.identifier = identifier; self.title = title; self.artist = artist; self.album = album
+        self.poster = poster; self.durationMilliseconds = durationMilliseconds; self.platform = platform
+        self.numericSongID = numericSongID; self.mediaMid = mediaMid
+    }
     let identifier: String
     let title: String
     let artist: String
@@ -42,23 +62,30 @@ struct MusicCatalogTrack: Hashable, Sendable {
 }
 
 struct MusicCatalogEntry: Hashable, Identifiable, Sendable {
+    let platform: MusicCatalogPlatform
+    init(identifier: String, kind: MusicCatalogKind, title: String, subtitle: String, poster: String,
+         track: MusicCatalogTrack?, platform: MusicCatalogPlatform = .wy) {
+        self.identifier = identifier; self.kind = kind; self.title = title; self.subtitle = subtitle
+        self.poster = poster; self.track = track; self.platform = platform
+    }
     let identifier: String
     let kind: MusicCatalogKind
     let title: String
     let subtitle: String
     let poster: String
     let track: MusicCatalogTrack?
-    var id: String { kind.rawValue + ":" + identifier }
+    var id: String { platform.rawValue + ":" + kind.rawValue + ":" + identifier }
 }
 
 enum MusicCatalogError: LocalizedError, Equatable {
-    case invalidResponse, http(Int), rejected(Int), unsupportedResolver, invalidQuery
+    case invalidResponse, http(Int), rejected(Int), unsupportedResolver, invalidQuery, unsupportedCapability
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return localized("音樂目錄回應格式不支援或超出安全上限。")
-        case .http(let status): return "網易雲音樂目錄 HTTP \(status)"
-        case .rejected(let code): return "網易雲音樂目錄暫不可用（服務代碼 \(code)）；不會嘗試登入或繞過限制。"
-        case .unsupportedResolver: return localized("此目錄來自網易雲音樂。請在右上角設定選擇支援 wy 平台的 JS 音源；其他平台的歌曲 ID 不可混用。")
+        case .http(let status): return "公開音樂目錄 HTTP \(status)"
+        case .rejected(let code): return "公開音樂目錄暫不可用（服務代碼 \(code)）；不會嘗試登入或繞過限制。"
+        case .unsupportedResolver: return localized("請在設定選擇與歌曲所屬平台（wy / tx）一致且支援 musicUrl 的 JS 音源；切換元資料不會切換播放解析平台。")
+        case .unsupportedCapability: return localized("此平台尚未支援這類搜尋或詳情；不會使用其他平台的結果代替。")
         case .invalidQuery: return localized("請輸入 1 至 300 字的搜尋內容。")
         }
     }
@@ -167,20 +194,32 @@ enum MusicCatalogParser {
     }
 }
 
-/// LX's standard NetEase platform key is wy. Never relabel a NetEase ID as tx/kg/kw etc.
+/// Metadata identity, not the current discovery selection, determines the resolver platform.
 enum MusicCatalogResolverMapping {
     static func song(_ track: MusicCatalogTrack, source: MusicJSSource?, providerID: String) throws -> MusicJSSong {
-        guard let source, providerID == "wy",
-              source.providers.contains(where: { $0.id == "wy" && $0.actions.contains("musicUrl") }),
-              let id = MusicCatalogParser.identifier(track.identifier), let numericID = UInt64(id) else {
+        let platform = track.platform.rawValue
+        guard let source, providerID == platform,
+              source.providers.contains(where: { $0.id == platform && $0.actions.contains("musicUrl") }) else {
             throw MusicCatalogError.unsupportedResolver
         }
-        let info: [String: Any] = ["name": track.title, "singer": track.artist, "source": "wy",
-            "songmid": id, "albumName": track.album, "img": track.poster,
-            "interval": String(track.durationMilliseconds / 1000),
-            "meta": ["songId": numericID, "albumName": track.album, "picUrl": track.poster]]
+        var info: [String: Any] = ["name": track.title, "singer": track.artist, "source": platform,
+            "albumName": track.album, "img": track.poster, "interval": String(track.durationMilliseconds / 1000)]
+        switch track.platform {
+        case .wy:
+            guard let id = MusicCatalogParser.identifier(track.identifier), let number = UInt64(id) else {
+                throw MusicCatalogError.invalidResponse
+            }
+            info["songmid"] = id
+            info["meta"] = ["songId": number, "albumName": track.album, "picUrl": track.poster]
+        case .tx:
+            guard let mid = MusicQQCatalogParser.mid(track.identifier) else { throw MusicCatalogError.invalidResponse }
+            info["songmid"] = track.numericSongID.flatMap(MusicCatalogParser.identifier) ?? mid
+            info["mid"] = mid
+            info["strMediaMid"] = track.mediaMid.flatMap(MusicQQCatalogParser.mid) ?? mid
+            info["meta"] = ["songId": mid, "albumName": track.album, "picUrl": track.poster]
+        }
         let data = try JSONSerialization.data(withJSONObject: info, options: [.sortedKeys])
-        return MusicJSSong(sourceID: source.id, provider: "wy", title: track.title, artist: track.artist,
+        return MusicJSSong(sourceID: source.id, provider: platform, title: track.title, artist: track.artist,
             album: track.album, poster: track.poster, musicInfoJSON: String(decoding: data, as: UTF8.self))
     }
 }
@@ -215,7 +254,7 @@ actor MusicPublicCatalog {
             .init(name: "limit", value: "30"), .init(name: "offset", value: "0")]), kind: kind)
     }
     func tracks(in entry: MusicCatalogEntry) async throws -> [MusicCatalogEntry] {
-        guard MusicCatalogParser.identifier(entry.identifier) != nil else { throw MusicCatalogError.invalidResponse }
+        guard entry.platform == .wy, MusicCatalogParser.identifier(entry.identifier) != nil else { throw MusicCatalogError.invalidResponse }
         let path: String
         var query: [URLQueryItem] = []
         switch entry.kind {
