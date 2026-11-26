@@ -111,6 +111,51 @@ struct MusicPlatformCatalogTests {
         #expect(throws: MusicCatalogError.invalidResponse) { try MusicQQCatalog.makeRequest(.tracks(a)) }
         #expect(MusicHomePresentation.catalogCaption(for: b, showingOrigin: true) == localized("QQ 音乐"))
     }
+    @Test func automaticResolverUsesEachSongsOriginalPlatform() throws {
+        let source = MusicJSSource(id: "chosen", name: "Fixture", version: "1", providers: [
+            MusicJSProvider(id: "wy", name: "WY", actions: ["musicUrl"], qualities: ["128k"]),
+            MusicJSProvider(id: "tx", name: "QQ", actions: ["musicUrl", "search"], qualities: ["320k", "128k"]),
+            MusicJSProvider(id: "kg", name: "KG", actions: ["musicUrl"], qualities: ["flac"]),
+            MusicJSProvider(id: "kw", name: "KW", actions: ["musicUrl"], qualities: ["128k"]),
+            MusicJSProvider(id: "mg", name: "MG", actions: ["musicUrl"], qualities: ["128k"])
+        ])
+        let tracks = [try #require(MusicCatalogParser.track(["id": 123, "name": "WY"])),
+                      try #require(MusicQQCatalogParser.track(Self.qqSong)),
+                      MusicCatalogTrack(identifier: String(repeating: "a", count: 32), title: "KG", artist: "", album: "", poster: "", durationMilliseconds: 0, platform: .kg),
+                      MusicCatalogTrack(identifier: "456", title: "KW", artist: "", album: "", poster: "", durationMilliseconds: 0, platform: .kw),
+                      MusicCatalogTrack(identifier: "123_600Fixture", title: "MG", artist: "", album: "", poster: "", durationMilliseconds: 0, platform: .mg)]
+        for track in tracks + Array(tracks.reversed()) {
+            let song = try MusicCatalogResolverMapping.song(track, source: source)
+            #expect(song.sourceID == "chosen")
+            #expect(song.provider == track.platform.rawValue)
+            #expect(MusicHomePresentation.canResolveCatalog(source: source, platform: track.platform))
+            let info = try #require(JSONSerialization.jsonObject(with: Data(song.musicInfoJSON.utf8)) as? [String: Any])
+            #expect(info["source"] as? String == track.platform.rawValue)
+        }
+        #expect(MusicCatalogResolverMapping.qualities(source: source) == ["128k", "320k", "flac"])
+        #expect(MusicCatalogResolverMapping.provider(source: source, platform: .tx)?.canSearch == true)
+    }
+    @Test func automaticResolverRejectsMissingAndSearchOnlyProviders() throws {
+        let track = try #require(MusicQQCatalogParser.track(Self.qqSong))
+        let source = MusicJSSource(id: "chosen", name: "Fixture", version: "1", providers: [
+            MusicJSProvider(id: "wy", name: "WY", actions: ["musicUrl"], qualities: ["128k"]),
+            MusicJSProvider(id: "tx", name: "QQ", actions: ["search"], qualities: ["320k"]),
+            MusicJSProvider(id: "sd", name: "SD", actions: ["musicUrl"], qualities: ["128k"]),
+            MusicJSProvider(id: "apple", name: "Apple", actions: ["musicUrl"], qualities: ["128k"])
+        ])
+        #expect(throws: MusicCatalogError.unsupportedResolver) { try MusicCatalogResolverMapping.song(track, source: nil) }
+        #expect(throws: MusicCatalogError.unsupportedResolver) { try MusicCatalogResolverMapping.song(track, source: source) }
+        #expect(!MusicHomePresentation.canResolveCatalog(source: source, platform: .tx))
+        #expect(MusicCatalogResolverMapping.searchProvider(source: source, platform: .tx)?.id == "tx")
+        #expect(MusicCatalogResolverMapping.searchProvider(source: source, platform: .wy) == nil)
+        #expect(MusicCatalogResolverMapping.searchProvider(source: nil, platform: .tx) == nil)
+        #expect(MusicCatalogResolverMapping.qualities(source: source) == ["128k"])
+        for platform in [MusicCatalogPlatform.kw, .mg, .sd, .apple] {
+            let unsupported = MusicCatalogTrack(identifier: "123", title: "Fixture", artist: "", album: "", poster: "", durationMilliseconds: 0, platform: platform)
+            #expect(throws: MusicCatalogError.unsupportedResolver) { try MusicCatalogResolverMapping.song(unsupported, source: source) }
+            #expect(!MusicHomePresentation.canResolveCatalog(source: source, platform: platform))
+        }
+    }
     @Test func invalidIDsURLsMissingSchemasAndServiceFailuresAreNotEmptySuccess() throws {
         for value in ["", "../escape", "id?token=secret", "a/b", String(repeating: "x", count: 65)] {
             #expect(MusicQQCatalogParser.mid(value) == nil)

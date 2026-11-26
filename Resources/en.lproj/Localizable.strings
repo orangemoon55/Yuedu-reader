@@ -4776,3 +4776,9 @@
 "关闭" = "Close";
 "显示影片资料行" = "Show video details";
 "显示继续观看" = "Show continue watching";
+
+/* Automatic music resolver platform */
+"自动匹配歌曲平台" = "Automatically match the song platform";
+"根据每首歌曲的原平台自动解析，仅使用当前 JS 音源；不支持的平台会提示，不会混用歌曲 ID。" = "Automatically resolve each song on its original platform using only the selected JS source. Unsupported platforms are reported; song IDs are never mixed across platforms.";
+"优先使用所选音质；歌曲平台不支持时，使用该平台声明的首个可用音质。" = "Prefer the selected quality. If the song platform does not support it, use the first quality declared by that platform.";
+"此平台暂不支持播放解析，不会改用其他平台的歌曲 ID。" = "Playback resolution is not yet supported for this platform. IDs from other platforms will not be substituted.";

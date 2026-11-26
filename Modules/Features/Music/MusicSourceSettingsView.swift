@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 /// playlist-file, or remote-script-URL import controls here.
 struct MusicSourceSettingsView: View {
     @Binding var selectedSourceID: String
-    @Binding var providerID: String
     @Binding var quality: String
     @ObservedObject private var store = MusicJSSourceStore.shared
     @Environment(\.dismiss) private var dismiss
@@ -15,7 +14,7 @@ struct MusicSourceSettingsView: View {
     @State private var task: Task<Void, Never>?
     @State private var generation = UUID()
     private var source: MusicJSSource? { store.sources.first { $0.id == selectedSourceID } }
-    private var provider: MusicJSProvider? { source?.providers.first { $0.id == providerID } }
+    private var qualities: [String] { MusicCatalogResolverMapping.qualities(source: source) }
 
     var body: some View {
         NavigationStack {
@@ -33,21 +32,19 @@ struct MusicSourceSettingsView: View {
                         Picker(localized("JS 音源"), selection: $selectedSourceID) {
                             ForEach(store.sources) { Text($0.name).tag($0.id) }
                         }.accessibilityIdentifier("mediaHub.music.sourcePicker")
-                        if let source {
-                            Picker(localized("解析平台"), selection: $providerID) {
-                                ForEach(source.providers) { Text($0.name + " · " + $0.id).tag($0.id) }
-                            }.accessibilityIdentifier("mediaHub.music.providerPicker")
-                        }
-                        if let provider {
+                        HStack {
+                            Text(localized("解析平台"))
+                            Spacer()
+                            Text(localized("自动匹配歌曲平台")).foregroundStyle(.secondary)
+                        }.accessibilityIdentifier("mediaHub.music.automaticProvider")
+                        Text(localized("根据每首歌曲的原平台自动解析，仅使用当前 JS 音源；不支持的平台会提示，不会混用歌曲 ID。"))
+                            .font(.footnote).foregroundStyle(.secondary)
+                        if !qualities.isEmpty {
                             Picker(localized("音质"), selection: $quality) {
-                                ForEach(provider.qualities, id: \.self) { Text($0).tag($0) }
+                                ForEach(qualities, id: \.self) { Text($0).tag($0) }
                             }
-                            Text(localized(provider.canSearch ? "此平台支援 JS 搜寻及播放解析。" : "此平台仅提供播放解析；首页仍可使用公开目录搜寻。"))
+                            Text(localized("优先使用所选音质；歌曲平台不支持时，使用该平台声明的首个可用音质。"))
                                 .font(.footnote).foregroundStyle(.secondary)
-                            if provider.id != "wy" {
-                                Text(localized("网易云目录歌曲仅能交由 wy 平台解析，不会混用其他平台 ID。"))
-                                    .font(.footnote).foregroundStyle(.secondary)
-                            }
                         }
                     }
                     if busy { ProgressView(localized("导入中…")) }
@@ -95,8 +92,7 @@ struct MusicSourceSettingsView: View {
                 let source = try await store.importFile(url)
                 guard !Task.isCancelled, generation == token else { return }
                 selectedSourceID = source.id
-                providerID = source.providers.first(where: { $0.id == "wy" })?.id ?? source.providers.first?.id ?? ""
-                quality = source.providers.first(where: { $0.id == providerID })?.qualities.first ?? "128k"
+                quality = MusicCatalogResolverMapping.qualities(source: source).first ?? "128k"
             } catch {
                 guard !Task.isCancelled, generation == token else { return }
                 failure = error.localizedDescription

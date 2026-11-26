@@ -9,7 +9,6 @@ struct MusicJSSourceView: View {
     @ObservedObject private var player = MusicPlayer.shared
     @StateObject private var catalog = MusicHomeCatalogModel()
     @AppStorage("readcc.musicJS.selectedSource.v1") private var selectedSourceID = ""
-    @AppStorage("readcc.musicJS.selectedProvider.v1") private var providerID = ""
     @AppStorage("readcc.musicJS.selectedQuality.v1") private var quality = "128k"
     @State private var query = ""
     @State private var metadataPlatform: MusicCatalogPlatform = .wy
@@ -42,7 +41,7 @@ struct MusicJSSourceView: View {
     }
 
     private var source: MusicJSSource? { store.sources.first { $0.id == selectedSourceID } }
-    private var provider: MusicJSProvider? { source?.providers.first { $0.id == providerID } }
+    private var provider: MusicJSProvider? { MusicCatalogResolverMapping.searchProvider(source: source, platform: metadataPlatform) }
     private var saved: [MusicJSSong] {
         library.items.compactMap(MusicJSSong.from).filter {
             !isLibrary || query.isEmpty || ($0.title + $0.artist + $0.album).localizedCaseInsensitiveContains(query)
@@ -98,7 +97,7 @@ struct MusicJSSourceView: View {
             }
         }
         .sheet(isPresented: $settings) {
-            MusicSourceSettingsView(selectedSourceID: $selectedSourceID, providerID: $providerID, quality: $quality)
+            MusicSourceSettingsView(selectedSourceID: $selectedSourceID, quality: $quality)
         }
         .sheet(item: $playing) { item in MusicPlayerView(item: item, queue: [item], autoPlay: true) }
         .alert(localized("音乐操作失败"), isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
@@ -111,7 +110,6 @@ struct MusicJSSourceView: View {
         .task(id: refreshID) { if !isLibrary { await catalog.load(platform: metadataPlatform) } }
         .refreshable { if !isLibrary { refreshID = UUID() } }
         .onChange(of: selectedSourceID) { _, _ in selectionChanged() }
-        .onChange(of: providerID) { _, _ in selectionChanged() }
         .onChange(of: store.sources) { _, _ in normalizeSelection(); cancelActions() }
         .onChange(of: query) { _, _ in
             cancelSearch(); catalogResults = []; scriptResults = []; searchFailure = nil
@@ -257,7 +255,9 @@ struct MusicJSSourceView: View {
         VStack(alignment: .leading, spacing: 5) {
             Label(localized(metadataPlatform.providerName), systemImage: "info.circle")
             Text(localized("目录只提供歌曲资料；播放网址仅由你导入的 JS 音源解析。需具备相应播放权限。"))
-            if !MusicHomePresentation.canResolveCatalog(source: source, providerID: providerID, platform: metadataPlatform) {
+            if !metadataPlatform.hasResolverMapping {
+                Text(localized("此平台暂不支持播放解析，不会改用其他平台的歌曲 ID。"))
+            } else if !MusicHomePresentation.canResolveCatalog(source: source, platform: metadataPlatform) {
                 Button(localized("选择支援") + " \(metadataPlatform.rawValue) " + localized("的 JS 音源以播放")) { settings = true }
             }
         }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20)
@@ -328,10 +328,8 @@ struct MusicJSSourceView: View {
     }
     private func normalizeSelection() {
         if source == nil { selectedSourceID = store.sources.first?.id ?? "" }
-        if provider == nil {
-            providerID = source?.providers.first(where: { $0.id == "wy" })?.id ?? source?.providers.first?.id ?? ""
-        }
-        if provider?.qualities.contains(quality) != true { quality = provider?.qualities.first ?? "128k" }
+        let qualities = MusicCatalogResolverMapping.qualities(source: source)
+        if !qualities.contains(quality) { quality = qualities.first ?? "128k" }
         if provider?.canSearch != true { searchInScript = false }
     }
     private func selectionChanged() {
@@ -353,7 +351,7 @@ struct MusicJSSourceView: View {
         submitted = true; submittedQuery = keyword; searchLoading = true; searchFailure = nil
         scriptResults = []; catalogResults = []
         let useScript = searchInScript && provider?.canSearch == true
-        let sourceID = selectedSourceID, platform = providerID, kind = searchKind
+        let sourceID = selectedSourceID, platform = provider?.id ?? "", kind = searchKind
         let catalogPlatform = metadataPlatform
         searchTask = Task { @MainActor in
             defer { if searchGeneration == token { searchLoading = false } }
@@ -374,12 +372,12 @@ struct MusicJSSourceView: View {
         }
     }
     private func playTrack(_ track: MusicCatalogTrack) {
-        do { play(try MusicCatalogResolverMapping.song(track, source: source, providerID: providerID)) }
+        do { play(try MusicCatalogResolverMapping.song(track, source: source)) }
         catch { failure = error.localizedDescription }
     }
     private func saveTrack(_ track: MusicCatalogTrack) {
         do {
-            let song = try MusicCatalogResolverMapping.song(track, source: source, providerID: providerID)
+            let song = try MusicCatalogResolverMapping.song(track, source: source)
             try library.save(song.savedItem(sourceName: sourceName(song)))
         } catch { failure = error.localizedDescription }
     }

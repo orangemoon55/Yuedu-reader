@@ -18,8 +18,8 @@ enum MusicHomePresentation {
         showingOrigin || entry.subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? localized(entry.platform.title) : entry.subtitle
     }
-    static func canResolveCatalog(source: MusicJSSource?, providerID: String, platform: MusicCatalogPlatform = .wy) -> Bool {
-        platform.hasResolverMapping && providerID == platform.rawValue && source?.providers.contains(where: { $0.id == platform.rawValue && $0.actions.contains("musicUrl") }) == true
+    static func canResolveCatalog(source: MusicJSSource?, platform: MusicCatalogPlatform = .wy) -> Bool {
+        MusicCatalogResolverMapping.provider(source: source, platform: platform) != nil
     }
 }
 

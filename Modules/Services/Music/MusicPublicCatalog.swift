@@ -235,6 +235,27 @@ enum MusicCatalogParser {
 
 /// Metadata identity, not the current discovery selection, determines the resolver platform.
 enum MusicCatalogResolverMapping {
+    /// Only the user's selected script may resolve a song; never try other scripts or platforms.
+    static func provider(source: MusicJSSource?, platform: MusicCatalogPlatform) -> MusicJSProvider? {
+        guard platform.hasResolverMapping else { return nil }
+        return source?.providers.first { $0.id == platform.rawValue && $0.actions.contains("musicUrl") }
+    }
+    static func searchProvider(source: MusicJSSource?, platform: MusicCatalogPlatform) -> MusicJSProvider? {
+        source?.providers.first { $0.id == platform.rawValue && $0.canSearch }
+    }
+    static func qualities(source: MusicJSSource?) -> [String] {
+        (source?.providers ?? []).filter { $0.actions.contains("musicUrl") }
+            .flatMap(\.qualities).reduce(into: [String]()) { values, value in
+                if !values.contains(value) { values.append(value) }
+            }
+    }
+    static func song(_ track: MusicCatalogTrack, source: MusicJSSource?) throws -> MusicJSSong {
+        guard let platform = provider(source: source, platform: track.platform) else {
+            throw MusicCatalogError.unsupportedResolver
+        }
+        return try song(track, source: source, providerID: platform.id)
+    }
+    // Keep explicit callers fail-closed; the UI uses the automatic overload above.
     static func song(_ track: MusicCatalogTrack, source: MusicJSSource?, providerID: String) throws -> MusicJSSong {
         let platform = track.platform.rawValue
         guard track.platform.hasResolverMapping, let source, providerID == platform,
