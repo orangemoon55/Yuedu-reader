@@ -1,0 +1,36 @@
+{
+  "upstream_repository": "https://github.com/jo32/tvbox-silicon",
+  "commit": "a6bcc00bbbdbd7c6af7b7223ca2fa6018d6d685c",
+  "license": "GPL-3.0-only",
+  "scope": "source adaptations only; full TVCore transplant incomplete; native acceptance not executed",
+  "files": [
+    {
+      "upstream_path": "Sources/TVCore/PlaybackResolution.swift",
+      "upstream_lines": "3-33",
+      "upstream_file_sha256": "49c329a49ac9d1f27cb0f019064ad0dc9e9291ca0e65a8f5f35847475fbb25c2",
+      "adaptation_path": "Modules/Services/CatVod/YingxiaPlaybackChoices.swift",
+      "adaptation_sha256": "a9f31c7a1af3e57fae248ed3cca71477a5ac563ef2d350f4d376d36f4eedd5b4"
+    },
+    {
+      "upstream_path": "Sources/TVCore/Catalog.swift",
+      "upstream_lines": "154-156,495-506",
+      "upstream_file_sha256": "74d0bcc88f9943906341682be9476a712b47463c63bcb8f6ec4ed2c3803fbbf7",
+      "adaptation_path": "Modules/Services/CatVod/CatVodContent.swift",
+      "adaptation_sha256": "c098508f6d6cc08084423ddcad4d151e2e7e869f49b425f8eac017443d3f4417"
+    },
+    {
+      "upstream_path": "Sources/TVCore/MusicQueue.swift",
+      "upstream_lines": "6-94 (selected methods/fields)",
+      "upstream_file_sha256": "9aea833931b55ef22b0eafe22338dd44720aed39ffa4e6878a9a7505610844c5",
+      "adaptation_path": "Modules/Services/Music/YingxiaMusicQueue.swift",
+      "adaptation_sha256": "20db745f98de8cd1fb4c1dcb82adefe68872a8f03d7629f66cb6ecec26923b75"
+    }
+  ],
+  "queue_method_body_parity": {
+    "func advance(": true,
+    "func back(": true,
+    "func jump(": true,
+    "func skipsAfterFailure(consecutive": true
+  },
+  "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+}

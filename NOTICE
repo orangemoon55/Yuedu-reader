@@ -60,6 +60,30 @@ native builds/device playback have passed. Complete dependency/licence review
 and the native playback acceptance tests before distributing a binary.
 
 --------------------------------------------------------------------------------
+Yingxia / 映匣 (jo32/tvbox-silicon) — GPL-3.0-only
+https://github.com/jo32/tvbox-silicon
+Pinned revision: a6bcc00bbbdbd7c6af7b7223ca2fa6018d6d685c
+Copyright (C) 2026 jo32 and Yingxia contributors.
+--------------------------------------------------------------------------------
+
+Readcc includes source adaptations, not merely interface inspiration:
+  Sources/TVCore/PlaybackResolution.swift:3-33 ->
+    Modules/Services/CatVod/YingxiaPlaybackChoices.swift
+  Sources/TVCore/MusicQueue.swift (queue/cursor/failure/restart subset) ->
+    Modules/Services/Music/YingxiaMusicQueue.swift
+  Sources/TVCore/Catalog.swift:154-156,495-506 (detail identity/name recovery) ->
+    Modules/Services/CatVod/CatVodContent.swift, contextualDetail
+
+Adaptations and integration changes are documented in Technotes/YingxiaReuse.md.
+The original licence text is at LICENSES/Yingxia-GPL-3.0-only.txt. These adapted
+portions retain GPL-3.0-only; this notice does not relicense them as MPL-2.0.
+No upstream account configuration, application identity, native binary, optional
+cloud endpoint or second Node host has been imported. This is a source candidate,
+not an assertion of full TVCore compatibility, binary-distribution clearance or
+successful native tests. Review the actual combined work and dependencies before
+any binary distribution; preserve this provenance and corresponding source.
+
+--------------------------------------------------------------------------------
 Other dependencies
 --------------------------------------------------------------------------------
 

@@ -2,8 +2,9 @@ import AVFoundation
 import Combine
 import MediaPlayer
 
-/// The one native music engine used by the Media Hub. It is a real AVQueuePlayer: no preview
-/// timers, synthetic progress, provider mocks, or service-specific resolver are involved.
+/// The one native music engine used by the Media Hub. Yingxia's runtime queue retains the full
+/// selection/history; AVQueuePlayer owns only its current native item. There is no second audio
+/// engine, synthetic progress, provider mock, resolver or persisted playback URL.
 @MainActor
 final class MusicPlayer: ObservableObject {
     static let shared = MusicPlayer(queuePlayer: AVQueuePlayer())
@@ -16,7 +17,10 @@ final class MusicPlayer: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let queuePlayer: AVQueuePlayer
-    private var queueItems: [AVPlayerItem] = []
+    private var playbackQueue = YingxiaMusicQueue<MediaHubLibraryItem>(tracks: [])
+    private var itemEvents = MusicQueuePlaybackPolicy.ItemEvents()
+    private var itemStatusTask: Task<Void, Never>?
+    private var consecutiveFailures = 0
     private var endObserver: NSObjectProtocol?
     private var failedObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
@@ -42,7 +46,7 @@ final class MusicPlayer: ObservableObject {
                 case .none, .music:
                     break
                 case .tts, .audiobook:
-                    if self.isPlaying { self.stopForTakeover() }
+                    if self.currentTrack != nil { self.stopForTakeover() }
                 }
             }
         }
@@ -52,46 +56,79 @@ final class MusicPlayer: ObservableObject {
         self.init(queuePlayer: AVQueuePlayer())
     }
 
-    /// Start one item and optionally append the remaining imported items as a real AV queue.
+    /// Start at the chosen track while retaining the complete supplied playlist, including history.
     func play(_ item: MediaHubLibraryItem, queue items: [MediaHubLibraryItem] = []) {
-        errorMessage = nil
         // Existing app audio owns the same session. This is a deliberate takeover, not a
-        // second session: it stops TTS/audiobook before activating playback for this queue.
+        // second session: stop TTS/audiobook before activating playback for this queue.
         TTSCoordinator.yieldSystemMediaToMusic()
         NowPlayingHub.shared.stop()
-        stopQueue(clearMetadata: false)
+        stopQueue(clearMetadata: true, deactivateSession: false)
 
-        let requested = ([item] + items.filter { $0.id != item.id })
-            .filter { $0.kind == .music }
-        var built: [(MediaHubLibraryItem, AVPlayerItem)] = []
-        for candidate in requested {
-            guard let descriptor = MusicTrackDescriptor.from(candidate),
-                  let url = descriptor.resolvedURL() else {
-                if candidate.id == item.id { fail(MusicPlayerError.invalidTrack) }
-                continue
-            }
-            if url.isFileURL && !FileManager.default.fileExists(atPath: url.path) {
-                if candidate.id == item.id { fail(MusicPlayerError.localFileMissing) }
-                continue
-            }
-            let asset = HeaderedMediaAsset.make(url: url, headers: descriptor.headers)
-            built.append((candidate, AVPlayerItem(asset: asset)))
+        let requested: [MediaHubLibraryItem]
+        if items.contains(where: { $0.id == item.id }) {
+            // Keep playlist order; the selected item may have refreshed ephemeral URL/headers.
+            requested = items.map { $0.id == item.id ? item : $0 }
+        } else {
+            requested = [item] + items
         }
-        guard let first = built.first, first.0.id == item.id else {
-            if errorMessage == nil { fail(MusicPlayerError.invalidTrack) }
+        var playable: [MediaHubLibraryItem] = []
+        for candidate in requested where candidate.kind == .music {
+            do {
+                _ = try descriptorAndURL(for: candidate)
+                playable.append(candidate)
+            } catch {
+                if candidate.id == item.id {
+                    fail((error as? MusicPlayerError) ?? .invalidTrack)
+                    return
+                }
+            }
+        }
+        guard item.kind == .music, let start = playable.firstIndex(where: { $0.id == item.id }) else {
+            fail(.invalidTrack)
             return
         }
-
-        queue = built.map(\.0)
-        queueItems = built.map(\.1)
-        currentTrack = first.0
+        playbackQueue = YingxiaMusicQueue(tracks: playable, start: start)
+        queue = playbackQueue.tracks
+        currentTrack = playbackQueue.current
         NowPlayingHub.shared.attachMusic(self)
-        for playerItem in queueItems { queuePlayer.insert(playerItem, after: nil) }
         activateAudioSession()
-        installItemObservers(first.1)
-        configureNowPlaying(for: first.0, elapsed: 0, duration: 0, playing: true)
-        queuePlayer.play()
-        isPlaying = true
+        startCurrentTrack(autoplay: true)
+    }
+
+    private func descriptorAndURL(for track: MediaHubLibraryItem) throws -> (MusicTrackDescriptor, URL) {
+        guard let descriptor = MusicTrackDescriptor.from(track), let url = descriptor.resolvedURL() else {
+            throw MusicPlayerError.invalidTrack
+        }
+        if url.isFileURL && !FileManager.default.fileExists(atPath: url.path) {
+            throw MusicPlayerError.localFileMissing
+        }
+        return (descriptor, url)
+    }
+
+    /// Rebuild only the current AV item: consumed AVQueuePlayer items cannot provide backward
+    /// history. The upstream cursor and published full queue do not change during this rebuild.
+    private func startCurrentTrack(autoplay: Bool) {
+        invalidateItemObservers()
+        queuePlayer.pause()
+        queuePlayer.removeAllItems()
+        guard let track = playbackQueue.current else { return }
+        currentTrack = track
+        currentTime = 0
+        duration = 0
+        errorMessage = nil
+        isPlaying = autoplay
+        do {
+            let (descriptor, url) = try descriptorAndURL(for: track)
+            let asset = HeaderedMediaAsset.make(url: url, headers: descriptor.headers)
+            let item = AVPlayerItem(asset: asset)
+            queuePlayer.insert(item, after: nil)
+            installItemObservers(item)
+            if autoplay { queuePlayer.play() }
+            updateNowPlaying()
+            setRemoteCommands(enabled: true)
+        } catch {
+            handleCurrentFailure((error as? MusicPlayerError) ?? .invalidTrack)
+        }
     }
 
     func pause() {
@@ -102,8 +139,15 @@ final class MusicPlayer: ObservableObject {
 
     func resume() {
         guard currentTrack != nil else { return }
+        let needsReplacement = errorMessage != nil || queuePlayer.currentItem == nil
         errorMessage = nil
+        consecutiveFailures = 0
         activateAudioSession()
+        if needsReplacement {
+            startCurrentTrack(autoplay: true)
+            return
+        }
+        if duration > 0 && currentTime >= duration { seek(to: 0) }
         queuePlayer.play()
         isPlaying = true
         updateNowPlaying()
@@ -125,51 +169,36 @@ final class MusicPlayer: ObservableObject {
     }
 
     func seek(to time: TimeInterval) {
+        guard time.isFinite, let item = queuePlayer.currentItem else { return }
         let target = max(0, min(time, duration > 0 ? duration : time))
+        // Invalidate a pending repeat seek and all already-enqueued callbacks, even if this is
+        // still the same AVPlayerItem. User pause/seek must not be undone by an old completion.
+        installItemObservers(item)
         queuePlayer.seek(to: CMTime(seconds: target, preferredTimescale: 600))
         currentTime = target
         updateNowPlaying()
     }
 
     func next() {
-        guard queuePlayer.currentItem != nil else { return }
-        queuePlayer.advanceToNextItem()
-        guard queuePlayer.currentItem != nil else {
-            isPlaying = false
-            currentTime = 0
-            duration = 0
-            updateNowPlaying()
-            setRemoteCommands(enabled: true)
-            return
-        }
-        syncCurrentTrack()
-        queuePlayer.play()
-        isPlaying = true
-        updateNowPlaying()
-        setRemoteCommands(enabled: true)
+        guard playbackQueue.advance() != nil else { return }
+        consecutiveFailures = 0
+        startCurrentTrack(autoplay: true)
     }
 
     func previous() {
-        guard let index = currentTrack.flatMap({ current in queue.firstIndex { $0.id == current.id } }), index > 0 else {
+        guard currentTrack != nil else { return }
+        switch MusicQueuePlaybackPolicy.previousAction(elapsed: currentTime, hasPrevious: playbackQueue.hasPrevious) {
+        case .restart:
             seek(to: 0)
-            return
+        case .back:
+            guard playbackQueue.back() != nil else { return }
+            consecutiveFailures = 0
+            startCurrentTrack(autoplay: true)
         }
-        let target = queue[index - 1]
-        play(target, queue: Array(queue.dropFirst(index)))
     }
 
     private func installObservers() {
         let center = NotificationCenter.default
-        endObserver = center.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil,
-            queue: .main) { [weak self] note in
-                let item = note.object as? AVPlayerItem
-                Task { @MainActor in self?.itemEnded(item) }
-            }
-        failedObserver = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil,
-            queue: .main) { [weak self] note in
-                let item = note.object as? AVPlayerItem
-                Task { @MainActor in self?.itemFailed(item) }
-            }
         let session = AVAudioSession.sharedInstance()
         interruptionObserver = center.addObserver(forName: AVAudioSession.interruptionNotification,
             object: session, queue: .main) { [weak self] note in
@@ -181,64 +210,91 @@ final class MusicPlayer: ObservableObject {
             object: session, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.updateNowPlaying() }
             }
-        timeObserver = queuePlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
-            queue: .main) { [weak self] time in
-                Task { @MainActor in
-                    guard let self else { return }
-                    let seconds = time.seconds
-                    if seconds.isFinite && seconds >= 0 { self.currentTime = seconds }
-                    if let item = self.queuePlayer.currentItem {
-                        let value = item.duration.seconds
-                        if value.isFinite && value > 0 { self.duration = value }
-                    }
-                }
-            }
+    }
+
+    private func invalidateItemObservers() {
+        itemEvents.invalidate()
+        itemStatusTask?.cancel()
+        itemStatusTask = nil
+        queuePlayer.currentItem?.cancelPendingSeeks()
+        let center = NotificationCenter.default
+        if let endObserver { center.removeObserver(endObserver); self.endObserver = nil }
+        if let failedObserver { center.removeObserver(failedObserver); self.failedObserver = nil }
+        if let timeObserver { queuePlayer.removeTimeObserver(timeObserver); self.timeObserver = nil }
     }
 
     private func installItemObservers(_ item: AVPlayerItem) {
-        // Status becomes failed asynchronously; polling is bounded and runs only for the item
-        // that was just selected, while the notification above catches failures during playback.
-        Task { @MainActor [weak self, weak item] in
+        invalidateItemObservers()
+        let generation = itemEvents.generation
+        let center = NotificationCenter.default
+        endObserver = center.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
+            queue: .main) { [weak self] note in
+                let ended = note.object as? AVPlayerItem
+                Task { @MainActor in self?.itemEnded(ended, generation: generation) }
+            }
+        failedObserver = center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item,
+            queue: .main) { [weak self] note in
+                let failed = note.object as? AVPlayerItem
+                Task { @MainActor in self?.itemFailed(failed, generation: generation) }
+            }
+        timeObserver = queuePlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main) { [weak self, weak item] time in
+                Task { @MainActor in
+                    guard let self, let item,
+                          self.itemEvents.accepts(generation, isCurrentItem: self.queuePlayer.currentItem === item) else { return }
+                    let seconds = time.seconds
+                    if seconds.isFinite && seconds >= 0 { self.currentTime = seconds }
+                    let value = item.duration.seconds
+                    if value.isFinite && value > 0 { self.duration = value }
+                    // Like Yingxia, a real playing state, not merely asset readiness, ends a
+                    // consecutive failure run. Paused/loading items never reset this budget.
+                    if self.queuePlayer.timeControlStatus == .playing { self.consecutiveFailures = 0 }
+                }
+            }
+        // A stored task is cancelled on EVERY replacement, seek, stop and takeover. Never use
+        // try? here: cancellation must exit rather than spin through the remaining status polls.
+        itemStatusTask = Task { @MainActor [weak self, weak item] in
             for _ in 0..<40 {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                guard let self, let item, self.queuePlayer.currentItem === item else { return }
+                do { try await Task.sleep(nanoseconds: 250_000_000) }
+                catch { return }
+                guard !Task.isCancelled, let self, let item,
+                      self.itemEvents.accepts(generation, isCurrentItem: self.queuePlayer.currentItem === item) else { return }
                 if item.status == .readyToPlay { return }
-                if item.status == .failed { self.itemFailed(item); return }
+                if item.status == .failed { self.itemFailed(item, generation: generation); return }
             }
         }
     }
 
-    private func itemEnded(_ item: AVPlayerItem?) {
-        guard let item else { return }
+    private func itemEnded(_ item: AVPlayerItem?, generation: UInt64) {
+        guard let item, itemEvents.consumeTerminalEvent(generation,
+            isCurrentItem: queuePlayer.currentItem === item) else { return }
         let action = MusicQueuePlaybackPolicy.endAction(
-            isCurrentItem: queuePlayer.currentItem === item,
+            isCurrentItem: true,
             repeatsCurrent: MediaPreferences.musicLoopCurrent,
-            hasNext: hasNextTrack
+            hasNext: playbackQueue.hasNext
         )
         switch action {
         case .ignore:
             return
         case .repeatCurrent:
-            // AVQueuePlayer is configured to pause at item boundaries, so the current item is
-            // still selected here. Seek only that item; never let the queue silently move first.
+            // The .pause boundary retains this item. A manual seek/replacement/stop invalidates
+            // this completion; a pause while it is pending must never be turned back into play.
             queuePlayer.seek(to: .zero) { [weak self, weak item] finished in
                 Task { @MainActor in
-                    guard let self, let item, finished, self.queuePlayer.currentItem === item else { return }
-                    self.queuePlayer.play()
-                    self.isPlaying = true
+                    guard let self, let item,
+                          self.itemEvents.accepts(generation, isCurrentItem: self.queuePlayer.currentItem === item) else { return }
+                    guard finished else { self.handleCurrentFailure(.avPlayer(code: -1)); return }
+                    self.installItemObservers(item)
                     self.currentTime = 0
+                    if self.isPlaying { self.queuePlayer.play() }
                     self.updateNowPlaying()
                 }
             }
         case .advance:
-            queuePlayer.advanceToNextItem()
-            guard queuePlayer.currentItem != nil else { return }
-            syncCurrentTrack()
-            queuePlayer.play()
-            isPlaying = true
-            updateNowPlaying()
-            setRemoteCommands(enabled: true)
+            guard playbackQueue.advance() != nil else { return }
+            startCurrentTrack(autoplay: isPlaying)
         case .finish:
+            queuePlayer.pause()
             isPlaying = false
             if duration > 0 { currentTime = duration }
             updateNowPlaying()
@@ -246,45 +302,45 @@ final class MusicPlayer: ObservableObject {
         }
     }
 
-    private var currentQueueIndex: Int? {
-        guard let current = queuePlayer.currentItem else { return nil }
-        return queueItems.firstIndex(where: { $0 === current })
+    private var hasNextTrack: Bool { playbackQueue.hasNext }
+
+    private func itemFailed(_ item: AVPlayerItem?, generation: UInt64) {
+        guard let item, itemEvents.consumeTerminalEvent(generation,
+            isCurrentItem: queuePlayer.currentItem === item) else { return }
+        let code = (item.error as NSError?)?.code ?? -1
+        handleCurrentFailure(.avPlayer(code: code))
     }
 
-    private var hasNextTrack: Bool {
-        guard let index = currentQueueIndex else { return false }
-        return MusicQueuePlaybackPolicy.nextIndex(after: index, itemCount: queue.count) != nil
-    }
-
-    private func itemFailed(_ item: AVPlayerItem?) {
-        guard item == nil || item === queuePlayer.currentItem else { return }
-        let code = (item?.error as NSError?)?.code ?? -1
-        fail(MusicPlayerError.avPlayer(code: code))
-    }
-
-    private func syncCurrentTrack() {
-        guard let current = queuePlayer.currentItem,
-              let index = queueItems.firstIndex(where: { $0 === current }), queue.indices.contains(index) else { return }
-        currentTrack = queue[index]
-        currentTime = 0
-        duration = 0
-        installItemObservers(current)
+    private func handleCurrentFailure(_ error: MusicPlayerError) {
+        consecutiveFailures += 1
+        if playbackQueue.skipsAfterFailure(consecutive: consecutiveFailures) {
+            let autoplay = isPlaying
+            playbackQueue.advance()
+            startCurrentTrack(autoplay: autoplay)
+        } else {
+            fail(error)
+        }
     }
 
     private func fail(_ error: MusicPlayerError) {
+        invalidateItemObservers()
+        queuePlayer.pause()
         isPlaying = false
         errorMessage = error.localizedDescription
         updateNowPlaying()
+        setRemoteCommands(enabled: currentTrack != nil)
     }
 
     private func stopQueue(clearMetadata: Bool, deactivateSession: Bool = true) {
+        invalidateItemObservers()
         queuePlayer.pause()
         queuePlayer.removeAllItems()
         isPlaying = false
         currentTime = 0
         duration = 0
         queue = []
-        queueItems = []
+        playbackQueue = YingxiaMusicQueue(tracks: [])
+        consecutiveFailures = 0
         currentTrack = nil
         errorMessage = nil
         if clearMetadata {
@@ -352,7 +408,7 @@ final class MusicPlayer: ObservableObject {
         center.pauseCommand.isEnabled = enabled
         center.togglePlayPauseCommand.isEnabled = enabled
         center.nextTrackCommand.isEnabled = enabled && hasNextTrack
-        center.previousTrackCommand.isEnabled = enabled && (currentQueueIndex ?? 0) > 0
+        center.previousTrackCommand.isEnabled = enabled && currentTrack != nil
         center.changePlaybackPositionCommand.isEnabled = enabled
     }
 
@@ -378,6 +434,7 @@ final class MusicPlayer: ObservableObject {
     }
 
     isolated deinit {
+        itemStatusTask?.cancel()
         let center = NotificationCenter.default
         if let endObserver { center.removeObserver(endObserver) }
         if let failedObserver { center.removeObserver(failedObserver) }

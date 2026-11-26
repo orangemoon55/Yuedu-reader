@@ -12,6 +12,7 @@ exec bash scripts/xctest.sh -t 1200 -- \
     -only-testing:'yuedu appTests/NativeKSVideoKernelTests' \
     -only-testing:'yuedu appTests/CatVodPlaybackFlowTests' \
     -only-testing:'yuedu appTests/CatVodHTTPPlaybackTests' \
+    -only-testing:'yuedu appTests/YingxiaMusicQueueTests' \
     -only-testing:'yuedu appTests/MusicJSSourceTests' \
     -only-testing:'yuedu appTests/MediaHubInteractionTests' \
     -only-testing:'yuedu appTests/SourceImportPlanTests' \

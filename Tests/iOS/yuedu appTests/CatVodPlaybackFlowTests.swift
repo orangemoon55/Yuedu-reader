@@ -139,6 +139,39 @@ struct CatVodPlaybackFlowTests {
         }
     }
 
+    @Test("Yingxia preferred quality reaches the source-owned production stream factory")
+    func upstreamPreferredQualityReachesFactory() throws {
+        let detail = try video()
+        let route = try #require(detail.routes.first)
+        let episode = try #require(route.episodes.first)
+        let json = #"{"header":{"Referer":"https://source.example.invalid/"},"data":{"url":{"values":[{"n":"Original","v":"https://media.example.invalid/original.m3u8"},{"n":"HD","v":"/proxy/hd.m3u8"}],"position":1}}}"#
+        var resolved: [String] = []
+        let stream = try makeStream(json, route: route, episode: episode) { address in
+            resolved.append(address)
+            return try #require(URL(string: "https://owned.example.invalid" + address))
+        }
+        #expect(resolved == ["/proxy/hd.m3u8"])
+        #expect(stream.url.absoluteString == "https://owned.example.invalid/proxy/hd.m3u8")
+        #expect(stream.headers["Referer"] == "https://source.example.invalid/")
+        #expect(stream.resumeKey?.scheme == "readcc-catvod")
+    }
+
+    @Test("contextual movie detail reaches the existing episode/factory contract without fabricating a route")
+    func upstreamContextualDetailReachesFactory() throws {
+        let raw = #"{"result":{"video":{"vod_name":"Selected title","vod_content":"Source synopsis","vod_play_from":"primary","vod_play_url":"Episode$native-id"}}}"#
+        let detail = try CatVodContentParser.detail(Data(raw.utf8), fallbackID: videoID, fallbackTitle: "Selected title")
+        #expect(detail.id == videoID)
+        let route = try #require(detail.routes.first)
+        let episode = try #require(route.episodes.first)
+        #expect(episode.playID == "native-id")
+        let stream = try makeStream(#"{"url":"https://media.example.invalid/a.m3u8"}"#, route: route, episode: episode) {
+            try #require(URL(string: $0))
+        }
+        #expect(stream.url.pathExtension == "m3u8")
+        let metadataOnly = try CatVodContentParser.detail(Data(#"{"vod_id":"fixture-video"}"#.utf8), fallbackID: videoID, fallbackTitle: "Selected title")
+        #expect(metadataOnly.routes.isEmpty)
+    }
+
     private func identifier(_ object: NSObject) -> String {
         // SwiftUI elements can implement this getter without declaring the protocol.
         let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)

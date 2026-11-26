@@ -46,14 +46,12 @@ final class MediaTabToolbarUITests: XCTestCase {
     }
 
     @MainActor
-    func testHomeMediaSelectionSurvivesTabReturnAndRelaunchUntilManualChange() throws {
+    func testMediaChoicesStayInMemoryAcrossTabsButResetOnRelaunch() throws {
         try withWideApp { app in
             choose("video", for: "explore", in: app)
             assertVisible("mediaHub.videoHome", in: app)
             selectTab("settings", in: app)
             assertVisible("settings.form", in: app)
-            selectTab("explore", in: app)
-            assertVisible("mediaHub.videoHome", in: app)
             selectTab("explore", in: app)
             assertVisible("mediaHub.videoHome", in: app)
 
@@ -62,35 +60,37 @@ final class MediaTabToolbarUITests: XCTestCase {
             app.activate()
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
             assertVisible("mediaHub.videoHome", in: app)
-            relaunch(app)
-            assertVisible("mediaHub.videoHome", in: app)
 
-            // The two roots retain independent preferences, not one shared media route.
+            // The roots keep independent in-memory routes, never saved preferences.
             selectTab("bookshelf", in: app)
             choose("music", for: "bookshelf", in: app)
             assertVisible("mediaHub.musicLibrary", in: app)
             selectTab("explore", in: app)
             assertVisible("mediaHub.videoHome", in: app)
             relaunch(app)
-            assertVisible("mediaHub.videoHome", in: app)
+            assertReadingHome(in: app)
+            assertGone("mediaHub.close", in: app)
             selectTab("bookshelf", in: app)
-            assertVisible("mediaHub.musicLibrary", in: app)
+            assertVisible("home_options_menu", in: app)
+            assertGone("mediaHub.musicLibrary", in: app)
 
             selectTab("explore", in: app)
             choose("music", for: "explore", in: app)
             assertVisible("mediaHub.musicHome", in: app)
             relaunch(app)
-            assertVisible("mediaHub.musicHome", in: app)
+            assertReadingHome(in: app)
+            assertGone("mediaHub.musicHome", in: app)
+            choose("video", for: "explore", in: app)
+            assertVisible("mediaHub.videoHome", in: app)
             choose("reading", for: "explore", in: app)
             assertReadingHome(in: app)
             assertGone("mediaHub.close", in: app)
-            relaunch(app)
-            assertReadingHome(in: app)
-            assertGone("mediaHub.close", in: app)
             selectTab("bookshelf", in: app)
+            choose("music", for: "bookshelf", in: app)
             assertVisible("mediaHub.musicLibrary", in: app)
             choose("reading", for: "bookshelf", in: app)
             assertVisible("home_options_menu", in: app)
+            XCTAssertEqual(app.state, .runningForeground)
         }
     }
 

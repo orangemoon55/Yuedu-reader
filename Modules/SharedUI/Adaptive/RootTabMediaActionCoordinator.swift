@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 /// Lives at ContentView, above every replaceable navigation stack and menu host.
-/// Menu actions must return before changing AppStorage-backed destination identity:
+/// Menu actions must return before changing a root destination identity:
 /// synchronously destroying the currently dismissing context-menu/navigation host is
 /// unsafe on iOS. Coalesce rapid selections and cancel a pending action on a tab tap.
 @MainActor

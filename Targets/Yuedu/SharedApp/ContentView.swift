@@ -21,8 +21,8 @@ struct ContentView: View {
     @StateObject private var rootTabBar = RootTabBarVisibility()
     @StateObject private var mediaActionCoordinator = RootTabMediaActionCoordinator()
     @State private var selectedRootTab: RootTabItem = .explore
-    @AppStorage(MediaHubSelection.homeKey) private var homeMediaSelection = ""
-    @AppStorage(MediaHubSelection.libraryKey) private var libraryMediaSelection = ""
+    @State private var homeMediaSelection: MediaHubKind?
+    @State private var libraryMediaSelection: MediaHubKind?
     @State private var rootKeyboardVisible = false
     /// 新手導覽: up at a device's first launch, and again from 設定 → 關於.
     @State private var onboarding = OnboardingState()
@@ -394,8 +394,8 @@ struct ContentView: View {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                if isLibrary { libraryMediaSelection = kind.rawValue }
-                else { homeMediaSelection = kind.rawValue }
+                if isLibrary { libraryMediaSelection = kind }
+                else { homeMediaSelection = kind }
                 selectedRootTab = isLibrary ? .bookshelf : .explore
             }
         }
@@ -403,12 +403,12 @@ struct ContentView: View {
 
     private func closeMediaHub(_ isLibrary: Bool) {
         mediaActionCoordinator.schedule {
-            // Only an explicit close/default-content action clears the preference.
+            // An explicit close/default-content action clears only the in-memory route.
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                if isLibrary { libraryMediaSelection = "" }
-                else { homeMediaSelection = "" }
+                if isLibrary { libraryMediaSelection = nil }
+                else { homeMediaSelection = nil }
                 selectedRootTab = isLibrary ? .bookshelf : .explore
             }
         }

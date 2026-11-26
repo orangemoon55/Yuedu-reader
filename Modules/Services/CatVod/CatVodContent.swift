@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 // Foundation-only value types shared by the Readcc50 UI and data layer.
 struct CatVodCategory: Identifiable, Sendable, Hashable {
@@ -60,10 +61,29 @@ struct CatVodPage: Sendable, Hashable {
     let hasMore: Bool
 }
 
+struct CatVodPlaybackChoice: Identifiable, Sendable, Hashable {
+    let id: Int
+    let name: String
+    let address: String
+    let headers: [String: String]
+    let requiresWebParsing: Bool
+}
+
 struct CatVodPlayback: Sendable, Hashable {
     let url: String
     let headers: [String: String]
     let requiresWebParsing: Bool
+    /// Ordered alternatives for this episode; the first is the legacy `url`.
+    let choices: [CatVodPlaybackChoice]
+
+    init(url: String, headers: [String: String], requiresWebParsing: Bool, choices: [CatVodPlaybackChoice] = []) {
+        self.url = url
+        self.headers = headers
+        self.requiresWebParsing = requiresWebParsing
+        self.choices = choices.isEmpty
+            ? [CatVodPlaybackChoice(id: 0, name: "默认", address: url, headers: headers, requiresWebParsing: requiresWebParsing)]
+            : choices
+    }
 }
 
 enum CatVodContentError: Error, LocalizedError, Sendable, Equatable {
@@ -129,9 +149,27 @@ enum CatVodContentParser {
     }
 
     static func detail(_ data: Data) throws -> CatVodVideo {
-        let root = try normalizedRoot(data)
-        try checkBusinessStatus(root)
-        switch try detailLookup(in: root, depth: 0) {
+        try parseDetail(data, requestedID: nil, fallbackTitle: nil)
+    }
+
+    /// Opt-in request-context recovery; the strict overload and list validation stay unchanged.
+    /// Yingxia Catalog.swift:154-156 uses an id as the missing name; :495-506 fills a
+    /// missing vod_id from the detail request. Here only matching explicit vod_id-only
+    /// records, or named movie records with real metadata/routes, qualify (never {}).
+    /// The caller must supply the actual requested ID, not an ID invented from this response.
+    static func detail(_ data: Data, fallbackID: String, fallbackTitle: String? = nil) throws -> CatVodVideo {
+        let identifier = fallbackID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !identifier.isEmpty else {
+            throw CatVodContentError.invalidResponse("详情请求缺少影片标识")
+        }
+        return try parseDetail(data, requestedID: identifier, fallbackTitle: fallbackTitle)
+    }
+
+    private static func parseDetail(_ data: Data, requestedID: String?, fallbackTitle: String?) throws -> CatVodVideo {
+        // Do not normalize away detail envelopes: all known wrappers, including JSON
+        // strings nested inside result/detail/list, must be validated along this path.
+        let root = try jsonObject(data)
+        switch try detailLookup(in: root, depth: 0, stringDepth: 0, requestedID: requestedID, fallbackTitle: fallbackTitle) {
         case .video(let item):
             return parseVideo(item, includeRoutes: true)
         case .empty:
@@ -142,8 +180,9 @@ enum CatVodContentParser {
     }
 
     static func playback(_ data: Data) throws -> CatVodPlayback {
-        let root = try normalizedRoot(data)
-        guard let selected = try selectPlayback(root, headers: [:], requiresParsing: false, depth: 0) else {
+        // Preserve outer headers/parse flags while descending through a data envelope.
+        let root = try jsonObject(data)
+        guard let selected = try selectPlayback(root, headers: [:], requiresParsing: false, depth: 0, stringDepth: 0) else {
             throw CatVodContentError.invalidPlaybackURL
         }
         return selected
@@ -177,7 +216,9 @@ enum CatVodContentParser {
         throw CatVodContentError.invalidResponse("响应包裹超过允许层数")
     }
 
-    private static func detailLookup(in value: Any, depth: Int) throws -> DetailLookup {
+    private static func detailLookup(
+        in value: Any, depth: Int, stringDepth: Int, requestedID: String?, fallbackTitle: String?
+    ) throws -> DetailLookup {
         // Every inspected wrapper is status-checked before we descend into it. Only these
         // explicitly recognized CatVod response keys are traversed; arbitrary objects are
         // never treated as videos just because they contain unrelated fields.
@@ -185,8 +226,18 @@ enum CatVodContentParser {
         guard depth <= 4 else {
             throw CatVodContentError.invalidResponse("详情包裹超过允许层数")
         }
+        if let text = value as? String, isJSONContainer(text) {
+            guard stringDepth < 1 else {
+                throw CatVodContentError.invalidResponse("字符串化 JSON 超过一层")
+            }
+            return try detailLookup(in: jsonObject(Data(text.utf8)), depth: depth, stringDepth: stringDepth + 1,
+                                    requestedID: requestedID, fallbackTitle: fallbackTitle)
+        }
 
         if let item = value as? [String: Any] {
+            if let requestedID, let video = contextualDetail(item, requestedID: requestedID, fallbackTitle: fallbackTitle) {
+                return .video(video)
+            }
             if isRecognizedVideoObject(item) { return .video(item) }
 
             var sawEmpty = false
@@ -198,7 +249,8 @@ enum CatVodContentParser {
                     else { sawMalformed = true }
                     continue
                 }
-                switch try detailLookup(in: nested, depth: depth + 1) {
+                switch try detailLookup(in: nested, depth: depth + 1, stringDepth: stringDepth,
+                                        requestedID: requestedID, fallbackTitle: fallbackTitle) {
                 case .video(let video): return .video(video)
                 case .empty: sawEmpty = true
                 case .malformed: sawMalformed = true
@@ -214,7 +266,8 @@ enum CatVodContentParser {
             var sawEmpty = false
             var sawMalformed = false
             for nested in values {
-                switch try detailLookup(in: nested, depth: depth + 1) {
+                switch try detailLookup(in: nested, depth: depth + 1, stringDepth: stringDepth,
+                                        requestedID: requestedID, fallbackTitle: fallbackTitle) {
                 case .video(let video): return .video(video)
                 case .empty: sawEmpty = true
                 case .malformed: sawMalformed = true
@@ -224,6 +277,46 @@ enum CatVodContentParser {
             return sawEmpty ? .empty : .malformed
         }
         return .malformed
+    }
+
+    // Detail-only adaptation of Yingxia Catalog.swift:154-156, 495-506 at
+    // a6bcc00bbbdbd7c6af7b7223ca2fa6018d6d685c (GPL-3.0-only).
+    // Copyright (C) 2026 jo32 and Yingxia contributors.
+    // Unlike upstream's unconditional missing-id fill, require movie evidence and
+    // never turn a wrapper, an error message, or an arbitrary generic id into a film.
+    private static func contextualDetail(
+        _ item: [String: Any], requestedID: String, fallbackTitle: String?
+    ) -> [String: Any]? {
+        guard !["list", "videos", "video", "detail", "result", "data"].contains(where: { item[$0] != nil }),
+              !["msg", "message", "errMsg", "error_msg", "errorMessage", "action"].contains(where: {
+                  item[$0].map(isMeaningfulError) ?? false
+              }) else { return nil }
+        let title = string(item["vod_name"] ?? item["title"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let identifier = string(item["vod_id"] ?? item["id"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var video = item
+        if title.isEmpty {
+            // Explicit vod_id is the upstream Video.init contract. A generic {id:...}
+            // is not movie evidence; a mismatched ID must not inherit the selected title.
+            guard let rawID = item["vod_id"], !(rawID is NSNull),
+                  rawID is String || rawID is NSNumber,
+                  !identifier.isEmpty, identifier == requestedID else { return nil }
+            if let number = rawID as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() { return nil }
+            if let rawName = item["vod_name"] ?? item["title"], !(rawName is NSNull), !(rawName is String) {
+                return nil
+            }
+            let name = fallbackTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            video["vod_name"] = name.isEmpty ? identifier : name
+            return video
+        }
+        guard identifier.isEmpty else { return nil }
+        let metadataKeys = ["vod_pic", "vod_content", "vod_actor", "vod_director", "vod_year", "vod_area"]
+        guard !parseRoutes(item).isEmpty || metadataKeys.contains(where: {
+            !string(item[$0]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else { return nil }
+        // Only genuinely omitted/null/blank IDs qualify, not malformed containers.
+        if let rawID = item["vod_id"] ?? item["id"], !(rawID is NSNull), !(rawID is String) { return nil }
+        video["vod_id"] = requestedID
+        return video
     }
 
     private static func isRecognizedVideoObject(_ item: [String: Any]) -> Bool {
@@ -455,39 +548,77 @@ enum CatVodContentParser {
     }
 
     private static func selectPlayback(
-        _ value: Any, headers: [String: String], requiresParsing: Bool, depth: Int
+        _ value: Any, headers: [String: String], requiresParsing: Bool, depth: Int, stringDepth: Int
     ) throws -> CatVodPlayback? {
         guard depth < 8 else {
             throw CatVodContentError.invalidResponse("播放 URL 嵌套超过允许层数")
         }
-        if let text = value as? String {
-            let url = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard isHTTPMediaURL(url) else { return nil }
-            return CatVodPlayback(url: url, headers: headers, requiresWebParsing: requiresParsing)
+        try checkBusinessStatus(value)
+        if let text = value as? String, isJSONContainer(text) {
+            guard stringDepth < 1 else {
+                throw CatVodContentError.invalidResponse("字符串化 JSON 超过一层")
+            }
+            return try selectPlayback(jsonObject(Data(text.utf8)), headers: headers, requiresParsing: requiresParsing,
+                                      depth: depth, stringDepth: stringDepth + 1)
+        }
+        if value is String {
+            return playbackChoices(value, headers: headers, requiresParsing: requiresParsing)
         }
         if let array = value as? [Any] {
-            // Quality labels and URLs alternate in many TVBox responses. Only
-            // HTTP(S) values qualify, and their order is retained.
-            for candidate in array {
-                if let result = try selectPlayback(candidate, headers: headers, requiresParsing: requiresParsing, depth: depth + 1) {
+            // Retain the legacy all-URL array form; otherwise upstream's alternating
+            // name/address parser must not mistake an HTTP-looking label for an address.
+            let directURLs = array.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if !directURLs.isEmpty, directURLs.count == array.count, directURLs.allSatisfy(isHTTPMediaURL) {
+                let choices = directURLs.enumerated().map {
+                    CatVodPlaybackChoice(id: $0.offset, name: "默认", address: $0.element,
+                                         headers: headers, requiresWebParsing: requiresParsing)
+                }
+                return CatVodPlayback(url: choices[0].address, headers: headers, requiresWebParsing: requiresParsing, choices: choices)
+            }
+            if let result = playbackChoices(array, headers: headers, requiresParsing: requiresParsing) { return result }
+            // Older structured responses may contain URL objects rather than scalar pairs.
+            for candidate in array where candidate is [String: Any] || candidate is [Any] {
+                if let result = try selectPlayback(candidate, headers: headers, requiresParsing: requiresParsing,
+                                                   depth: depth + 1, stringDepth: stringDepth) {
                     return result
                 }
             }
         }
         if let object = value as? [String: Any] {
-            try checkBusinessStatus(object)
             var mergedHeaders = headers
             for (key, value) in parseHeaders(object["header"]) { mergedHeaders[key] = value }
             for (key, value) in parseHeaders(object["headers"]) { mergedHeaders[key] = value }
             let parsing = requiresParsing || parseFlag(object["parse"]) || parseFlag(object["jx"])
-            for key in ["url", "play", "play_url"] {
+            // Status-check FongMi entries before filtering invalid URLs so a failed
+            // response is not silently converted to a different quality's success.
+            if let values = object["values"] as? [Any] {
+                for entry in values { try checkBusinessStatus(entry) }
+                if let result = playbackChoices(object, headers: mergedHeaders, requiresParsing: parsing) { return result }
+            }
+            for key in ["url", "play", "play_url", "data", "result"] {
                 if let payload = object[key],
-                   let result = try selectPlayback(payload, headers: mergedHeaders, requiresParsing: parsing, depth: depth + 1) {
+                   let result = try selectPlayback(payload, headers: mergedHeaders, requiresParsing: parsing,
+                                                   depth: depth + 1, stringDepth: stringDepth) {
                     return result
                 }
             }
         }
         return nil
+    }
+
+    private static func playbackChoices(
+        _ value: Any, headers: [String: String], requiresParsing: Bool
+    ) -> CatVodPlayback? {
+        // This is the production call to the adapted upstream parser, not a parallel
+        // fixture-only implementation. Safety filtering preserves its position/order/IDs.
+        let choices = YingxiaPlaybackChoice.parse(value, fallbackName: "默认").compactMap { choice -> CatVodPlaybackChoice? in
+            let address = choice.address.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isHTTPMediaURL(address) else { return nil }
+            return CatVodPlaybackChoice(id: choice.id, name: choice.name, address: address,
+                                        headers: headers, requiresWebParsing: requiresParsing)
+        }
+        guard let first = choices.first else { return nil }
+        return CatVodPlayback(url: first.address, headers: headers, requiresWebParsing: requiresParsing, choices: choices)
     }
 
     private static func isHTTPMediaURL(_ text: String) -> Bool {

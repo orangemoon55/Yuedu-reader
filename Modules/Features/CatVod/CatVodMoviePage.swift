@@ -37,7 +37,7 @@ struct CatVodMoviePage: View {
         .task(id: retry) {
             guard detail == nil else { return }; failure = nil
             do {
-                let result = try await CatVodCatalog.shared.detail(sourceID: sourceID, siteKey: siteKey, videoID: videoID)
+                let result = try await CatVodCatalog.shared.detail(sourceID: sourceID, siteKey: siteKey, videoID: videoID, fallbackTitle: title)
                 try Task.checkCancellation(); detail = result; selectedRoute = result.routes.first?.id ?? ""
             } catch { if !Task.isCancelled { failure = CatVodCatalog.message(error) } }
         }

@@ -104,8 +104,11 @@ final class CatVodCatalog {
             return try CatVodContentParser.page(data, requestedPage: page)
         }
     }
-    func detail(sourceID: String, siteKey: String, videoID: String) async throws -> CatVodVideo {
-        try await perform { try CatVodContentParser.detail(await self.request(sourceID, siteKey, "detail", ["id": [videoID], "ids": videoID])) }
+    func detail(sourceID: String, siteKey: String, videoID: String, fallbackTitle: String? = nil) async throws -> CatVodVideo {
+        try await perform {
+            let data = try await self.request(sourceID, siteKey, "detail", ["id": [videoID], "ids": videoID])
+            return try CatVodContentParser.detail(data, fallbackID: videoID, fallbackTitle: fallbackTitle)
+        }
     }
     func poster(_ text: String, sourceID: String) -> URL? {
         guard !text.isEmpty else { return nil }

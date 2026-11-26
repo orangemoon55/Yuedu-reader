@@ -15,7 +15,8 @@ struct TMDBClientTests {
         #expect(request.url?.scheme == "https")
         #expect(request.url?.host == "api.themoviedb.org")
         #expect(request.url?.path == "/3/search/movie")
-        let items = try #require(URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?.queryItems)
+        let requestURL = try #require(request.url)
+        let items = try #require(URLComponents(url: requestURL, resolvingAgainstBaseURL: false)?.queryItems)
         #expect(items.first(where: { $0.name == "api_key" })?.value == "fake-v3-key-not-real")
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }

@@ -39,8 +39,8 @@ python3 scripts/prepare_trollstore_test.py prepare >> "$PRIVATE/test.log" 2>&1
 export DEVELOPER_DIR="$(python3 scripts/prepare_trollstore_test.py select-xcode)"
 bash scripts/ensure_metal_toolchain.sh >> "$PRIVATE/test.log" 2>&1
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
-  # The supplied crash recording is the iPhone floating Home context-menu path.
-  DEST="$(bash scripts/sim.sh dest iPhone)"
+  # Run the wide-toolbar/sidebar suite on iPad; the separate crash pass below uses iPhone.
+  DEST="$(bash scripts/sim.sh dest iPad)"
 else
   DEST="$(bash scripts/sim.sh dest)"
 fi
@@ -50,6 +50,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/CatVodPlaybackFlowTests'
     -only-testing:'yuedu appTests/MusicImportServiceTests'
     -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
+    -only-testing:'yuedu appTests/YingxiaMusicQueueTests'
     -only-testing:'yuedu appTests/MusicJSSourceTests'
     -only-testing:'yuedu appTests/MusicCatalogTests'
     -only-testing:'yuedu appTests/ModuleMediaImportTests'
