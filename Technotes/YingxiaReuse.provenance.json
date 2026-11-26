@@ -24,6 +24,13 @@
       "upstream_file_sha256": "9aea833931b55ef22b0eafe22338dd44720aed39ffa4e6878a9a7505610844c5",
       "adaptation_path": "Modules/Services/Music/YingxiaMusicQueue.swift",
       "adaptation_sha256": "20db745f98de8cd1fb4c1dcb82adefe68872a8f03d7629f66cb6ecec26923b75"
+    },
+    {
+      "upstream_path": "Sources/TVCore/MusicLyrics.swift",
+      "upstream_lines": "3-99 (LRC parser/timeline; lyric source providers excluded)",
+      "upstream_file_sha256": "6d631aa7a1f291c9f9807019c8c22f466fc5602ba3e6bcd71609c3f397a948bb",
+      "adaptation_path": "Modules/Services/Music/YingxiaMusicLyrics.swift",
+      "adaptation_sha256": "6b3dd6c43d38b471ca96200dbc0c8500fab6e06b71401da06f2a1db370b3cac2"
     }
   ],
   "queue_method_body_parity": {

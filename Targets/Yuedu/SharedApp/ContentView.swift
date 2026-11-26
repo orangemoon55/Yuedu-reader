@@ -19,7 +19,7 @@ struct ContentView: View {
     /// Whether any screen is hiding the tab bar — answered from every tab, not only the
     /// screen's own (`RootTabBarVisibility`).
     @StateObject private var rootTabBar = RootTabBarVisibility()
-    @StateObject private var mediaActionCoordinator = RootTabMediaActionCoordinator()
+    private let mediaActionCoordinator = RootTabMediaActionCoordinator()
     @State private var selectedRootTab: RootTabItem = .explore
     @State private var homeMediaSelection: MediaHubKind?
     @State private var libraryMediaSelection: MediaHubKind?
@@ -132,7 +132,6 @@ struct ContentView: View {
             gs.noteAppearanceOnScreen(scheme, in: scenePhase)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { mediaActionCoordinator.cancel() }
             SourcePerfTrace.span("content.scene.\(phase)", thresholdMs: 5) {
                 gs.noteAppearanceOnScreen(effectiveColorScheme, in: phase)
             }
@@ -355,7 +354,6 @@ struct ContentView: View {
         Binding {
             selectedRootTab
         } set: { tab in
-            mediaActionCoordinator.cancel()
             // Stamped as the tap lands: iOS 27 appears the tab's root before `onChange` runs.
             if tab == .library, selectedRootTab != .library { LibraryTabTiming.noteSelected() }
             // Returning to a root tab keeps its last manually selected content.
@@ -389,28 +387,21 @@ struct ContentView: View {
     }
 
     private func openMediaHub(_ kind: MediaHubKind, _ isLibrary: Bool) {
-        mediaActionCoordinator.schedule {
-            // Return from the system menu action before replacing its navigation host.
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                if isLibrary { libraryMediaSelection = kind }
-                else { homeMediaSelection = kind }
-                selectedRootTab = isLibrary ? .bookshelf : .explore
-            }
+        mediaActionCoordinator.perform {
+            // The tab's original NavigationStack stays mounted under the media layer.
+            // No dismissal timer or menu-host replacement is needed for this state change.
+            if isLibrary { libraryMediaSelection = kind }
+            else { homeMediaSelection = kind }
+            selectedRootTab = isLibrary ? .bookshelf : .explore
         }
     }
 
     private func closeMediaHub(_ isLibrary: Bool) {
-        mediaActionCoordinator.schedule {
-            // An explicit close/default-content action clears only the in-memory route.
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                if isLibrary { libraryMediaSelection = nil }
-                else { homeMediaSelection = nil }
-                selectedRootTab = isLibrary ? .bookshelf : .explore
-            }
+        mediaActionCoordinator.perform {
+            // Menu choices remain in-memory and closing only clears this root's route.
+            if isLibrary { libraryMediaSelection = nil }
+            else { homeMediaSelection = nil }
+            selectedRootTab = isLibrary ? .bookshelf : .explore
         }
     }
 
@@ -482,19 +473,19 @@ struct ContentView: View {
     private func rootTabContent(for tab: RootTabItem) -> some View {
         switch tab {
         case .bookshelf:
-            if let route = MediaHubSelection.route(libraryMediaSelection, isLibrary: true) {
-                MediaHubRootView(kind: route.kind, isLibrary: true, onClose: { closeMediaHub(true) })
-                    .id(route.id)
-            } else {
-                HomeView()
-            }
+            RootTabMediaNavigationHost(
+                root: HomeView(),
+                route: MediaHubSelection.route(libraryMediaSelection, isLibrary: true),
+                isLibrary: true,
+                onClose: { closeMediaHub(true) }
+            )
         case .explore:
-            if let route = MediaHubSelection.route(homeMediaSelection, isLibrary: false) {
-                MediaHubRootView(kind: route.kind, isLibrary: false, onClose: { closeMediaHub(false) })
-                    .id(route.id)
-            } else {
-                BrowserView(browser: browser)
-            }
+            RootTabMediaNavigationHost(
+                root: BrowserView(browser: browser),
+                route: MediaHubSelection.route(homeMediaSelection, isLibrary: false),
+                isLibrary: false,
+                onClose: { closeMediaHub(false) }
+            )
         case .library:
             LibraryTabRoot(browser: browser)
         case .rss:
@@ -1087,6 +1078,47 @@ private struct SpinningCoverIcon<Face: View>: View {
                     .frame(width: 12, height: 12)
                     .overlay(Circle().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
             )
+    }
+}
+
+@MainActor
+private struct RootTabMediaNavigationHost<Root: View>: View {
+    let root: Root
+    let route: MediaHubRoute?
+    let isLibrary: Bool
+    let onClose: () -> Void
+
+    private var showsMedia: Bool { route != nil }
+
+    var body: some View {
+        ZStack {
+            // Keep the original tab root and its NavigationStack alive beneath media.
+            root
+                .opacity(showsMedia ? 0 : 1)
+                .allowsHitTesting(!showsMedia)
+                .accessibilityHidden(showsMedia)
+
+            // Keep exactly one media stack at a stable structural identity. Changing
+            // kinds replaces only its root content, and clearing a route cancels that
+            // destination's scoped tasks without dismantling the NavigationStack host.
+            NavigationStack {
+                if let route {
+                    MediaHubRootView(
+                        kind: route.kind,
+                        isLibrary: isLibrary,
+                        onClose: onClose,
+                        embedsNavigationStack: false
+                    )
+                    .id(route.id)
+                } else {
+                    Color.clear
+                }
+            }
+            .opacity(showsMedia ? 1 : 0)
+            .allowsHitTesting(showsMedia)
+            .accessibilityHidden(!showsMedia)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

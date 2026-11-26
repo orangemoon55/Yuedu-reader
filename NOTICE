@@ -71,6 +71,9 @@ Readcc includes source adaptations, not merely interface inspiration:
     Modules/Services/CatVod/YingxiaPlaybackChoices.swift
   Sources/TVCore/MusicQueue.swift (queue/cursor/failure/restart subset) ->
     Modules/Services/Music/YingxiaMusicQueue.swift
+  Sources/TVCore/MusicLyrics.swift:3-99 (LRC parsing/timeline subset; upstream SHA-256
+    6d631aa7a1f291c9f9807019c8c22f466fc5602ba3e6bcd71609c3f397a948bb) ->
+    Modules/Services/Music/YingxiaMusicLyrics.swift (GPL-3.0-only; local LRC only)
   Sources/TVCore/Catalog.swift:154-156,495-506 (detail identity/name recovery) ->
     Modules/Services/CatVod/CatVodContent.swift, contextualDetail
 

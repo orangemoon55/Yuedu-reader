@@ -35,43 +35,13 @@ struct MediaTabMenuTests {
         }
     }
 
-    @Test("menu actions do not mutate route inline and only the latest selection executes")
-    @MainActor func deferredMenuSelection() async {
-        let gate = MenuDismissalGate()
-        let coordinator = RootTabMediaActionCoordinator(waitForDismissal: { await gate.wait() })
+    @Test("route updates execute immediately without a guessed dismissal delay")
+    @MainActor func immediateMenuSelection() {
+        let coordinator = RootTabMediaActionCoordinator()
         var selected: [String] = []
-        coordinator.schedule { selected.append("video") }
-        coordinator.schedule { selected.append("music") }
-        #expect(selected.isEmpty)
-        await gate.open()
-        for _ in 0..<200 where selected.isEmpty { await Task.yield() }
-        #expect(selected == ["music"])
-    }
-
-    @Test("a subsequent normal tab tap cancels pending menu navigation")
-    @MainActor func cancelledMenuSelection() async {
-        let gate = MenuDismissalGate()
-        let coordinator = RootTabMediaActionCoordinator(waitForDismissal: { await gate.wait() })
-        var changed = false
-        coordinator.schedule { changed = true }
-        coordinator.cancel()
-        await gate.open()
-        for _ in 0..<200 { await Task.yield() }
-        #expect(!changed)
-    }
-}
-
-private actor MenuDismissalGate {
-    private var isOpen = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    func wait() async {
-        if isOpen { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-    func open() {
-        isOpen = true
-        let continuations = waiters
-        waiters.removeAll()
-        for continuation in continuations { continuation.resume() }
+        coordinator.perform { selected.append("video") }
+        #expect(selected == ["video"])
+        coordinator.perform { selected.append("music") }
+        #expect(selected == ["video", "music"])
     }
 }

@@ -6,7 +6,7 @@ struct MediaHubRootView: View {
     let kind: MediaHubKind
     let isLibrary: Bool
     let onClose: () -> Void
-
+    private let embedsNavigationStack: Bool
     @ObservedObject private var sourceLibrary = Md5SourceLibrary.shared
     @ObservedObject private var mediaLibrary = MediaHubLibrary.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -46,10 +46,12 @@ struct MediaHubRootView: View {
     @State private var viewportWidth: CGFloat = 390
     @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 390
 
-    init(kind: MediaHubKind, isLibrary: Bool, onClose: @escaping () -> Void) {
+    init(kind: MediaHubKind, isLibrary: Bool, onClose: @escaping () -> Void,
+         embedsNavigationStack: Bool = true) {
         self.kind = kind
         self.isLibrary = isLibrary
         self.onClose = onClose
+        self.embedsNavigationStack = embedsNavigationStack
         _selectedSourceID = State(initialValue: Self.savedSourceID(for: kind))
         _selectedSiteKey = State(initialValue: Self.savedSiteKey(for: kind))
     }
@@ -75,47 +77,12 @@ struct MediaHubRootView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if kind == .music { MusicJSSourceView(isLibrary: isLibrary) }
-                else if isLibrary { libraryBody }
-                else { discoveryBody }
+        Group {
+            if embedsNavigationStack {
+                NavigationStack { navigationContent }
+            } else {
+                navigationContent
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
-            .navigationTitle(localized(kind == .video && !isLibrary && isHomeFeed ? "" : (isLibrary ? kind.libraryTitleKey : kind.titleKey)))
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onClose) { Label(localized("關閉"), systemImage: "xmark") }
-                        .accessibilityIdentifier("mediaHub.close")
-                }
-                if let mediaMenuContext {
-                    RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
-                                        onDefault: mediaMenuContext.onDefault)
-                }
-                if kind == .video, !isLibrary {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { homeSearchActive.toggle() } label: {
-                            Label(localized("搜尋影片"), systemImage: "magnifyingglass")
-                        }.accessibilityIdentifier("mediaHub.homeSearchToggle")
-                    }
-                }
-                if kind != .music {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { sourceSheetPresented = true } label: {
-                            Label(localized("來源與篩選"), systemImage: "slider.horizontal.3")
-                        }
-                        .accessibilityIdentifier("mediaHub.sourceControls")
-                    }
-                }
-            }
-            .themedAppSurface(for: .explore)
-            .sheet(isPresented: $sourceSheetPresented) { sourceSheet }
-            .sheet(item: $selectedMusicItem) { item in savedMusicSheet(item) }
-            .alert(localized("媒體庫保存失敗"), isPresented: Binding(
-                get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })) {
-                Button(localized("關閉"), role: .cancel) { saveFailure = nil }
-            } message: { Text(saveFailure ?? "") }
         }
         .task { sourceLibrary.loadIfNeeded(); mediaLibrary.reload() }
         .onChange(of: availableSources.map(\.id)) { _, ids in
@@ -137,6 +104,49 @@ struct MediaHubRootView: View {
             guard !isLibrary, kind == .video else { return }
             await loadContent()
         }
+    }
+
+    private var navigationContent: some View {
+        Group {
+            if kind == .music { MusicJSSourceView(isLibrary: isLibrary) }
+            else if isLibrary { libraryBody }
+            else { discoveryBody }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
+        .navigationTitle(localized(kind == .video && !isLibrary && isHomeFeed ? "" : (isLibrary ? kind.libraryTitleKey : kind.titleKey)))
+        .toolbarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: onClose) { Label(localized("關閉"), systemImage: "xmark") }
+                    .accessibilityIdentifier("mediaHub.close")
+            }
+            if let mediaMenuContext {
+                RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
+                                    onDefault: mediaMenuContext.onDefault)
+            }
+            if kind == .video, !isLibrary {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { homeSearchActive.toggle() } label: {
+                        Label(localized("搜尋影片"), systemImage: "magnifyingglass")
+                    }.accessibilityIdentifier("mediaHub.homeSearchToggle")
+                }
+            }
+            if kind != .music {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { sourceSheetPresented = true } label: {
+                        Label(localized("來源與篩選"), systemImage: "slider.horizontal.3")
+                    }
+                    .accessibilityIdentifier("mediaHub.sourceControls")
+                }
+            }
+        }
+        .themedAppSurface(for: .explore)
+        .sheet(isPresented: $sourceSheetPresented) { sourceSheet }
+        .sheet(item: $selectedMusicItem) { item in savedMusicSheet(item) }
+        .alert(localized("媒體庫保存失敗"), isPresented: Binding(
+            get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })) {
+            Button(localized("關閉"), role: .cancel) { saveFailure = nil }
+        } message: { Text(saveFailure ?? "") }
     }
 
     @ViewBuilder private var discoveryBody: some View {

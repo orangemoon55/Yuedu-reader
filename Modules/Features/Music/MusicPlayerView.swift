@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Small, testable player surface for imported music. The underlying MusicPlayer remains alive
 /// after the sheet closes, so background playback and lock-screen controls continue.
@@ -11,6 +12,16 @@ struct MusicPlayerView: View {
     @ObservedObject private var player = MusicPlayer.shared
     @Environment(\.dismiss) private var dismiss
     @State private var didStart = false
+    @State private var lyricsByTrackID: [String: YingxiaMusicLyrics] = [:]
+    @State private var lyricsImportErrorsByTrackID: [String: String] = [:]
+    @State private var isImportingLyrics = false
+    @State private var lyricsImportTargetTrackID: String?
+    @State private var lyricsImportGeneration: UUID?
+    @State private var playbackSelectionGeneration = UUID()
+
+    private static let lrcContentType = UTType(filenameExtension: "lrc", conformingTo: .plainText) ?? .plainText
+
+    private var displayedTrack: MediaHubLibraryItem { player.currentTrack ?? item }
 
     init(item: MediaHubLibraryItem, queue: [MediaHubLibraryItem] = [], autoPlay: Bool = true) {
         self.item = item
@@ -26,14 +37,14 @@ struct MusicPlayerView: View {
                     .font(.system(size: 72, weight: .light))
                     .foregroundStyle(DSColor.accent)
                     .accessibilityHidden(true)
-                Text(item.title)
+                Text(displayedTrack.title)
                     .font(DSFont.title2.weight(.bold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(DSColor.textPrimary)
-                if let artist = item.remarks, !artist.isEmpty {
+                if let artist = displayedTrack.remarks, !artist.isEmpty {
                     Text(artist).font(DSFont.subheadline).foregroundStyle(DSColor.textSecondary)
                 }
-                if let error = player.errorMessage, player.currentTrack?.id == item.id {
+                if let error = player.errorMessage, player.currentTrack?.id == displayedTrack.id {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(DSFont.footnote)
                         .foregroundStyle(.red)
@@ -41,26 +52,27 @@ struct MusicPlayerView: View {
                         .accessibilityIdentifier("mediaHub.music.error")
                 }
                 Slider(value: Binding(get: {
-                    player.currentTrack?.id == item.id ? player.currentTime : 0
+                    player.currentTrack?.id == displayedTrack.id ? player.currentTime : 0
                 }, set: { player.seek(to: $0) }), in: 0...max(1, player.duration))
-                .disabled(player.currentTrack?.id != item.id || player.duration <= 0)
+                .disabled(player.currentTrack?.id != displayedTrack.id || player.duration <= 0)
                 HStack {
-                    Text(Self.time(player.currentTrack?.id == item.id ? player.currentTime : 0))
+                    Text(Self.time(player.currentTrack?.id == displayedTrack.id ? player.currentTime : 0))
                     Spacer()
-                    Text(Self.time(player.currentTrack?.id == item.id ? player.duration : 0))
+                    Text(Self.time(player.currentTrack?.id == displayedTrack.id ? player.duration : 0))
                 }
                 .font(DSFont.caption.monospacedDigit())
                 .foregroundStyle(DSColor.textSecondary)
+                lyricsPanel
                 HStack(spacing: DSSpacing.lg) {
                     Button { player.previous() } label: {
                         Image(systemName: "backward.fill").font(DSFont.title2)
                     }.disabled(player.currentTrack == nil)
                     Button {
-                        if player.currentTrack?.id == item.id && player.isPlaying { player.pause() }
-                        else if player.currentTrack?.id == item.id { player.resume() }
-                        else { player.play(item, queue: queue) }
+                        if player.currentTrack?.id == displayedTrack.id && player.isPlaying { player.pause() }
+                        else if player.currentTrack?.id == displayedTrack.id { player.resume() }
+                        else { player.play(displayedTrack, queue: queue) }
                     } label: {
-                        Image(systemName: player.currentTrack?.id == item.id && player.isPlaying ? "pause.fill" : "play.fill")
+                        Image(systemName: player.currentTrack?.id == displayedTrack.id && player.isPlaying ? "pause.fill" : "play.fill")
                             .font(DSFont.title)
                             .frame(width: 58, height: 58)
                     }
@@ -94,7 +106,86 @@ struct MusicPlayerView: View {
                 player.play(item, queue: queue)
             }
         }
+        .onChange(of: player.currentTrack?.id) { _, _ in
+            playbackSelectionGeneration = UUID()
+            lyricsImportTargetTrackID = nil
+            lyricsImportGeneration = nil
+        }
+        .fileImporter(isPresented: $isImportingLyrics, allowedContentTypes: [Self.lrcContentType]) { result in
+            loadLyrics(result)
+        }
         .accessibilityIdentifier("mediaHub.music.player")
+    }
+
+    private var lyricsPanel: some View {
+        VStack(spacing: DSSpacing.sm) {
+            HStack {
+                Text(localized("歌詞")).font(DSFont.subheadline.weight(.semibold))
+                    .foregroundStyle(DSColor.textPrimary)
+                Spacer()
+                Button(action: beginLyricsImport) {
+                    Label(localized("匯入本地 LRC"), systemImage: "doc.badge.plus")
+                        .font(DSFont.caption)
+                }
+                .accessibilityIdentifier("mediaHub.music.lyrics.import")
+            }
+            if let lyrics = lyricsByTrackID[displayedTrack.id] {
+                MusicLyricsTimelineView(
+                    lyrics: lyrics,
+                    currentTime: player.currentTrack?.id == displayedTrack.id ? player.currentTime : 0,
+                    seek: { if player.currentTrack?.id == displayedTrack.id { player.seek(to: $0) } }
+                )
+            } else if let message = lyricsImportErrorsByTrackID[displayedTrack.id] {
+                Text(message)
+                    .font(DSFont.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, minHeight: 86)
+            } else {
+                Text(localized("此播放器目前未接入線上歌詞請求；可匯入你有權使用的本機 .lrc 檔。"))
+                    .font(DSFont.caption)
+                    .foregroundStyle(DSColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, minHeight: 86)
+            }
+        }
+        .padding(DSSpacing.md)
+        .frame(maxWidth: .infinity)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityIdentifier("mediaHub.music.lyrics")
+    }
+
+    private func beginLyricsImport() {
+        lyricsImportTargetTrackID = displayedTrack.id
+        lyricsImportGeneration = playbackSelectionGeneration
+        isImportingLyrics = true
+    }
+
+    private func loadLyrics(_ result: Result<URL, Error>) {
+        let targetID = lyricsImportTargetTrackID
+        let generation = lyricsImportGeneration
+        defer {
+            lyricsImportTargetTrackID = nil
+            lyricsImportGeneration = nil
+        }
+        guard let targetID,
+              MusicLyricsImportOwnership.accepts(
+                  targetTrackID: targetID, targetGeneration: generation,
+                  currentTrackID: displayedTrack.id, currentGeneration: playbackSelectionGeneration
+              ) else { return }
+
+        switch result {
+        case .success(let url):
+            do {
+                lyricsByTrackID[targetID] = try YingxiaMusicLyrics.load(from: url)
+                lyricsImportErrorsByTrackID[targetID] = nil
+            } catch {
+                lyricsImportErrorsByTrackID[targetID] = error.localizedDescription
+            }
+        case .failure(let error):
+            guard (error as NSError).code != NSUserCancelledError else { return }
+            lyricsImportErrorsByTrackID[targetID] = error.localizedDescription
+        }
     }
 
     static func shouldReplace(current: MediaHubLibraryItem?, with proposed: MediaHubLibraryItem, hasError: Bool) -> Bool {
@@ -106,6 +197,73 @@ struct MusicPlayerView: View {
         guard value.isFinite, value >= 0 else { return "0:00" }
         let total = Int(value.rounded(.down))
         return "\(total / 60):\(String(format: "%02d", total % 60))"
+    }
+}
+
+/// Lyrics are driven from the shared player's published clock; tapping a timed line seeks
+/// that same AVPlayer rather than starting a separate audio session.
+private struct MusicLyricsTimelineView: View {
+    let lyrics: YingxiaMusicLyrics
+    let currentTime: TimeInterval
+    let seek: (TimeInterval) -> Void
+
+    private var activeIndex: Int? { lyrics.index(at: currentTime) }
+
+    var body: some View {
+        if lyrics.synced {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: DSSpacing.sm) {
+                        ForEach(lyrics.lines.indices, id: \.self) { index in
+                            let line = lyrics.lines[index]
+                            Button { seek(line.time) } label: {
+                                lyricContent(line, isActive: index == activeIndex)
+                            }
+                            .buttonStyle(.plain)
+                            .id(index)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(height: 128)
+                .onAppear {
+                    if let activeIndex { proxy.scrollTo(activeIndex, anchor: .center) }
+                }
+                .onChange(of: activeIndex) { _, index in
+                    guard let index else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(index, anchor: .center) }
+                }
+            }
+        } else {
+            ScrollView {
+                LazyVStack(spacing: DSSpacing.sm) {
+                    ForEach(lyrics.lines.indices, id: \.self) { index in
+                        lyricContent(lyrics.lines[index], isActive: false)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .frame(height: 128)
+        }
+    }
+
+    private func lyricContent(_ line: YingxiaLyricLine, isActive: Bool) -> some View {
+        VStack(spacing: 2) {
+            Text(line.text.isEmpty ? "♪" : line.text)
+                .font(DSFont.subheadline.weight(isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? DSColor.accent : DSColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+            if let translation = line.translation {
+                Text(translation)
+                    .font(DSFont.caption)
+                    .foregroundStyle(DSColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
     }
 }
 

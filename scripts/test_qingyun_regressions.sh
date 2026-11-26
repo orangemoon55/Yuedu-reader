@@ -14,6 +14,15 @@ finish() {
     cat "$PRIVATE/manga-fixture.log" >> "$PRIVATE/test.log"
   fi
   python3 scripts/prepare_trollstore_test.py redact "$PRIVATE/test.log" trollstore-output/regressions.log || true
+  for suite in ipad phone; do
+    if [[ -f "$PRIVATE/$suite-test.log" ]]; then
+      python3 scripts/prepare_trollstore_test.py redact "$PRIVATE/$suite-test.log" \
+        "trollstore-output/media51-$suite-test.log" || true
+    fi
+  done
+  if [[ -f "$PRIVATE/media51-exit-status.txt" ]]; then
+    cp "$PRIVATE/media51-exit-status.txt" trollstore-output/media51-exit-status.txt
+  fi
   if [[ -f "$PRIVATE/result.xcresult/Info.plist" ]]; then
     mkdir -p trollstore-output/layout-preview
     xcrun xcresulttool export attachments --path "$PRIVATE/result.xcresult" --output-path trollstore-output/layout-preview >/dev/null 2>&1 || true
@@ -50,6 +59,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/CatVodPlaybackFlowTests'
     -only-testing:'yuedu appTests/MusicImportServiceTests'
     -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
+    -only-testing:'yuedu appTests/YingxiaMusicLyricsTests'
     -only-testing:'yuedu appTests/YingxiaMusicQueueTests'
     -only-testing:'yuedu appTests/MusicJSSourceTests'
     -only-testing:'yuedu appTests/MusicCatalogTests'
@@ -304,21 +314,59 @@ echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"
 xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -derivedDataPath "$PRIVATE/Tests" >> "$PRIVATE/test.log" 2>&1
 python3 scripts/normalize_ksplayer_frameworks.py "$PRIVATE/Tests/SourcePackages" >> "$PRIVATE/test.log" 2>&1
-xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
-  -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
-  -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
-  -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-  "${TEST_SELECTION[@]}" >> "$PRIVATE/test.log" 2>&1
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
-  # The supplied crash recording is the iPhone floating Home context-menu path.
-  # Keep it on a phone-sized simulator; the preceding media51 suite runs on iPad.
-  PHONE_DEST="$(bash scripts/sim.sh dest iPhone)"
+  # Run both device-class suites even if the iPad suite fails. Preserve independent logs
+  # and statuses; the aggregate status below still fails if either test command fails.
+  set +e
   xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
-    -configuration Debug -destination "$PHONE_DEST" -derivedDataPath "$PRIVATE/Tests" \
-    -resultBundlePath "$PRIVATE/phone-crash.xcresult" -parallel-testing-enabled NO \
-    -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN \
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-    -only-testing:'yuedu appUITests/MediaMenuCrashUITests' >> "$PRIVATE/test.log" 2>&1
+    -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
+    -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
+    -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+    "${TEST_SELECTION[@]}" > "$PRIVATE/ipad-test.log" 2>&1
+  IPAD_STATUS=$?
+  set -e
+  printf '===== iPad media51 suite (exit %s) =====\n' "$IPAD_STATUS" >> "$PRIVATE/test.log"
+  cat "$PRIVATE/ipad-test.log" >> "$PRIVATE/test.log"
+
+  if PHONE_DEST="$(bash scripts/sim.sh dest iPhone)"; then
+    set +e
+    xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+      -configuration Debug -destination "$PHONE_DEST" -derivedDataPath "$PRIVATE/Tests" \
+      -resultBundlePath "$PRIVATE/phone-crash.xcresult" -parallel-testing-enabled NO \
+      -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN \
+      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+      -only-testing:'yuedu appUITests/MediaMenuCrashUITests' > "$PRIVATE/phone-test.log" 2>&1
+    PHONE_STATUS=$?
+    set -e
+  else
+    PHONE_STATUS=$?
+    printf 'iPhone simulator destination lookup failed (exit %s); phone suite was not launchable.\n' \
+      "$PHONE_STATUS" > "$PRIVATE/phone-test.log"
+  fi
+  printf '===== iPhone MediaMenuCrashUITests (exit %s) =====\n' "$PHONE_STATUS" >> "$PRIVATE/test.log"
+  cat "$PRIVATE/phone-test.log" >> "$PRIVATE/test.log"
+  printf 'MEDIA51_IPAD_EXIT_STATUS=%s\nMEDIA51_IPHONE_EXIT_STATUS=%s\n' \
+    "$IPAD_STATUS" "$PHONE_STATUS" > "$PRIVATE/media51-exit-status.txt"
+  cat "$PRIVATE/media51-exit-status.txt" >> "$PRIVATE/test.log"
+  if [[ "$IPAD_STATUS" -ne 0 || "$PHONE_STATUS" -ne 0 ]]; then
+    echo 'media51 suites failed; both suite statuses and logs were retained.' >&2
+    exit 1
+  fi
+  python3 - "$PRIVATE/ipad-test.log" "$PRIVATE/phone-test.log" <<'PY'
+from pathlib import Path
+import sys
+for path in sys.argv[1:]:
+    text = Path(path).read_text(errors='replace')
+    if '** TEST SUCCEEDED **' not in text:
+        raise SystemExit(f'missing successful test marker in {Path(path).name}')
+    print(Path(path).name + ': ** TEST SUCCEEDED **')
+PY
+else
+  xcodebuild test -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
+    -configuration Debug -destination "$DEST" -derivedDataPath "$PRIVATE/Tests" \
+    -resultBundlePath "$PRIVATE/result.xcresult" -parallel-testing-enabled NO \
+    -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+    "${TEST_SELECTION[@]}" >> "$PRIVATE/test.log" 2>&1
 fi
 python3 - "$PRIVATE/test.log" <<'PY'
 from pathlib import Path

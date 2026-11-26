@@ -16,10 +16,19 @@ final class MusicPlayer: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var errorMessage: String?
 
+    /// Observation lifetime belongs to the current item, not to a readiness timeout. The
+    /// injectable installer also lets native tests deliver late/stale events deterministically.
+    typealias ItemStatusObserver = @MainActor (
+        AVPlayerItem, @escaping @MainActor @Sendable (AVPlayerItem.Status) -> Void
+    ) -> AnyCancellable
+    typealias RemoteCommandRemoval = @MainActor (MPRemoteCommand, Any) -> Void
+
     private let queuePlayer: AVQueuePlayer
+    private let observeItemStatus: ItemStatusObserver
+    private let removeCommandTarget: RemoteCommandRemoval
     private var playbackQueue = YingxiaMusicQueue<MediaHubLibraryItem>(tracks: [])
     private var itemEvents = MusicQueuePlaybackPolicy.ItemEvents()
-    private var itemStatusTask: Task<Void, Never>?
+    private var itemStatusObservation: AnyCancellable?
     private var consecutiveFailures = 0
     private var endObserver: NSObjectProtocol?
     private var failedObserver: NSObjectProtocol?
@@ -33,8 +42,14 @@ final class MusicPlayer: ObservableObject {
     }
     private var commandTargets: [RemoteCommandTarget] = []
 
-    init(queuePlayer: AVQueuePlayer = AVQueuePlayer()) {
+    init(queuePlayer: AVQueuePlayer = AVQueuePlayer(),
+         statusObserver: ItemStatusObserver? = nil,
+         removeCommandTarget: @escaping RemoteCommandRemoval = { command, token in
+             command.removeTarget(token)
+         }) {
         self.queuePlayer = queuePlayer
+        self.observeItemStatus = statusObserver ?? Self.observeStatus
+        self.removeCommandTarget = removeCommandTarget
         self.queuePlayer.actionAtItemEnd = .pause
         installObservers()
         // Remote command targets are installed only while this player owns the session. TTS and
@@ -212,10 +227,27 @@ final class MusicPlayer: ObservableObject {
             }
     }
 
+    /// Internal so the native smoke test can execute this exact production KVO bridge.
+    static func observeStatus(
+        of item: AVPlayerItem,
+        deliver: @escaping @MainActor @Sendable (AVPlayerItem.Status) -> Void
+    ) -> AnyCancellable {
+        // KVO stays installed through readyToPlay. A later status-only failure must reach the
+        // same terminal-event policy even when AVFoundation posts no failed-to-end notification.
+        let observation = item.observe(\.status, options: [.initial, .new]) { _, change in
+            let rawStatus = change.newValue?.rawValue
+            Task { @MainActor in
+                guard let rawStatus, let status = AVPlayerItem.Status(rawValue: rawStatus) else { return }
+                deliver(status)
+            }
+        }
+        return AnyCancellable { observation.invalidate() }
+    }
+
     private func invalidateItemObservers() {
         itemEvents.invalidate()
-        itemStatusTask?.cancel()
-        itemStatusTask = nil
+        itemStatusObservation?.cancel()
+        itemStatusObservation = nil
         queuePlayer.currentItem?.cancelPendingSeeks()
         let center = NotificationCenter.default
         if let endObserver { center.removeObserver(endObserver); self.endObserver = nil }
@@ -251,17 +283,11 @@ final class MusicPlayer: ObservableObject {
                     if self.queuePlayer.timeControlStatus == .playing { self.consecutiveFailures = 0 }
                 }
             }
-        // A stored task is cancelled on EVERY replacement, seek, stop and takeover. Never use
-        // try? here: cancellation must exit rather than spin through the remaining status polls.
-        itemStatusTask = Task { @MainActor [weak self, weak item] in
-            for _ in 0..<40 {
-                do { try await Task.sleep(nanoseconds: 250_000_000) }
-                catch { return }
-                guard !Task.isCancelled, let self, let item,
-                      self.itemEvents.accepts(generation, isCurrentItem: self.queuePlayer.currentItem === item) else { return }
-                if item.status == .readyToPlay { return }
-                if item.status == .failed { self.itemFailed(item, generation: generation); return }
-            }
+        itemStatusObservation = observeItemStatus(item) { [weak self, weak item] status in
+            guard let self, let item,
+                  self.itemEvents.accepts(generation, isCurrentItem: self.queuePlayer.currentItem === item),
+                  status == .failed else { return }
+            self.itemFailed(item, generation: generation)
         }
     }
 
@@ -398,7 +424,7 @@ final class MusicPlayer: ObservableObject {
     }
 
     private func removeRemoteCommandTargets() {
-        for target in commandTargets { target.command.removeTarget(target.token) }
+        for target in commandTargets { removeCommandTarget(target.command, target.token) }
         commandTargets.removeAll()
     }
 
@@ -434,7 +460,10 @@ final class MusicPlayer: ObservableObject {
     }
 
     isolated deinit {
-        itemStatusTask?.cancel()
+        itemStatusObservation?.cancel()
+        // Only unregister this instance's exact targets. Do not disable global commands,
+        // deactivate AVAudioSession, clear metadata, or detach a newer TTS/audiobook owner.
+        removeRemoteCommandTargets()
         let center = NotificationCenter.default
         if let endObserver { center.removeObserver(endObserver) }
         if let failedObserver { center.removeObserver(failedObserver) }

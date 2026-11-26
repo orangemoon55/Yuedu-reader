@@ -28,8 +28,8 @@ final class MediaTabToolbarUITests: XCTestCase {
                       "Native Tab context menus require iPadOS 18")
         try withWideApp { app in
             sidebarTab("explore", in: app).press(forDuration: 1.0)
-            assertMenu(for: "explore", in: app)
-            app.buttons["rootTabMedia.explore.video"].firstMatch.tap()
+            let exploreMenu = try nativeSidebarMenu(for: "explore", in: app)
+            try XCTUnwrap(exploreMenu["影視"]).tap()
             assertVisible("mediaHub.videoHome", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertReadingHome(in: app)
@@ -37,8 +37,8 @@ final class MediaTabToolbarUITests: XCTestCase {
             selectTab("bookshelf", in: app)
             assertVisible("home_options_menu", in: app)
             sidebarTab("bookshelf", in: app).press(forDuration: 1.0)
-            assertMenu(for: "bookshelf", in: app)
-            app.buttons["rootTabMedia.bookshelf.music"].firstMatch.tap()
+            let bookshelfMenu = try nativeSidebarMenu(for: "bookshelf", in: app)
+            try XCTUnwrap(bookshelfMenu["音樂庫"]).tap()
             assertVisible("mediaHub.musicLibrary", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertVisible("home_options_menu", in: app)
@@ -95,7 +95,7 @@ final class MediaTabToolbarUITests: XCTestCase {
     }
 
     @MainActor
-    private func withWideApp(_ body: (XCUIApplication) -> Void) throws {
+    private func withWideApp(_ body: (XCUIApplication) throws -> Void) throws {
         try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "Requires a wide iPad window")
         continueAfterFailure = false
         _ = try StoreKitTestSessions.fresh(StoreKitTestSessions.yueduPro())
@@ -121,7 +121,7 @@ final class MediaTabToolbarUITests: XCTestCase {
         assertVisible("home_options_menu", in: app)
         selectTab("explore", in: app)
         assertReadingHome(in: app)
-        body(app)
+        try body(app)
     }
 
     private func tabMetadata(_ tab: String) -> (icon: String, title: String) {
@@ -165,6 +165,48 @@ final class MediaTabToolbarUITests: XCTestCase {
     }
 
     @MainActor
+    private func nativeSidebarMenu(for tab: String, in app: XCUIApplication) throws -> [String: XCUIElement] {
+        let expectedLabels: [String]
+        switch tab {
+        case "explore": expectedLabels = ["影視", "音樂", "閱讀首頁"]
+        case "bookshelf": expectedLabels = ["影視庫", "音樂庫", "閱讀書架"]
+        default:
+            XCTFail("Unexpected native media-menu root: \(tab)")
+            return [:]
+        }
+
+        // Native Tab.contextMenu materializes as a sidebar CollectionView; its Button
+        // accessibility identifiers are not surfaced by UIKit. Match the one container
+        // whose complete descendant button-label set is exactly the three menu actions.
+        let matches = app.collectionViews.allElementsBoundByIndex.filter { container in
+            let buttons = container.buttons.allElementsBoundByIndex.filter { $0.exists }
+            return buttons.count == expectedLabels.count
+                && Set(buttons.map(\.label)) == Set(expectedLabels)
+        }
+        XCTAssertEqual(matches.count, 1,
+                       "Expected one native sidebar menu collection with exactly \(expectedLabels): \(app.debugDescription)")
+        let container = try XCTUnwrap(matches.first, "Native sidebar media-menu container was not unique")
+
+        var items: [String: XCUIElement] = [:]
+        for label in expectedLabels {
+            let labeledButtons = container.buttons.matching(NSPredicate(format: "label == %@", label))
+            XCTAssertEqual(labeledButtons.count, 1, "Expected one \(label) item in native menu")
+            let button = labeledButtons.firstMatch
+            XCTAssertTrue(button.exists, "Missing \(label) in native menu: \(container.debugDescription)")
+            XCTAssertTrue(button.isHittable, "Native menu item \(label) is not hittable: \(container.debugDescription)")
+            items[label] = button
+        }
+
+        // The exact three-label set excludes short drama and cross-root menu entries.
+        XCTAssertFalse(container.buttons["短劇"].exists)
+        XCTAssertFalse(container.buttons["短劇庫"].exists)
+        let otherRoot = tab == "explore" ? "bookshelf" : "explore"
+        XCTAssertFalse(app.buttons["rootTabMedia.\(otherRoot).video"].exists,
+                       "Inactive root media items leaked into the native menu")
+        return items
+    }
+
+    @MainActor
     private func assertMenu(for tab: String, in app: XCUIApplication) {
         for kind in ["video", "music", "reading"] {
             XCTAssertTrue(app.buttons["rootTabMedia.\(tab).\(kind)"].firstMatch.waitForExistence(timeout: 5))
@@ -179,8 +221,19 @@ final class MediaTabToolbarUITests: XCTestCase {
         let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
         let visible = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element)
-        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 20), .completed,
-                       "Missing visible \(identifier): \(app.debugDescription)")
+        guard XCTWaiter.wait(for: [visible], timeout: 20) == .completed else {
+            // Keep the exists+hittable assertion strict. Capture fresh AX state and a
+            // screenshot so a later relaunch/menu obstruction can be distinguished from
+            // a missing control without guessing at an application-side cause.
+            let fresh = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+            let diagnostic = "state=\(app.state), exists=\(fresh.exists), hittable=\(fresh.isHittable), frame=\(fresh.frame), windows=\(app.windows.count)"
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "visible-\(identifier)-timeout-diagnostic"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTFail("Missing visible \(identifier) (\(diagnostic)): \(app.debugDescription)")
+            return
+        }
     }
 
     @MainActor
