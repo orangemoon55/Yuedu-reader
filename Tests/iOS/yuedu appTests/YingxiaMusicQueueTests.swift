@@ -222,7 +222,7 @@ final class YingxiaMusicQueueTests: XCTestCase {
 @MainActor
 private struct PlaybackFixture {
     let native: AVQueuePlayer
-    let player: MusicPlayer
+    let player: yuedu_app.MusicPlayer
     let tracks: [MediaHubLibraryItem]
     let file: URL
 
