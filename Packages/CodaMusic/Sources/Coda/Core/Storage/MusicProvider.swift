@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 import Security
 
-enum MusicProvider: String, Codable, CaseIterable, Identifiable {
+enum MusicProvider: String, Codable, CaseIterable, Identifiable, Sendable {
     case netease, qq, kugou, qishui
     var id: String { rawValue }
     var supportsFavoriteChanges: Bool { supports(.favoriteChanges) }

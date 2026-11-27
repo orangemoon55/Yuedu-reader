@@ -123,12 +123,16 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/AddedFilmRemovalTests'
     -only-testing:'yuedu appTests/RemovedVideoUIBoundaryTests'
     -only-testing:'yuedu appTests/CodaMusicHostIntegrationTests'
+    -only-testing:'yuedu appTests/CodaAggregateSongSearchModelFixtureTests'
+    -only-testing:'yuedu appTests/CodaExplicitNetEaseSearchTransportFixtureTests'
+    -only-testing:'yuedu appTests/CodaSearchInteractionPolicyTests'
     -only-testing:'yuedu appTests/MediaHubInteractionTests'
     -only-testing:'yuedu appTests/SourceImportPlanTests'
     -only-testing:'yuedu appTests/MediaTabMenuTests'
     -only-testing:'yuedu appTests/RootTabCustomizationTests'
     -only-testing:'yuedu appTests/ReadccBackdropBlurTests'
     -only-testing:'yuedu appUITests/CodaIPadNavigationUITests'
+    -only-testing:'yuedu appUITests/CodaProviderSearchUITests'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
   TEST_SELECTION=(
@@ -394,7 +398,8 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
       -resultBundlePath "$PRIVATE/phone-crash.xcresult" -parallel-testing-enabled NO \
       -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN \
       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-      -only-testing:'yuedu appUITests/CodaBottomBarUITests'
+      -only-testing:'yuedu appUITests/CodaBottomBarUITests' \
+      -only-testing:'yuedu appUITests/CodaProviderSearchUITests'
     PHONE_STATUS=$?
     set -e
     ACTIVE_SUITE=

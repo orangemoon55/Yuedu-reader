@@ -25,10 +25,31 @@ final class SearchViewModel: ObservableObject {
     private func searchSupported(_ keyword: String, _ type: NeteaseAPI.SearchType, _ limit: Int, _ offset: Int) async throws -> NeteaseAPI.SearchResult {
         let feature: MusicServiceFeature
         switch type { case .songs: feature = .searchSongs; case .artists: feature = .searchArtists; case .albums: feature = .searchAlbums; case .playlists: feature = .searchPlaylists }
-        guard MusicProviderContext.shared.current.supports(feature) else {
+        guard provider.supports(feature) else {
             return .init(songs: nil, albums: nil, artists: nil, playlists: nil, songCount: nil, albumCount: nil, artistCount: nil, playlistCount: nil)
         }
-        return try await search(keyword, type, limit, offset)
+        return try await searchCurrentProvider(keyword, type, limit, offset)
+    }
+
+    // Card destinations still use the active platform's IDs. Never obtain
+    // cards by temporarily changing the shared provider for a scope chip.
+    private(set) var provider = MusicProviderContext.shared.current
+
+    private func searchCurrentProvider(_ keyword: String, _ type: NeteaseAPI.SearchType,
+                                       _ limit: Int, _ offset: Int) async throws -> NeteaseAPI.SearchResult {
+        let expectedProvider = provider
+        let ticket = MusicProviderContext.shared.ticket
+        guard MusicProviderContext.shared.current == expectedProvider else { throw CancellationError() }
+        let result = try await search(keyword, type, limit, offset)
+        try MusicProviderContext.shared.check(ticket)
+        guard provider == expectedProvider else { throw CancellationError() }
+        return result
+    }
+
+    func setProvider(_ provider: MusicProvider) {
+        guard self.provider != provider else { return }
+        self.provider = provider
+        setQuery(query, force: true)
     }
 
     private struct CardPage {
@@ -72,8 +93,8 @@ final class SearchViewModel: ObservableObject {
         self.search = search
     }
 
-    func setQuery(_ newQuery: String) {
-        guard newQuery != query else { return }
+    func setQuery(_ newQuery: String, force: Bool = false) {
+        guard force || newQuery != query else { return }
         generation = UUID()
         isLoading = false
         errorMessage = nil
@@ -136,7 +157,7 @@ final class SearchViewModel: ObservableObject {
                 case .albums: type = .albums
                 default: type = .playlists
                 }
-                let result = try await search(trimmed, type, tab == .songs ? 100 : 50, 0)
+                let result = try await searchCurrentProvider(trimmed, type, tab == .songs ? 100 : 50, 0)
                 guard !Task.isCancelled, generation == request else { return }
                 switch tab {
                 case .songs:
@@ -179,7 +200,7 @@ final class SearchViewModel: ObservableObject {
         songPageError = nil
         defer { if generation == request { isLoadingMoreSongs = false } }
         do {
-            let result = try await search(keyword, .songs, limit, offset)
+            let result = try await searchCurrentProvider(keyword, .songs, limit, offset)
             guard !Task.isCancelled, generation == request, tab == activeTab else { return }
             let page = result.songs ?? []
             var seen = Set(songs.map(\.id))
@@ -220,7 +241,7 @@ final class SearchViewModel: ObservableObject {
         cardErrors[kind] = nil
         defer { if generation == request { loadingCards.remove(kind) } }
         do {
-            let result = try await search(query.trimmingCharacters(in: .whitespacesAndNewlines), type, limit, page.offset)
+            let result = try await searchCurrentProvider(query.trimmingCharacters(in: .whitespacesAndNewlines), type, limit, page.offset)
             guard !Task.isCancelled, generation == request, tab == activeTab else { return }
             let count: Int
             let total: Int?
@@ -259,77 +280,192 @@ final class SearchViewModel: ObservableObject {
 struct SearchView: View {
     private var phoneLayout = PhonePageLayout()
     @StateObject private var model: SearchViewModel
+    @StateObject private var songModel = CodaProviderSongSearchModel()
+    @State private var scope: CodaSongSearchScope = .all
     @State private var searchText: String = ""
     @State private var searchKeywords: [String] = []
+    @State private var loadedSongRequest: String?
+    @State private var loadedCardRequest: String?
+    @State private var cardSession: UUID?
+    @State private var showSettings = false
+    @ObservedObject private var musicAccounts = MusicAccountManager.shared
+    @State private var providerSwitchTask: Task<Void, Never>?
+    @State private var providerSwitchGeneration = UUID()
+    @State private var switchingProvider: MusicProvider?
+    @State private var switchFailureProvider: MusicProvider?
+    @State private var switchFailureMessage: String?
     @FocusState private var searchFocused: Bool
     @Binding private var focusRequested: Bool
-    #if os(iOS)
-    @Environment(\.iPadChrome) private var iPadChrome
-    #endif
+    @EnvironmentObject private var account: AccountStore
+    @Environment(\.openDestination) private var openDestination
 
     init(query: String, focusRequested: Binding<Bool> = .constant(false)) {
         _focusRequested = focusRequested
-        _model = StateObject(wrappedValue: SearchViewModel(query: query))
+        let cards = SearchViewModel(query: query)
+        cards.tab = .songs
+        _model = StateObject(wrappedValue: cards)
         _searchText = State(initialValue: query)
     }
 
+    private var keyword: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isCurrentProviderScope: Bool {
+        scope.providers == [account.provider] && account.provider == MusicProviderContext.shared.current
+    }
+    private var resultKey: String {
+        "\(account.sessionRevision):\(account.provider.rawValue):\(scope.rawValue):\(model.tab.rawValue):\(searchText)"
+    }
+    private var categoryTabs: [SearchViewModel.Tab] {
+        [.songs, .artists, .albums, .playlists].filter { supportsCategory($0) }
+    }
+
+    private func supportsCategory(_ tab: SearchViewModel.Tab) -> Bool {
+        tab == .songs || (isCurrentProviderScope && SearchViewModel.supports(tab, provider: account.provider))
+    }
+
     var body: some View {
-        searchPage
-        .onSubmit(of: .search) {
-            model.setQuery(searchText)
-            #if os(iOS)
-            if UIDevice.current.userInterfaceIdiom == .pad, iPadChrome == .legacy {
-                searchFocused = false
-            }
-            #endif
+        VStack(spacing: 0) {
+            searchHeader
+            mixedResults
         }
-        .onChange(of: searchText) { newValue in
-            model.setQuery(newValue)
+        .appRootNavigationTitle(String(localized: "搜索"))
+        .onChange(of: searchText) {
+            cancelProviderSwitch()
+            model.setQuery($0)
         }
-        .appRootNavigationTitle(searchText.isEmpty
-                                ? String(localized: "探索")
-                                : String(localized: "搜索：\(searchText)"))
-        .task(id: "\(model.tab.rawValue):\(searchText)") {
-            do { try await Task.sleep(nanoseconds: 400_000_000) } catch { return }
-            await model.load(tab: model.tab)
+        .onChange(of: scope) { _ in
+            cancelProviderSwitch()
+            if !supportsCategory(model.tab) { model.tab = .songs }
         }
-        .task(id: "\(MusicProviderContext.shared.current.rawValue):keywords:\(searchText)") {
+        .onDisappear { cancelProviderSwitch() }
+        .onChange(of: account.provider) { provider in
+            model.setProvider(provider)
+            if !supportsCategory(model.tab) { model.tab = .songs }
+        }
+        .task(id: resultKey) { await loadResults() }
+        .task(id: "\(resultKey):keywords") {
             searchKeywords = []
-            let provider = MusicProviderContext.shared.current
-            let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard provider.supports(.searchSuggestions) else { return }
+            // Suggestions also belong to a single platform, not an aggregate.
+            let provider = account.provider
+            let query = keyword
+            guard !isUIFixture, isCurrentProviderScope, provider.supports(.searchSuggestions) else { return }
             do {
                 try await Task.sleep(for: .milliseconds(250))
-                let items = try await SearchKeywords.load(provider: provider, keyword: keyword)
-                guard !Task.isCancelled, keyword == searchText.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
-                searchKeywords = Array(items.filter { $0 != keyword }.prefix(8))
+                let items = try await SearchKeywords.load(provider: provider, keyword: query)
+                guard !Task.isCancelled, query == keyword, isCurrentProviderScope,
+                      provider == account.provider else { return }
+                searchKeywords = Array(items.filter { $0 != query }.prefix(8))
             } catch { }
         }
-        .overlay(alignment: .top) {
-            if let error = model.errorMessage {
-                ErrorStateView(message: error) { Task { await model.load(tab: model.tab) } }
+        .sheet(isPresented: $showSettings) {
+            // Same native destination and routing as LibraryView. Embedded
+            // SettingsView retains the host's simplified settings policy.
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("设置")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showSettings = false }
+                        }
+                    }
             }
+            .environment(\.openDestination, { destination in
+                showSettings = false
+                openDestination(destination)
+            })
         }
     }
 
-    @ViewBuilder
-    private var searchPage: some View {
-        if phoneLayout.isEnabled {
-            // The field scrolls with the page instead of living in the tab bar.
-            searchContent
+    private func loadResults() async {
+        let request = resultKey
+        let query = keyword
+        let selectedScope = scope
+        let tab = model.tab
+        loadedSongRequest = nil
+        loadedCardRequest = nil
+        model.setProvider(account.provider)
+        model.setQuery(searchText, force: cardSession != account.sessionRevision)
+        cardSession = account.sessionRevision
+        guard !query.isEmpty else { return }
+        do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+        guard !Task.isCancelled, request == resultKey else { return }
+        if tab == .songs {
+            if !isUIFixture { await songModel.load(query: query, scope: selectedScope) }
+            guard !Task.isCancelled, request == resultKey else { return }
+            loadedSongRequest = request
         } else {
-            #if os(iOS)
-            searchContent
-            #else
-            VStack(spacing: 0) {
-                inlineSearchField
-                    .padding(.horizontal, Theme.Layout.contentInset)
-                    .pageHeaderTopPadding(8)
-                    .padding(.bottom, Theme.Spacing.component)
-                searchContent
-            }
-            #endif
+            guard isCurrentProviderScope, supportsCategory(tab) else { return }
+            await model.load(tab: tab)
+            guard !Task.isCancelled, request == resultKey else { return }
+            loadedCardRequest = request
         }
+    }
+
+    // This header is a sibling of the result scroll view on every layout.
+    // No nested scroll/header overlay can move or cover the keyword field.
+    private var searchHeader: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            HStack(spacing: Theme.Spacing.small) {
+                inlineSearchField
+                Button {
+                    searchFocused = false
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("设置")
+                .accessibilityIdentifier("codaSearch.settings")
+            }
+            .padding(.horizontal, phoneLayout.contentInset)
+            providerChips
+            Text(scopeExplanation)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, phoneLayout.contentInset)
+                .accessibilityIdentifier("codaSearch.scopeExplanation")
+        }
+        .pageHeaderTopPadding(8)
+        .padding(.bottom, Theme.Spacing.control)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codaSearch.header")
+    }
+
+    private var scopeExplanation: String {
+        if scope == .all {
+            return "全源聚合仅搜索单曲；歌手、专辑、歌单请先选择当前音乐平台。"
+        }
+        if !isCurrentProviderScope {
+            return "\(scope.title) · 单曲搜索。其他分类需先在「账户」切换到此平台；当前平台为\(account.provider.name)。"
+        }
+        return "\(scope.title) · \(model.tab.rawValue)；歌手、专辑、歌单仅在当前音乐平台搜索。"
+    }
+
+    private var providerChips: some View {
+        ScenePreservingScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Spacing.small) {
+                ForEach(CodaSongSearchScope.allCases) { item in
+                    Button {
+                        searchFocused = false
+                        scope = item
+                    } label: {
+                        Text(item.title)
+                            .font(Theme.Typography.secondary.weight(.medium))
+                            .padding(.horizontal, Theme.Spacing.small)
+                            .frame(minHeight: 36)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(scope == item ? Theme.accent : Color.secondary)
+                    .accessibilityAddTraits(scope == item ? .isSelected : [])
+                    .accessibilityValue(scope == item ? "已选择" : "未选择")
+                    .accessibilityIdentifier("codaSearch.scope.\(item.rawValue)")
+                }
+            }
+            .padding(.horizontal, phoneLayout.contentInset)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codaSearch.providerChips")
     }
 
     private var inlineSearchField: some View {
@@ -346,6 +482,18 @@ struct SearchView: View {
                 .autocorrectionDisabled()
                 .onSubmit { searchFocused = false }
                 .accessibilityLabel("搜索歌曲、歌手、专辑、歌单")
+                .accessibilityIdentifier("codaSearch.keyword")
+            Picker("搜索类型", selection: $model.tab) {
+                ForEach(categoryTabs) { tab in
+                    Text(LocalizedStringKey(tab.rawValue))
+                        .tag(tab)
+                        .disabled(!supportsCategory(tab))
+                }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .accessibilityIdentifier("codaSearch.category")
+            .accessibilityValue(model.tab.rawValue)
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
@@ -356,6 +504,7 @@ struct SearchView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除搜索")
+                .accessibilityIdentifier("codaSearch.clear")
             }
         }
         .padding(.leading, Theme.Spacing.component)
@@ -376,58 +525,40 @@ struct SearchView: View {
         .onDisappear { searchFocused = false }
     }
 
-    @ViewBuilder
-    private var searchContent: some View {
-        mixedResults
-    }
-
     private var mixedResults: some View {
         ScenePreservingScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.section) {
-                #if os(iOS)
-                if UIDevice.current.userInterfaceIdiom == .pad || phoneLayout.isEnabled {
-                    inlineSearchField
-                        .padding(.horizontal, phoneLayout.contentInset)
-                        .pageHeaderTopPadding(8)
-                }
-                #else
-                if phoneLayout.isEnabled {
-                    inlineSearchField
-                        .padding(.horizontal, phoneLayout.contentInset)
-                        .pageHeaderTopPadding(8)
-                }
-                #endif
-                if !searchKeywords.isEmpty {
+                if !searchKeywords.isEmpty, isCurrentProviderScope, !isUIFixture {
                     keywordChips
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("searchKeywordChips")
-                        .accessibilityLabel(searchText.isEmpty ? "热搜" : "搜索建议")
+                        .accessibilityLabel(keyword.isEmpty ? "热搜" : "搜索建议")
                 }
-                if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    tabPicker
-
-                    Group {
-                        if model.isLoading && currentEmpty {
-                            if model.tab == .all || model.tab == .songs {
-                                MusicLibraryLoadingView(rowsPerColumn: 7, scrollsHorizontally: model.tab == .all,
-                                                        showsHorizontalPanel: searchSongsShowPanel)
-                            } else {
-                                ProgressView().frame(maxWidth: .infinity, minHeight: 300)
-                            }
-                        } else {
-                            tabContent
-                        }
+                if keyword.isEmpty {
+                    if scope == .all || isCurrentProviderScope {
+                        // Browse shelves remain Coda's native, current-platform
+                        // content. They are not presented as aggregate results.
+                        SectionHeader(title: LocalizedStringKey("\(account.provider.name) · 精选"))
+                            .padding(.horizontal, phoneLayout.contentInset)
+                        ExploreShelves()
+                    } else {
+                        EmptyStateView(icon: "magnifyingglass", title: "输入关键词搜索此平台的单曲")
+                            .frame(minHeight: 220)
                     }
-                    .contentCrossfade(on: model.tab)
-                    .loadingCrossfade(model.isLoading && currentEmpty)
+                } else if model.tab == .songs {
+                    providerSongResults
+                } else if isCurrentProviderScope && supportsCategory(model.tab) {
+                    singleProviderResults
                 } else {
-                    // 探索 has no separate 精选 page in any layout: browse here.
-                    ExploreShelves()
+                    EmptyStateView(icon: "magnifyingglass", title: "此来源仅支持单曲搜索")
+                        .frame(minHeight: 220)
                 }
                 PlayerClearanceSpacer()
             }
+            .padding(.top, Theme.Spacing.control)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityIdentifier("codaSearch.resultsScroll")
     }
 
     /// Shared scrolling gives the row room for a finger's contact radius on
@@ -455,16 +586,216 @@ struct SearchView: View {
         model.setQuery(keyword)
     }
 
-    private var tabPicker: some View {
-        Picker("", selection: $model.tab) {
-            ForEach(SearchViewModel.Tab.allCases.filter { SearchViewModel.supports($0, provider: MusicProviderContext.shared.current) }) { tab in
-                Text(LocalizedStringKey(tab.rawValue)).tag(tab)
+    private var visibleSongTracks: [Track] {
+        guard loadedSongRequest == resultKey else { return [] }
+        #if DEBUG
+        if isUIFixture {
+            return scope.providers.flatMap { provider in
+                (0..<8).map { index in
+                    let source = ProviderSongSource(rawValue: provider.rawValue) ?? .netease
+                    let id = -910_000 - (MusicProvider.allCases.firstIndex(of: provider) ?? 0) * 100 - index
+                    let song = ProviderSong(id: id, name: "本地界面样例 \(index + 1)", artists: "UI 测试",
+                                            album: "非网络结果", coverURL: nil, duration: 60, source: source)
+                    return Track(id: id, song: song, artists: [ArtistRef(id: 0, name: "UI 测试")],
+                                 album: AlbumRef(id: 0, name: "非网络结果", picUrl: nil))
+                }
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .padding(.horizontal, Theme.Layout.contentInset)
-        .padding(.top, Theme.Spacing.control)
+        #endif
+        return songModel.tracks
+    }
+
+    // Explicit DEBUG-only local layout fixture. No fake network success and
+    // no registration/playback of these view-only rows; production ignores it.
+    private var isUIFixture: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-coda-provider-search-ui-fixture")
+        #else
+        false
+        #endif
+    }
+
+    private func trackProvider(_ track: Track) -> MusicProvider {
+        // Legacy raw NetEase tracks have no platformSong. Aggregate tracks
+        // carry the explicit source registered by the provider-search model.
+        track.platformSong.flatMap { MusicProvider(rawValue: $0.source.rawValue) } ?? .netease
+    }
+
+    private func matchesActiveProvider(_ provider: MusicProvider) -> Bool {
+        provider == account.provider && provider == MusicProviderContext.shared.current
+    }
+
+    private func canUseProviderPanel(_ provider: MusicProvider) -> Bool {
+        CodaSearchInteractionPolicy.canUseNativePanel(
+            source: provider, active: account.provider,
+            context: MusicProviderContext.shared.current, fixture: isUIFixture,
+            switching: musicAccounts.isSwitching || switchingProvider != nil)
+    }
+
+    private func providerPanelState(_ provider: MusicProvider) -> String {
+        if !matchesActiveProvider(provider) { return "需切换平台" }
+        if isUIFixture { return "本地测试禁止操作" }
+        return canUseProviderPanel(provider) ? "当前平台可操作" : "平台切换中"
+    }
+
+    private func cancelProviderSwitch() {
+        providerSwitchGeneration = UUID()
+        providerSwitchTask?.cancel()
+        providerSwitchTask = nil
+        switchingProvider = nil
+        switchFailureProvider = nil
+        switchFailureMessage = nil
+    }
+
+    private func selectSearchProvider(_ provider: MusicProvider) {
+        // Registration is metadata only, not permission to play/write against
+        // another account. Only this explicit user action activates a platform.
+        guard !isUIFixture, !matchesActiveProvider(provider) else { return }
+        cancelProviderSwitch()
+        guard !musicAccounts.isSwitching else {
+            switchFailureProvider = provider
+            switchFailureMessage = "其他平台切换正在进行，请稍后重试。"
+            return
+        }
+        let request = UUID()
+        let session = account.sessionRevision
+        let ticket = MusicProviderContext.shared.ticket
+        providerSwitchGeneration = request
+        switchingProvider = provider
+        providerSwitchTask = Task { @MainActor in
+            defer {
+                if providerSwitchGeneration == request {
+                    providerSwitchTask = nil
+                    switchingProvider = nil
+                }
+            }
+            do {
+                try Task.checkCancellation()
+                guard providerSwitchGeneration == request, account.sessionRevision == session,
+                      MusicProviderContext.shared.ticket == ticket else { return }
+                try await musicAccounts.selectProvider(provider)
+                try Task.checkCancellation()
+                guard providerSwitchGeneration == request else { return }
+                guard matchesActiveProvider(provider) else {
+                    switchFailureProvider = provider
+                    switchFailureMessage = "平台未完成切换，请重试。"
+                    return
+                }
+                // No automatic play, next-track insertion or queue edits here.
+                // Normal activation owns its reset; the session key reloads the
+                // existing query/scope, including all four aggregate sources.
+            } catch is CancellationError {
+                // Cancellation cannot roll back a normal activation which has
+                // already committed; it only discards this UI continuation.
+            } catch {
+                guard !Task.isCancelled, providerSwitchGeneration == request else { return }
+                switchFailureProvider = provider
+                switchFailureMessage = "切换平台失败，请重试或在账户中检查登录状态。"
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func providerInteractionNotice(_ provider: MusicProvider) -> some View {
+        if !matchesActiveProvider(provider) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                Text("切换到此平台后播放、收藏和查看详情")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("codaSearch.readOnlyHint.\(provider.rawValue)")
+                Text("切换平台将停止当前播放并重置当前队列。")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                Button("切换到\(provider.name)") { selectSearchProvider(provider) }
+                    .buttonStyle(.bordered)
+                    .disabled(isUIFixture || switchingProvider != nil || musicAccounts.isSwitching)
+                    .accessibilityIdentifier("codaSearch.switchProvider.\(provider.rawValue)")
+                if switchingProvider == provider {
+                    ProgressView("正在切换平台…")
+                        .accessibilityIdentifier("codaSearch.switchProgress.\(provider.rawValue)")
+                }
+                if switchFailureProvider == provider, let message = switchFailureMessage {
+                    Text(message)
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("codaSearch.switchFailure.\(provider.rawValue)")
+                }
+            }
+            .padding(.horizontal, phoneLayout.contentInset)
+        } else if musicAccounts.isSwitching || switchingProvider != nil {
+            ProgressView("正在更新平台账号…")
+                .padding(.horizontal, phoneLayout.contentInset)
+                .accessibilityIdentifier("codaSearch.switchProgress.\(provider.rawValue)")
+        }
+    }
+
+    @ViewBuilder
+    private var providerSongResults: some View {
+        if loadedSongRequest != resultKey || (songModel.isLoading && visibleSongTracks.isEmpty) {
+            MusicLibraryLoadingView(rowsPerColumn: 7)
+                .accessibilityIdentifier("codaSearch.loading")
+        } else {
+            if isUIFixture {
+                Text("本地 UI 测试数据（非网络结果，禁止播放）")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, phoneLayout.contentInset)
+                    .accessibilityIdentifier("codaSearch.localFixture")
+            }
+            if !isUIFixture, let failure = songModel.failureMessage {
+                VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                    Text(visibleSongTracks.isEmpty ? "搜索未完成" : "部分平台搜索失败，已保留其他平台结果")
+                        .font(Theme.Typography.body.weight(.medium))
+                    Text(failure).font(Theme.Typography.secondary).foregroundStyle(.secondary)
+                    Button("重试失败平台") { Task { await songModel.retryFailures() } }
+                        .buttonStyle(.bordered)
+                        .disabled(songModel.isLoading || songModel.isLoadingMore)
+                        .accessibilityIdentifier("codaSearch.retryFailures")
+                }
+                .padding(.horizontal, phoneLayout.contentInset)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("codaSearch.failure")
+            }
+            ForEach(scope.providers) { provider in
+                let tracks = visibleSongTracks.filter { trackProvider($0) == provider }
+                if !tracks.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                        Text(provider.name)
+                            .font(Theme.Typography.sectionTitle)
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("codaSearch.providerLabel.\(provider.rawValue)")
+                            .padding(.horizontal, phoneLayout.contentInset)
+                        providerInteractionNotice(provider)
+                        // The entire native subtree must be inert for foreign
+                        // sources: row taps, artwork, menus, likes, playlists,
+                        // downloads and artist/album navigation all assume the
+                        // active provider. Never weaken the player guards.
+                        MusicTrackPanel(tracks: tracks, trailingText: { _ in provider.name })
+                            .disabled(!canUseProviderPanel(provider))
+                            .allowsHitTesting(canUseProviderPanel(provider))
+                            .accessibilityElement(children: .contain)
+                            .accessibilityValue(providerPanelState(provider))
+                            .accessibilityIdentifier("codaSearch.results.\(provider.rawValue)")
+                    }
+                }
+            }
+            if visibleSongTracks.isEmpty, songModel.failureMessage == nil {
+                EmptyStateView(icon: "magnifyingglass", title: "没有找到相关单曲")
+                    .frame(minHeight: 260)
+                    .accessibilityIdentifier("codaSearch.empty")
+            }
+            if !isUIFixture {
+                if songModel.isLoading || songModel.isLoadingMore {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 44)
+                        .accessibilityIdentifier("codaSearch.loadingMore")
+                } else if songModel.hasMore {
+                    Button("加载更多单曲") { Task { await songModel.loadMore() } }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("codaSearch.loadMore")
+                }
+            }
+        }
     }
 
     private var currentEmpty: Bool {
@@ -478,89 +809,74 @@ struct SearchView: View {
     }
 
     @ViewBuilder
-    private func songResults(_ tracks: [Track]) -> some View {
-        MusicTrackPanel(tracks: tracks, onLastTrackAppear: requestMoreSongs)
-    }
-
-    private func requestMoreSongs() {
-        guard model.songPageError == nil else { return }
-        Task { await model.loadMoreSongs() }
-    }
-
-    @ViewBuilder
-    private var songPageFooter: some View {
-        if model.isLoadingMoreSongs, model.tab == .songs {
-            MusicLibraryLoadingView(rowsPerColumn: 2)
-        } else if model.songPageError != nil {
-            Button("加载更多失败，点击重试") {
-                Task { await model.loadMoreSongs() }
+    private var singleProviderResults: some View {
+        if loadedCardRequest != resultKey || model.isLoading {
+            ProgressView().frame(maxWidth: .infinity, minHeight: 240)
+                .accessibilityIdentifier("codaSearch.loading")
+        } else if let error = model.errorMessage {
+            ErrorStateView(message: error) {
+                Task {
+                    let request = resultKey
+                    guard isCurrentProviderScope else { return }
+                    await model.load(tab: model.tab)
+                    guard !Task.isCancelled, request == resultKey else { return }
+                    loadedCardRequest = request
+                }
             }
-            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("codaSearch.failure")
+        } else if currentEmpty {
+            EmptyStateView(icon: "magnifyingglass", title: "没有找到相关结果")
+                .frame(minHeight: 260)
+                .accessibilityIdentifier("codaSearch.empty")
+        } else {
+            Text("\(account.provider.name) · \(model.tab.rawValue)")
+                .font(Theme.Typography.sectionTitle)
+                .padding(.horizontal, phoneLayout.contentInset)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("codaSearch.cardProviderLabel")
+            cardResults
+            cardPageFooter
         }
     }
 
-    private var searchSongsShowPanel: Bool { !phoneLayout.isEnabled }
+    @ViewBuilder
+    private var cardResults: some View {
+        switch model.tab {
+        case .artists:
+            CardGrid(minWidth: 140, fixedColumnWidth: false) { artistCards(model.artists) }
+                .padding(.horizontal, phoneLayout.contentInset)
+        case .albums:
+            CardGrid { albumCards(model.albums) }
+                .padding(.horizontal, phoneLayout.contentInset)
+        case .playlists:
+            CardGrid { playlistCards(model.playlists) }
+                .padding(.horizontal, phoneLayout.contentInset)
+        case .all, .songs:
+            EmptyView() // Entity aggregation is deliberately not offered.
+        }
+    }
 
     @ViewBuilder
-    private var tabContent: some View {
-        switch model.tab {
-        case .all:
-            if !model.songs.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Spacing.section) {
-                    SectionHeader(title: "单曲") {
-                        model.tab = .songs
+    private var cardPageFooter: some View {
+        let page = model.horizontalLoading(for: model.tab)
+        if page.isLoading {
+            ProgressView().frame(maxWidth: .infinity, minHeight: 44)
+        } else if page.hasMore || page.error != nil {
+            VStack(spacing: Theme.Spacing.small) {
+                if let error = page.error {
+                    Text(error).font(Theme.Typography.secondary).foregroundStyle(.secondary)
+                }
+                Button(page.error == nil ? "加载更多" : "加载更多失败，点击重试") {
+                    Task {
+                        guard isCurrentProviderScope else { return }
+                        await model.loadMoreCards(model.tab)
                     }
-                    .padding(.horizontal, Theme.Layout.contentInset)
-                    MusicTrackPanel(tracks: model.songs, scrollsHorizontally: true,
-                                    showsHorizontalPanel: searchSongsShowPanel,
-                                    horizontalLoading: .init(hasMore: model.hasMoreSongs,
-                                        isLoading: model.isLoadingMoreSongs, error: model.songPageError,
-                                        loadMore: { await model.loadMoreSongs() }))
                 }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("codaSearch.loadMoreCards")
             }
-            if !model.artists.isEmpty {
-                Shelf(title: "歌手", seeAll: { model.tab = .artists },
-                      itemCount: model.artists.count, resetKey: model.artists.first?.id,
-                      loading: model.horizontalLoading(for: .artists), circularCover: true, cardWidth: 140) { visibleCount in
-                    artistCards(model.artists.prefix(visibleCount))
-                }
-            }
-            if !model.albums.isEmpty {
-                Shelf(title: "专辑", seeAll: { model.tab = .albums },
-                      itemCount: model.albums.count, resetKey: model.albums.first?.id,
-                      loading: model.horizontalLoading(for: .albums)) { visibleCount in
-                    albumCards(model.albums.prefix(visibleCount))
-                }
-            }
-            if !model.playlists.isEmpty {
-                Shelf(title: "歌单", seeAll: { model.tab = .playlists },
-                      itemCount: model.playlists.count, resetKey: model.playlists.first?.id,
-                      loading: model.horizontalLoading(for: .playlists)) { visibleCount in
-                    playlistCards(model.playlists.prefix(visibleCount))
-                }
-            }
-            if currentEmpty, !model.isLoading {
-                EmptyStateView(icon: "magnifyingglass", title: "没有找到相关结果")
-                    .frame(minHeight: 300)
-            }
-        case .songs:
-            songResults(model.songs)
-            songPageFooter
-        case .artists:
-            CardGrid(minWidth: 140, fixedColumnWidth: false) {
-                artistCards(model.artists)
-            }
-            .padding(.horizontal, Theme.Layout.contentInset)
-        case .albums:
-            CardGrid {
-                albumCards(model.albums)
-            }
-            .padding(.horizontal, Theme.Layout.contentInset)
-        case .playlists:
-            CardGrid {
-                playlistCards(model.playlists)
-            }
-            .padding(.horizontal, Theme.Layout.contentInset)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, phoneLayout.contentInset)
         }
     }
 

@@ -1101,7 +1101,7 @@ enum NeteaseAPI {
 
     // MARK: - Search
 
-    enum SearchType: Int {
+    enum SearchType: Int, Sendable {
         case songs = 1
         case albums = 10
         case artists = 100
@@ -1124,14 +1124,54 @@ enum NeteaseAPI {
     }
 
     static func search(_ keywords: String, type: SearchType,
-                       limit: Int = 30, offset: Int = 0) async throws -> SearchResult {
-        if MusicProviderContext.shared.current != .netease { return try await PlatformMusicAPI.shared.search(keywords, type: type, limit: limit, offset: offset) }
+                       limit: Int = 30, offset: Int = 0,
+                       provider requestedProvider: MusicProvider? = nil) async throws -> SearchResult {
+        let context = MusicProviderContext.shared
+        let ticket = context.ticket
+        let provider = requestedProvider ?? context.current
+        if provider != .netease {
+            let result = try await PlatformMusicAPI.shared.search(keywords, type: type, limit: limit,
+                                                                  offset: offset, provider: provider)
+            try context.check(ticket) // Includes the hop to PlatformMusicAPI's actor.
+            return result
+        }
+        if requestedProvider != nil {
+            let result = try await explicitNeteaseSearch(keywords, type: type, limit: limit, offset: offset,
+                                                        using: client, context: context)
+            try context.check(ticket)
+            return result
+        }
+        // The legacy entry point keeps its current-platform gate. In particular,
+        // explicit search must not make account mutations or other eapi calls ungated.
         try MusicProviderContext.shared.requireNetease()
         let resp = try await eapi(SearchResponse.self, "/cloudsearch/pc",
                                   ["s": keywords, "type": type.rawValue,
                                    "limit": limit, "offset": offset, "total": true])
-        return resp.result ?? SearchResult(songs: nil, albums: nil, artists: nil, playlists: nil,
-                                           songCount: nil, albumCount: nil, artistCount: nil, playlistCount: nil)
+        try context.check(ticket)
+        return resp.result ?? emptySearchResult
+    }
+
+    private static var emptySearchResult: SearchResult {
+        .init(songs: nil, albums: nil, artists: nil, playlists: nil,
+              songCount: nil, albumCount: nil, artistCount: nil, playlistCount: nil)
+    }
+
+    /// Read-only, fixed NetEase endpoint, using only the NetEase client's cookie
+    /// jar (not AccountStore's currently selected provider/profile or saved-account
+    /// ordering). NeteaseClient's transport retains its HTTP, business-error and
+    /// authentication-epoch guards. A guest -> login transition is also stale here.
+    /// Client/context injection is internal and permits offline URLProtocol fixtures.
+    static func explicitNeteaseSearch(_ keywords: String, type: SearchType, limit: Int, offset: Int,
+                                      using client: NeteaseClient,
+                                      context: MusicProviderContext) async throws -> SearchResult {
+        let ticket = context.ticket
+        let authentication = client.authenticationFingerprint
+        try context.check(ticket)
+        let data = try await client.eapi("/cloudsearch/pc",
+            ["s": keywords, "type": type.rawValue, "limit": limit, "offset": offset, "total": true])
+        try context.check(ticket)
+        guard client.authenticationFingerprint == authentication else { throw CancellationError() }
+        return try client.decoded(SearchResponse.self, from: data).result ?? emptySearchResult
     }
 
     struct SearchSuggestResponse: Decodable {

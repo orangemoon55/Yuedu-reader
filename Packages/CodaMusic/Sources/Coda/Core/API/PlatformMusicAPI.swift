@@ -189,10 +189,33 @@ final class PlatformMusicAPI {
         return cachedCount > incomingCount ? cached : incoming
     }
 
-    func song(_ id: Int) throws -> ProviderSong {
+    func song(_ id: Int, provider requestedProvider: MusicProvider? = nil) throws -> ProviderSong {
+        let provider = requestedProvider ?? self.provider
         guard let song = catalog.songs[id], source(song.source) == provider else { throw MusicProviderError.missingTrack }
         return song
     }
+    /// Registers aggregate-search provenance without changing the native NetEase
+    /// Track shape. Positive IDs remain reserved for NetEase; other providers use
+    /// register(_:)'s negative, provider/handle-scoped IDs. Keeping native NetEase
+    /// metadata preserves privileges, share links and all existing positive-ID APIs.
+    func registerSearchTracks(_ items: [Track], provider: MusicProvider) throws -> [Track] {
+        try items.map { track in
+            if provider == .netease {
+                guard track.id > 0, track.platformSong == nil else { throw MusicProviderError.missingTrack }
+                catalog.songs[track.id] = ProviderSong(id: track.id, name: track.name,
+                    artists: track.artistNames, album: track.album.name,
+                    coverURL: track.album.picUrl.flatMap(URL.init(string:)), duration: track.duration,
+                    source: .netease, fee: track.fee)
+                persist()
+                return track
+            }
+            guard let song = track.platformSong, song.source.rawValue == provider.rawValue else {
+                throw MusicProviderError.missingTrack
+            }
+            return try register(song)
+        }
+    }
+
     func tracks(_ songs: [ProviderSong]) throws -> [Track] { try songs.map(register) }
     func playlist(_ item: ProviderPlaylist, owned: Bool = false, liked: Bool = false, chart: Bool = false) throws -> PlaylistSummary {
         let kind = item.qishui?.radio != nil || item.isQQRadio == true ? "radio" : (chart ? "chart" : "playlist")
@@ -602,8 +625,17 @@ final class PlatformMusicAPI {
         }
         try MusicProviderContext.shared.check(ticket)
     }
-    func search(_ keyword: String, type: NeteaseAPI.SearchType, limit: Int, offset: Int) async throws -> NeteaseAPI.SearchResult {
+    func search(_ keyword: String, type: NeteaseAPI.SearchType, limit: Int, offset: Int,
+                provider requestedProvider: MusicProvider? = nil) async throws -> NeteaseAPI.SearchResult {
         let ticket = MusicProviderContext.shared.ticket
+        let provider = requestedProvider ?? self.provider
+        if provider == .netease {
+            let result = try await NeteaseAPI.search(keyword, type: type, limit: limit, offset: offset, provider: .netease)
+            try MusicProviderContext.shared.check(ticket)
+            return result
+        }
+        await prepareCatalog()
+        try MusicProviderContext.shared.check(ticket)
         if provider == .qishui {
             let page = try await QishuiMusicAPI.shared.search(keyword: keyword, type: type, limit: limit, offset: offset)
             try MusicProviderContext.shared.check(ticket)

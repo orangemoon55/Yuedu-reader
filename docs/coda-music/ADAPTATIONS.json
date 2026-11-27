@@ -15,5 +15,9 @@
   "Sources/Coda/Features/Pages/OnboardingView.swift": "Declining disclaimer returns to reading rather than exiting host",
   "Sources/Coda/Features/Player/PlaybackDeviceButton.swift": "Embedded host uses public AVRoutePickerView fallback",
   "Tests/CodaCoreTests/CodaIdentityTests.swift": "Update namespace assertions for actual host-isolation contract",
-  "Sources/Coda/Features/Home/QishuiModeIcons/*.png": "Replace 48 unlicensed artwork keys with original SVG-derived PNG; preserve mode layout/lookup keys"
+  "Sources/Coda/Features/Home/QishuiModeIcons/*.png": "Replace 48 unlicensed artwork keys with original SVG-derived PNG; preserve mode layout/lookup keys",
+  "Sources/Coda/Core/API/NeteaseAPI.swift": "Read-only explicit NetEase SONG search uses dedicated NetEase cookie jar, ticket/auth fingerprint; generic EAPI gate unchanged",
+  "Sources/Coda/Core/API/PlatformMusicAPI.swift": "Explicit provider search and source-checked Track registration; NetEase positive native IDs retained",
+  "Sources/Coda/Core/Storage/MusicProvider.swift": "MusicProvider Sendable for structured concurrent search",
+  "Sources/Coda/Features/Pages/SearchView.swift": "Native fixed search/category header and four-provider scopes; source-labeled native panels; foreign actions disabled until explicit normal account/platform switch"
 }
