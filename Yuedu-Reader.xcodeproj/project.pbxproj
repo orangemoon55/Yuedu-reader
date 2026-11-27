@@ -47,6 +47,8 @@
 		BBBB2222BBBB2222BBBB0001 /* LNPopupUI-Static in Frameworks */ = {isa = PBXBuildFile; productRef = BBBB2222BBBB2222BBBB0002 /* LNPopupUI-Static */; };
 		D4C329B2F01E414A88BD6077 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E661223F57364063B509666C /* GoogleService-Info.plist */; };
 		D698BFBD3CA24E3C9A05AD4B /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E661223F57364063B509666C /* GoogleService-Info.plist */; };
+		C0DA00000000000000000002 /* CodaCore in Frameworks */ = {isa = PBXBuildFile; productRef = C0DA00000000000000000003 /* CodaCore */; };
+		C0DA00000000000000000004 /* CodaCore in Frameworks */ = {isa = PBXBuildFile; productRef = C0DA00000000000000000005 /* CodaCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -172,6 +174,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0DA00000000000000000002 /* CodaCore in Frameworks */,
 				8A11B0E32F9A1C7300A1B001 /* ReadiumFuzi in Frameworks */,
 				46A6AB6F2FCD4ED60071B397 /* FirebaseAuthCombine-Community in Frameworks */,
 				460274852F710D7500486947 /* ReadiumAdapterLCPSQLite in Frameworks */,
@@ -211,6 +214,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0DA00000000000000000004 /* CodaCore in Frameworks */,
 				1C081706E1002E557584EDC6 /* YueduCoreTextTypography in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -331,6 +335,7 @@
 			);
 			name = "yuedu app";
 			packageProductDependencies = (
+				C0DA00000000000000000003 /* CodaCore */,
 				8A11B0E22F9A1C7300A1B001 /* ReadiumFuzi */,
 				7F41A49C749809CDAB632913 /* ReadiumZIPFoundation */,
 				489E6E08B47AA3AC9F140CAD /* SwiftSoup */,
@@ -385,6 +390,9 @@
 				460D36692F51C5B9006E774C /* Tests/iOS */,
 			);
 			name = "yuedu appTests";
+			packageProductDependencies = (
+				C0DA00000000000000000005 /* CodaCore */,
+			);
 			productName = "yuedu appTests";
 			productReference = 460D36662F51C5B9006E774C /* yuedu appTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -477,6 +485,7 @@
 			mainGroup = 460D36502F51C5B8006E774C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				C0DA00000000000000000001 /* XCLocalSwiftPackageReference "Packages/CodaMusic" */,
 				46935AA62F52E48600662F9D /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				AAAA1111AAAA1111AAAA0003 /* XCRemoteSwiftPackageReference "Nuke" */,
 				8A11B0E12F9A1C7300A1B001 /* XCRemoteSwiftPackageReference "Fuzi" */,
@@ -1191,6 +1200,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/CLexbor;
 		};
+		C0DA00000000000000000001 /* XCLocalSwiftPackageReference "Packages/CodaMusic" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CodaMusic;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1417,6 +1430,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4503FB56A177080D0D9E31E4 /* XCRemoteSwiftPackageReference "YueduCoreText" */;
 			productName = YueduCoreText;
+		};
+		C0DA00000000000000000003 /* CodaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DA00000000000000000001;
+			productName = CodaCore;
+		};
+		C0DA00000000000000000005 /* CodaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DA00000000000000000001;
+			productName = CodaCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

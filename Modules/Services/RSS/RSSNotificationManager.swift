@@ -1,3 +1,4 @@
+@preconcurrency import CodaCore
 import FirebaseCore
 import UIKit
 import UserNotifications
@@ -199,6 +200,7 @@ final class RSSAppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserN
         // After Firebase: it reports a stall the previous run died in through Crashlytics.
         MainThreadMonitor.shared.start()
         CrashContext.breadcrumb("app launch (build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))")
+        ReadccCodaAudioHost.install()
         UNUserNotificationCenter.current().delegate = self
         RSSNotificationManager.shared.start()
         RSSBackgroundRefresh.shared.register()
@@ -212,6 +214,14 @@ final class RSSAppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserN
     ) -> UIInterfaceOrientationMask {
         // The idiom of the window asking; without one, the iPhone mask, which iPad's contains.
         ReaderOrientationController.shared.supportedMask(for: window?.traitCollection.userInterfaceIdiom ?? .phone)
+    }
+
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        if !ReadccHostBridge.handleBackgroundSession(identifier: identifier, completion: completionHandler) {
+            completionHandler()
+        }
     }
 
     // MARK: - Remote notifications (回饋中心)

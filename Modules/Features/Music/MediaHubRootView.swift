@@ -17,29 +17,7 @@ struct MediaHubRootView: View {
     }
 
     var body: some View {
-        Group {
-            if embedsNavigationStack {
-                NavigationStack { navigationContent }
-            } else {
-                navigationContent
-            }
-        }
-    }
-
-    private var navigationContent: some View {
-        MusicJSSourceView(isLibrary: isLibrary)
-            .navigationTitle(localized(isLibrary ? kind.libraryTitleKey : kind.titleKey))
-            .toolbarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onClose) { Label(localized("关闭"), systemImage: "xmark") }
-                        .accessibilityIdentifier("mediaHub.close")
-                }
-                if let mediaMenuContext {
-                    RootTabMediaToolbar(tab: mediaMenuContext.tab, onSelect: mediaMenuContext.onSelect,
-                                        onDefault: mediaMenuContext.onDefault)
-                }
-            }
-            .themedAppSurface(for: .explore)
+        // Coda owns its navigation stacks and theme. Do not wrap it in the legacy JS layout.
+        CodaMusicDestination(isLibrary: isLibrary, onClose: onClose)
     }
 }

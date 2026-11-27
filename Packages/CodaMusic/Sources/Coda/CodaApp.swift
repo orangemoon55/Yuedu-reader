@@ -1,0 +1,233 @@
+import Combine
+import SwiftUI
+
+#if os(macOS)
+public struct CodaApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    @StateObject private var player = PlayerService.shared
+    @StateObject private var account = AccountStore.shared
+    @StateObject private var settings = SettingsManager.shared
+    @StateObject private var toasts = ToastCenter.shared
+    @StateObject private var shortcuts = ShortcutManager.shared
+    @Environment(\.openWindow) private var openWindow
+
+    public init() {}
+
+    public var body: some Scene {
+        Window("Coda", id: "main") {
+            MainWindow()
+                .environmentObject(player)
+                .environmentObject(account)
+                .environmentObject(settings)
+                .environmentObject(toasts)
+                .tint(Theme.accent)
+                .preferredColorScheme(settings.appearance.colorScheme)
+                .frame(minWidth: WindowLayout.minimumWidth,
+                       minHeight: Theme.Layout.minWindowHeight)
+        }
+        .defaultSize(width: Theme.Layout.defaultWindowWidth,
+                     height: Theme.Layout.defaultWindowHeight)
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact)
+        .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton()
+            }
+
+            // Settings live in the main window's content column, like iPad.
+            CommandGroup(replacing: .appSettings) {
+                Button("设置…") {
+                    _ = AppDelegate.shared?.applicationShouldHandleReopen(NSApp, hasVisibleWindows: true)
+                    NotificationCenter.default.post(name: .showSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
+            CommandMenu("播放") {
+                Button(player.isPlaying ? String(localized: "暂停") : String(localized: "播放")) {
+                    player.togglePlayPause()
+                }
+                .disabled(!player.hasCurrentTrack)
+
+                Button("下一首") { player.next() }
+                    .keyboardShortcut(shortcuts.shortcut(for: .nextTrack, isGlobal: false).keyboardShortcut)
+                Button("上一首") { player.previous() }
+                    .keyboardShortcut(shortcuts.shortcut(for: .previousTrack, isGlobal: false).keyboardShortcut)
+
+                Divider()
+
+                // One shortcut for the whole queue-order cycle, like the button
+                // it mirrors: ⇧⌘S walks 列表 → 随机 → AutoMix → 列表, and the
+                // third stop is simply absent where it could do nothing.
+                Button("播放顺序") { player.cycleQueueOrder() }
+                    .keyboardShortcut(shortcuts.shortcut(for: .cycleQueueOrder, isGlobal: false).keyboardShortcut)
+                Button("循环模式") { player.cycleRepeatMode() }
+                    .keyboardShortcut(shortcuts.shortcut(for: .cycleRepeatMode, isGlobal: false).keyboardShortcut)
+
+                Divider()
+
+                SleepTimerMenu(player: player)
+
+                Divider()
+
+                Button(player.currentTrack.map { AccountStore.shared.isLiked($0.id) ? String(localized: "取消喜欢") : String(localized: "喜欢") } ?? String(localized: "喜欢")) {
+                    if let track = player.currentTrack {
+                        Task { await account.toggleLike(trackID: track.id) }
+                    }
+                }
+                .keyboardShortcut(shortcuts.shortcut(for: .toggleLike, isGlobal: false).keyboardShortcut)
+                .disabled(!player.hasCurrentTrack)
+
+                Button("歌词") {
+                    player.activePanel = player.activePanel == .lyrics ? nil : .lyrics
+                }
+                .keyboardShortcut(shortcuts.shortcut(for: .toggleLyrics, isGlobal: false).keyboardShortcut)
+
+                Button("播放队列") {
+                    player.activePanel = player.activePanel == .queue ? nil : .queue
+                }
+                .keyboardShortcut(shortcuts.shortcut(for: .toggleQueue, isGlobal: false).keyboardShortcut)
+            }
+
+            #if DEBUG
+            // Developer tooling, DEBUG builds only (`Scripts/build-app.sh`
+            // defaults to debug, so the listening machine still gets it).
+            // Inert until opened — see `AutoMixDebugModel`.
+            CommandMenu(AutoMixDebugPanel.menuTitle) {
+                Button {
+                    openWindow(id: AutoMixDebugPanel.windowID)
+                } label: {
+                    Text(verbatim: "AutoMix Debug")
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+            }
+            #endif
+        }
+
+        #if DEBUG
+        Window(AutoMixDebugPanel.windowTitle, id: AutoMixDebugPanel.windowID) {
+            AutoMixDebugPanel()
+                .preferredColorScheme(settings.appearance.colorScheme)
+        }
+        .defaultSize(width: 460, height: 620)
+        .windowResizability(.contentMinSize)
+        #endif
+
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: AppDelegate?
+
+    private var keyMonitor: Any?
+    private var appearanceObserver: AnyCancellable?
+    /// Installed by the SwiftUI main scene. Calling it recreates the scene
+    /// when its NSWindow was released after the user closed the last window.
+    var openMainWindow: (() -> Void)?
+    /// The single main window, captured by `MainWindowConfigurator`. Its close
+    /// interceptor hides (orders out) the window instead of destroying the
+    /// single-instance `Window` scene, so we can always bring it back here.
+    weak var mainWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.shared = self
+        // Drive NSApp.appearance from the setting so the NATIVE window chrome
+        // (both main and Settings window titlebars/forms) tracks it. SwiftUI's
+        // `.preferredColorScheme` alone doesn't reliably revert the native
+        // titlebar when switching a fixed theme back to "follow system" (#94).
+        applyAppearance(SettingsManager.shared.appearance.colorScheme)
+        appearanceObserver = SettingsManager.shared.$appearance
+            .map(\.colorScheme)
+            .removeDuplicates()
+            .sink { [weak self] scheme in self?.applyAppearance(scheme) }
+        // App-internal shortcut monitoring (local monitor).
+        // Global hotkeys are handled by GlobalHotKeyManager via Carbon Event Hot Key API.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            Self.interceptKeyEvent(event)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        PlayerService.shared.checkpointPlayback()
+        PlaybackStateStorage.flush()
+    }
+
+    private var finishingPlaybackReport = false
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard MusicProviderContext.shared.current == .kugou else { return .terminateNow }
+        guard !finishingPlaybackReport else { return .terminateLater }
+        finishingPlaybackReport = true
+        Task { @MainActor in
+            await PlayerService.shared.finishPlaybackReporting()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    /// Deliver recording input before playback shortcuts or menu key equivalents consume it.
+    @MainActor
+    static func interceptKeyEvent(_ event: NSEvent) -> NSEvent? {
+        if let recorder = event.window?.firstResponder as? ShortcutRecorderView.RecorderNSView {
+            recorder.keyDown(with: event)
+            return nil
+        }
+        // Outside recording, unmodified Esc closes the immersive playback page.
+        if event.keyCode == 53,
+           event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+           PlayerService.shared.showNowPlaying {
+            PlayerService.shared.showNowPlaying = false
+            return nil
+        }
+        return ShortcutManager.shared.handleKeyEvent(event) ? nil : event
+    }
+
+    private func applyAppearance(_ scheme: ColorScheme?) {
+        switch scheme {
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil // follow system
+        }
+    }
+
+    @MainActor
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        DockMenu.shared.makeMenu()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows _: Bool) -> Bool {
+        // `hasVisibleWindows` is unreliable here: helper windows such as the
+        // desktop-lyrics overlay make it `true` even when the main window is
+        // gone, so decide based on the main window itself.
+        //
+        // `MainWindowConfigurator` keeps the main window alive on close
+        // (orders it out rather than destroying the scene), so it is normally
+        // still around — just hidden and/or miniaturised, and possibly behind
+        // other windows. Restore and front it. Only if it truly no longer
+        // exists do we ask SwiftUI to recreate the scene.
+        if let window = mainWindow {
+            if window.isMiniaturized {
+                // AppKit owns the complete Dock restore transition. Ordering
+                // front here exposes the real surface before its Genie snapshot.
+                window.deminiaturize(nil)
+                return false
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else if let openMainWindow {
+            openMainWindow()
+        } else {
+            return true
+        }
+        // Fully handled above; returning `false` prevents AppKit from also
+        // enqueuing another SwiftUI scene request (which re-created #58's
+        // duplicate window).
+        return false
+    }
+}
+#endif

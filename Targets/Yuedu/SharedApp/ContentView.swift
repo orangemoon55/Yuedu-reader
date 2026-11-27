@@ -1108,15 +1108,15 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
             // Its identity stays stable across media kinds; the original root above
             // stays mounted across every route change.
             if let route {
-                NavigationStack {
-                    MediaHubRootView(
-                        kind: route.kind,
-                        isLibrary: isLibrary,
-                        onClose: onClose,
-                        embedsNavigationStack: false
-                    )
-                    .id(route.id)
-                }
+                // Coda owns its complete navigation hierarchy; the reading root above
+                // remains mounted with its original stack and state unchanged.
+                MediaHubRootView(
+                    kind: route.kind,
+                    isLibrary: isLibrary,
+                    onClose: onClose,
+                    embedsNavigationStack: false
+                )
+                .id(route.id)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

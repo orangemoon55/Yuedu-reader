@@ -1,0 +1,990 @@
+{
+  "date": "2026-10-29",
+  "referenceCommit": "8626b8fe628144e051dd9e07180850d253c808f2",
+  "localCommit": "76e0498ce23038429d180a61725bf6e7f3a18756",
+  "definition": "Source method declarations and route literals, not unique endpoints or live success rate",
+  "sdkMethodCount": 373,
+  "sdkMethodsWithRouteLiterals": 361,
+  "kumoneFacadeMethodCount": 67,
+  "kumoneMethodsWithRouteLiterals": 61,
+  "methods": [
+    {
+      "method": "qrKey",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 32,
+      "routes": [
+        "/login/qrcode/unikey"
+      ],
+      "normalized": [
+        "/login/qrcode/unikey"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "loginQrKey"
+      ]
+    },
+    {
+      "method": "qrLoginURL",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 36,
+      "routes": [],
+      "normalized": [],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "qrCheck",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 49,
+      "routes": [
+        "/login/qrcode/client/login"
+      ],
+      "normalized": [
+        "/login/qrcode/client/login"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "loginQrCheck"
+      ]
+    },
+    {
+      "method": "sendSMSCode",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 56,
+      "routes": [
+        "/sms/captcha/sent"
+      ],
+      "normalized": [
+        "/sms/captcha/sent"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "captchaSent"
+      ]
+    },
+    {
+      "method": "loginCellphone",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 65,
+      "routes": [
+        "/w/login/cellphone"
+      ],
+      "normalized": [
+        "/w/login/cellphone"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "loginCellphone"
+      ]
+    },
+    {
+      "method": "logout",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 78,
+      "routes": [
+        "/logout"
+      ],
+      "normalized": [
+        "/logout"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "logout"
+      ]
+    },
+    {
+      "method": "refreshLogin",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 87,
+      "routes": [
+        "/login/token/refresh"
+      ],
+      "normalized": [
+        "/login/token/refresh"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "loginRefresh"
+      ]
+    },
+    {
+      "method": "userAccount",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 96,
+      "routes": [
+        "/w/nuser/account/get"
+      ],
+      "normalized": [
+        "/w/nuser/account/get"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "loginStatus"
+      ]
+    },
+    {
+      "method": "userDetail",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 112,
+      "routes": [
+        "/v1/user/detail/\\(uid)"
+      ],
+      "normalized": [
+        "/v1/user/detail/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "userDetail"
+      ]
+    },
+    {
+      "method": "userPlaylists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 123,
+      "routes": [
+        "/user/playlist"
+      ],
+      "normalized": [
+        "/user/playlist"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "userPlaylist"
+      ]
+    },
+    {
+      "method": "likedTrackIDs",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 132,
+      "routes": [
+        "/song/like/get"
+      ],
+      "normalized": [
+        "/song/like/get"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "likelist"
+      ]
+    },
+    {
+      "method": "likeTrack",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 136,
+      "routes": [
+        "/radio/like?alg=itembased&trackId=\\(id)&time=3"
+      ],
+      "normalized": [
+        "/radio/like"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "like"
+      ]
+    },
+    {
+      "method": "likedAlbums",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 150,
+      "routes": [
+        "/album/sublist"
+      ],
+      "normalized": [
+        "/album/sublist"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "albumSublist"
+      ]
+    },
+    {
+      "method": "likedArtists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 155,
+      "routes": [
+        "/artist/sublist"
+      ],
+      "normalized": [
+        "/artist/sublist"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "artistSublist"
+      ]
+    },
+    {
+      "method": "playRecords",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 165,
+      "routes": [
+        "/v1/play/record"
+      ],
+      "normalized": [
+        "/v1/play/record"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "userRecord"
+      ]
+    },
+    {
+      "method": "recentSongs",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 178,
+      "routes": [
+        "/play-record/song/list"
+      ],
+      "normalized": [
+        "/play-record/song/list"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "recordRecentSong"
+      ]
+    },
+    {
+      "method": "cloudSongs",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 206,
+      "routes": [
+        "/v1/cloud/get"
+      ],
+      "normalized": [
+        "/v1/cloud/get"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "userCloud"
+      ]
+    },
+    {
+      "method": "cloudDelete",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 210,
+      "routes": [
+        "/cloud/del"
+      ],
+      "normalized": [
+        "/cloud/del"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "userCloudDel"
+      ]
+    },
+    {
+      "method": "personalizedPlaylists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 220,
+      "routes": [
+        "/personalized/playlist"
+      ],
+      "normalized": [
+        "/personalized/playlist"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "personalized"
+      ]
+    },
+    {
+      "method": "recommendResource",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 230,
+      "routes": [
+        "/v1/discovery/recommend/resource"
+      ],
+      "normalized": [
+        "/v1/discovery/recommend/resource"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "recommendResource"
+      ]
+    },
+    {
+      "method": "dailyRecommendSongs",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 243,
+      "routes": [
+        "/v3/discovery/recommend/songs"
+      ],
+      "normalized": [
+        "/v3/discovery/recommend/songs"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "recommendSongs"
+      ]
+    },
+    {
+      "method": "dislikeRecommendedSong",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 271,
+      "routes": [
+        "/v2/discovery/recommend/dislike"
+      ],
+      "normalized": [
+        "/v2/discovery/recommend/dislike"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "recommendSongsDislike"
+      ]
+    },
+    {
+      "method": "playlistDetail",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 284,
+      "routes": [
+        "/v6/playlist/detail"
+      ],
+      "normalized": [
+        "/v6/playlist/detail"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistDetail",
+        "playlistTrackAll"
+      ]
+    },
+    {
+      "method": "toplistPreviewTracks",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 290,
+      "routes": [
+        "/v6/playlist/detail"
+      ],
+      "normalized": [
+        "/v6/playlist/detail"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistDetail",
+        "playlistTrackAll"
+      ]
+    },
+    {
+      "method": "radarPlaylists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 426,
+      "routes": [
+        "/pc/customize/block/page"
+      ],
+      "normalized": [
+        "/pc/customize/block/page"
+      ],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "radarFirstSongCover",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 452,
+      "routes": [
+        "/v3/song/detail"
+      ],
+      "normalized": [
+        "/v3/song/detail"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistTrackAll",
+        "songDetail"
+      ]
+    },
+    {
+      "method": "playlistBrief",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 467,
+      "routes": [
+        "/v6/playlist/detail"
+      ],
+      "normalized": [
+        "/v6/playlist/detail"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistDetail",
+        "playlistTrackAll"
+      ]
+    },
+    {
+      "method": "songDetails",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 477,
+      "routes": [
+        "/v3/song/detail"
+      ],
+      "normalized": [
+        "/v3/song/detail"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistTrackAll",
+        "songDetail"
+      ]
+    },
+    {
+      "method": "topPlaylists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 489,
+      "routes": [
+        "/playlist/list"
+      ],
+      "normalized": [
+        "/playlist/list"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "topPlaylist"
+      ]
+    },
+    {
+      "method": "highQualityPlaylists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 501,
+      "routes": [
+        "/playlist/highquality/list"
+      ],
+      "normalized": [
+        "/playlist/highquality/list"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "topPlaylistHighquality"
+      ]
+    },
+    {
+      "method": "toplists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 511,
+      "routes": [
+        "/toplist"
+      ],
+      "normalized": [
+        "/toplist"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "toplist"
+      ]
+    },
+    {
+      "method": "createPlaylist",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 521,
+      "routes": [
+        "/playlist/create"
+      ],
+      "normalized": [
+        "/playlist/create"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistCreate"
+      ]
+    },
+    {
+      "method": "deletePlaylist",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 528,
+      "routes": [
+        "/playlist/remove"
+      ],
+      "normalized": [
+        "/playlist/remove"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistDelete"
+      ]
+    },
+    {
+      "method": "subscribePlaylist",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 533,
+      "routes": [
+        "/playlist/\\(subscribe ? \"subscribe\" : \"unsubscribe\")"
+      ],
+      "normalized": [
+        "/playlist/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistSubscribe"
+      ]
+    },
+    {
+      "method": "playlistTracks",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 542,
+      "routes": [
+        "/playlist/manipulate/tracks"
+      ],
+      "normalized": [
+        "/playlist/manipulate/tracks"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistTracks",
+        "songOrderUpdate"
+      ]
+    },
+    {
+      "method": "intelligenceList",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 571,
+      "routes": [
+        "/playmode/intelligence/list"
+      ],
+      "normalized": [
+        "/playmode/intelligence/list"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playmodeIntelligenceList"
+      ]
+    },
+    {
+      "method": "songAudioQualities",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 606,
+      "routes": [
+        "/v3/song/detail"
+      ],
+      "normalized": [
+        "/v3/song/detail"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "playlistTrackAll",
+        "songDetail"
+      ]
+    },
+    {
+      "method": "preferredSongURL",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 614,
+      "routes": [],
+      "normalized": [],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "songURL",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 652,
+      "routes": [
+        "/song/enhance/player/url/v1"
+      ],
+      "normalized": [
+        "/song/enhance/player/url/v1"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "songUrlV1"
+      ]
+    },
+    {
+      "method": "songDownloadResource",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 662,
+      "routes": [],
+      "normalized": [],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "songDownloadURL",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 668,
+      "routes": [
+        "/song/enhance/download/url/v1"
+      ],
+      "normalized": [
+        "/song/enhance/download/url/v1"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "songDownloadUrlV1"
+      ]
+    },
+    {
+      "method": "downloadResource",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 677,
+      "routes": [],
+      "normalized": [],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "lyric",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 703,
+      "routes": [
+        "/song/lyric/v1",
+        "/song/lyric"
+      ],
+      "normalized": [
+        "/song/lyric/v1",
+        "/song/lyric"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "lyric",
+        "lyricNew"
+      ]
+    },
+    {
+      "method": "personalFM",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 725,
+      "routes": [
+        "/v1/radio/get"
+      ],
+      "normalized": [
+        "/v1/radio/get"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "personalFm",
+        "personalFmMode"
+      ]
+    },
+    {
+      "method": "fmTrash",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 729,
+      "routes": [
+        "/radio/trash/add?alg=RT&songId=\\(id)&time=25"
+      ],
+      "normalized": [
+        "/radio/trash/add"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "fmTrash"
+      ]
+    },
+    {
+      "method": "similarSongs",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 738,
+      "routes": [
+        "/v1/discovery/simiSong"
+      ],
+      "normalized": [
+        "/v1/discovery/simiSong"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "simiSong"
+      ]
+    },
+    {
+      "method": "album",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 745,
+      "routes": [
+        "/v1/album/\\(id)"
+      ],
+      "normalized": [
+        "/v1/album/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "album"
+      ]
+    },
+    {
+      "method": "newAlbums",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 753,
+      "routes": [
+        "/album/new"
+      ],
+      "normalized": [
+        "/album/new"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "albumNew"
+      ]
+    },
+    {
+      "method": "albumDynamic",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 763,
+      "routes": [
+        "/album/detail/dynamic"
+      ],
+      "normalized": [
+        "/album/detail/dynamic"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "albumDetailDynamic"
+      ]
+    },
+    {
+      "method": "subscribeAlbum",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 767,
+      "routes": [
+        "/album/\\(subscribe ? \"sub\" : \"unsub\")"
+      ],
+      "normalized": [
+        "/album/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "albumSub"
+      ]
+    },
+    {
+      "method": "artist",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 779,
+      "routes": [
+        "/v1/artist/\\(id)"
+      ],
+      "normalized": [
+        "/v1/artist/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "artists"
+      ]
+    },
+    {
+      "method": "artistAlbums",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 788,
+      "routes": [
+        "/artist/albums/\\(id)"
+      ],
+      "normalized": [
+        "/artist/albums/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "artistAlbum"
+      ]
+    },
+    {
+      "method": "artistSubscriptionParameters",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 793,
+      "routes": [],
+      "normalized": [],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "subscribeArtist",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 798,
+      "routes": [
+        "/artist/\\(subscribe ? \"sub\" : \"unsub\")"
+      ],
+      "normalized": [
+        "/artist/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "artistSub"
+      ]
+    },
+    {
+      "method": "topArtists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 819,
+      "routes": [
+        "/toplist/artist"
+      ],
+      "normalized": [
+        "/toplist/artist"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "toplistArtist"
+      ]
+    },
+    {
+      "method": "similarArtists",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 828,
+      "routes": [
+        "/discovery/simiArtist"
+      ],
+      "normalized": [
+        "/discovery/simiArtist"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "simiArtist"
+      ]
+    },
+    {
+      "method": "search",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 856,
+      "routes": [
+        "/cloudsearch/pc"
+      ],
+      "normalized": [
+        "/cloudsearch/pc"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "cloudsearch"
+      ]
+    },
+    {
+      "method": "searchSuggest",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 876,
+      "routes": [
+        "/search/suggest/web"
+      ],
+      "normalized": [
+        "/search/suggest/web"
+      ],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "searchDefaultKeyword",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 889,
+      "routes": [
+        "/search/defaultkeyword/get"
+      ],
+      "normalized": [
+        "/search/defaultkeyword/get"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "searchDefault"
+      ]
+    },
+    {
+      "method": "personalizedNewSongs",
+      "file": "Sources/Kumone/Core/API/NeteaseAPI.swift",
+      "line": 905,
+      "routes": [
+        "/personalized/newsong"
+      ],
+      "normalized": [
+        "/personalized/newsong"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "personalizedNewsong"
+      ]
+    },
+    {
+      "method": "decodeHomeDiscovery",
+      "file": "Sources/Kumone/Core/API/NeteaseHomeDiscovery.swift",
+      "line": 32,
+      "routes": [],
+      "normalized": [],
+      "mode": "weapi",
+      "matches": []
+    },
+    {
+      "method": "homeDiscovery",
+      "file": "Sources/Kumone/Core/API/NeteaseHomeDiscovery.swift",
+      "line": 111,
+      "routes": [
+        "/homepage/block/page"
+      ],
+      "normalized": [
+        "/homepage/block/page"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "homepageBlockPage",
+        "starpickCommentsSummary"
+      ]
+    },
+    {
+      "method": "homeTopSongs",
+      "file": "Sources/Kumone/Core/API/NeteaseHomeDiscovery.swift",
+      "line": 121,
+      "routes": [
+        "/v1/discovery/new/songs"
+      ],
+      "normalized": [
+        "/v1/discovery/new/songs"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "topSong"
+      ]
+    },
+    {
+      "method": "songComments",
+      "file": "Sources/Kumone/Core/API/SongCommentsAPI.swift",
+      "line": 4,
+      "routes": [
+        "/v1/resource/hotcomments/\\(resource)",
+        "/v1/resource/comments/\\(resource)"
+      ],
+      "normalized": [
+        "/v1/resource/hotcomments/{value}",
+        "/v1/resource/comments/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "commentEvent",
+        "commentHot"
+      ]
+    },
+    {
+      "method": "likeSongComment",
+      "file": "Sources/Kumone/Core/API/SongCommentsAPI.swift",
+      "line": 14,
+      "routes": [
+        "/v1/comment/\\(like ? \"like\" : \"unlike\")"
+      ],
+      "normalized": [
+        "/v1/comment/{value}"
+      ],
+      "mode": "weapi",
+      "matches": [
+        "commentLike"
+      ]
+    },
+    {
+      "method": "sendSongComment",
+      "file": "Sources/Kumone/Core/API/SongCommentsAPI.swift",
+      "line": 22,
+      "routes": [
+        "/resource/comments/\\(commentID == nil ? \"add\" : \"reply\")"
+      ],
+      "normalized": [
+        "/resource/comments/{value}"
+      ],
+      "mode": "eapi",
+      "matches": [
+        "comment"
+      ]
+    },
+    {
+      "method": "deleteSongComment",
+      "file": "Sources/Kumone/Core/API/SongCommentsAPI.swift",
+      "line": 35,
+      "routes": [
+        "/resource/comments/delete"
+      ],
+      "normalized": [
+        "/resource/comments/delete"
+      ],
+      "mode": "eapi",
+      "matches": []
+    }
+  ]
+}

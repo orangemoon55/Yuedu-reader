@@ -29,6 +29,10 @@ enum AudioSessionActivator {
         }
     }
 
+    /// A synchronous handoff barrier, used only for cross-module ownership transfer.
+    /// Pending host activation must not overtake Coda's following activation.
+    static func finishPendingOperationsForTakeover() { queue.sync {} }
+
     /// Toggle activation on an already-configured session (no category change).
     static func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions = []) {
         queue.async {

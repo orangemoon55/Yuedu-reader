@@ -84,6 +84,7 @@ final class MusicPlayer: ObservableObject {
     func play(_ item: MediaHubLibraryItem, queue items: [MediaHubLibraryItem] = []) {
         // Existing app audio owns the same session. This is a deliberate takeover, not a
         // second session: stop TTS/audiobook before activating playback for this queue.
+        ReadccCodaAudioHost.claimReadcc()
         TTSCoordinator.yieldSystemMediaToMusic()
         NowPlayingHub.shared.stop()
         stopQueue(clearMetadata: true, deactivateSession: false)
@@ -474,6 +475,7 @@ final class MusicPlayer: ObservableObject {
     }
 
     private func updateNowPlaying() {
+        guard !ReadccCodaAudioHost.codaOwnsAudio else { return }
         updateBufferingState()
         guard let item = currentTrack else { return }
         configureNowPlaying(for: item, elapsed: currentTime, duration: duration, playing: isPlaying)

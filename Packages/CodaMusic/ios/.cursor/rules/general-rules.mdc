@@ -1,0 +1,7 @@
+---
+description: Coda iOS project guidance
+alwaysApply: true
+---
+
+Follow the repository root's `AGENTS.md` for player UI, deployment, and physical-device automation rules.
+See `ios/README.md` for supported versions, source locations, and build and test entry points.

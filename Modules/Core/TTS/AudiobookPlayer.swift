@@ -343,6 +343,7 @@ final class AudiobookPlayer: NSObject, ObservableObject {
 
         // Take over the audio session from any active TTS narration (audiobook only
         // displaces TTS, never another audiobook).
+        ReadccCodaAudioHost.claimReadcc()
         NowPlayingHub.shared.stopTTSIfActive()
 
         stopInternal()
@@ -435,10 +436,17 @@ final class AudiobookPlayer: NSObject, ObservableObject {
         if isPlaying { pause() } else { play() }
     }
 
-    func stop() {
+    func stop() { stop(deactivateSession: true) }
+
+    func stopForCodaTakeover() {
+        stop(deactivateSession: false)
+        remoteCommandsConfigured = false // Coda removes the outgoing host command targets.
+    }
+
+    private func stop(deactivateSession: Bool) {
         persistPosition(force: true)
         stopInternal()
-        deactivateAudioSession()
+        if deactivateSession { deactivateAudioSession() }
         bookId = nil
         chapters = []
         currentChapterTitle = ""
@@ -1698,6 +1706,7 @@ final class AudiobookPlayer: NSObject, ObservableObject {
     }
 
     private func updateNowPlaying() {
+        guard !ReadccCodaAudioHost.codaOwnsAudio else { return }
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = currentChapterTitle.isEmpty ? bookTitle : currentChapterTitle
         info[MPMediaItemPropertyArtist] = bookTitle

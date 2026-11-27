@@ -1,0 +1,19 @@
+{
+  "Package.swift": "Compile full CodaCore as isolated Swift5 iOS local library; preserve original manifest separately",
+  "Sources/Coda/Core/AppAboutInfo.swift": "Resolve module legal texts from Bundle.module, never Readcc root license",
+  "Sources/Coda/Core/CodaIdentity.swift": "Stable host-bundle music namespace; retain standalone official identities",
+  "Sources/Coda/Core/PlatformCompatibility.swift": "Explicit sensitive clipboard localOnly two-minute transfer",
+  "Sources/Coda/Core/Player/NowPlayingManager.swift": "Own remote tokens and reject detached late callbacks",
+  "Sources/Coda/Core/Player/PlayerServiceIOS.swift": "Transfer audio on actual play intentions, invalidate stale playback on handoff",
+  "Sources/Coda/Core/Storage/CodaPaths.swift": "Embedded storage roots and protected shared cache",
+  "Sources/Coda/Core/Storage/StorageSpaceModel.swift": "Reject host-wide cache/tmp cleanup; whitelist module roots",
+  "Sources/Coda/Core/Storage/StorageUsage.swift": "Disable host-owned temporary/cache deletion categories",
+  "Sources/Coda/Features/IOSMainWindow.swift": "Original UI with real initial home/library selection and host decline callback",
+  "Sources/Coda/Features/MainWindow.swift": "Original iPad library initial navigation; default behavior unchanged",
+  "Sources/Coda/Features/Pages/IOSUpdater.swift": "Reject standalone Coda update/install/download/share in embedded host",
+  "Sources/Coda/Features/Pages/MusicAccountsSection.swift": "Keep original UI; require sensitive credential-export confirmation",
+  "Sources/Coda/Features/Pages/OnboardingView.swift": "Declining disclaimer returns to reading rather than exiting host",
+  "Sources/Coda/Features/Player/PlaybackDeviceButton.swift": "Embedded host uses public AVRoutePickerView fallback",
+  "Tests/CodaCoreTests/CodaIdentityTests.swift": "Update namespace assertions for actual host-isolation contract",
+  "Sources/Coda/Features/Home/QishuiModeIcons/*.png": "Replace 48 unlicensed artwork keys with original SVG-derived PNG; preserve mode layout/lookup keys"
+}

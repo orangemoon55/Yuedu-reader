@@ -412,6 +412,29 @@ final class NowPlayingHub: ObservableObject {
         if source == .music, let music { music.stopForTakeover(); detachMusic(music) }
     }
 
+    /// Coda claims only on playback. Clear the old hub synchronously, not on a view event.
+    func yieldToCoda() {
+        switch source {
+        case .tts: coordinator?.stop(reason: "Coda takeover")
+        case .audiobook: audiobook?.stopForCodaTakeover()
+        case .music: music?.stopForTakeover()
+        case .none: break
+        }
+        clearAudiobook()
+        coordinator = nil
+        music = nil
+        releaseHeldNarration()
+        source = .none
+        isVisible = false
+        // Existing Readcc engines register these six shared commands. The outgoing engine
+        // has stopped; remove its dormant targets before Coda installs its own token set.
+        let c = MPRemoteCommandCenter.shared()
+        [c.playCommand, c.pauseCommand, c.togglePlayPauseCommand, c.stopCommand,
+         c.nextTrackCommand, c.previousTrackCommand, c.changePlaybackPositionCommand,
+         c.skipForwardCommand, c.skipBackwardCommand]
+            .forEach { $0.removeTarget(nil) }
+    }
+
     // MARK: - Audiobook source (app-global)
 
     /// Bind the imported-music player as the single active system-audio owner. The hub routes
@@ -1196,6 +1219,7 @@ final class TTSCoordinator: ObservableObject {
     }
 
     private func claimSystemMediaSession() {
+        ReadccCodaAudioHost.claimReadcc()
         if NowPlayingHub.shared.source == .music { NowPlayingHub.shared.stop() }
         if let activeCoordinator = Self.activeSystemMediaCoordinator,
            activeCoordinator !== self {

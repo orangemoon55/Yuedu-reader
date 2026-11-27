@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>Coda 四平台能力总览</title>
+<!--
+  数据来源：Sources/Coda/Core/API/MusicServiceCatalog.swift（界面据此决定功能是否出现），
+  并于 2026-11-10 在 Mac 版 Coda Dev 中逐平台核对首页、精选、搜索标签、侧栏与云盘。
+  重新生成 PNG：
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars \
+    --force-device-scale-factor=2 --window-size=1672,1110 --virtual-time-budget=3000 \
+    --screenshot=docs/assets/platform-capabilities.png docs/assets/platform-capabilities.html
+-->
+<style>
+  :root {
+    --ne: #e5322d; --qq: #1fb36b; --kg: #2f7df6; --qs: #f0a30a;
+    --ink: #1c2a4a; --sub: #7a86a0; --line: #cfe0f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1672px; height: 1110px; overflow: hidden; position: relative;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; color: var(--ink);
+    background: radial-gradient(1200px 700px at 50% 45%, #eaf3ff 0%, #f5f9ff 55%, #fbfdff 100%);
+  }
+  #wrap { position: absolute; inset: 34px 40px auto 40px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 26px 24px; }
+  .card {
+    background: var(--bg, #fff); border: 1px solid rgba(120,150,200,.22); border-radius: 22px;
+    padding: 18px 18px 16px; box-shadow: 0 8px 24px rgba(60,100,170,.08); position: relative; z-index: 2;
+  }
+  .head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+  .ico { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 26px; flex: none;
+         background: var(--c); box-shadow: 0 6px 14px color-mix(in srgb, var(--c) 35%, transparent); }
+  .head h2 { font-size: 26px; font-weight: 800; letter-spacing: .5px; }
+  .head p { font-size: 14px; color: var(--sub); margin-top: 3px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .item { background: #fff; border-radius: 12px; padding: 0 10px; height: 44px; display: flex; align-items: center; justify-content: space-between;
+          box-shadow: 0 2px 8px rgba(60,100,170,.07); font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .dots { display: flex; gap: 4px; margin-left: 6px; }
+  .d { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #c9d2e3; background: transparent; }
+  .d.on.ne { background: var(--ne); border-color: var(--ne); }
+  .d.on.qq { background: var(--qq); border-color: var(--qq); }
+  .d.on.kg { background: var(--kg); border-color: var(--kg); }
+  .d.on.qs { background: var(--qs); border-color: var(--qs); }
+  .item.note { grid-column: span 2; font-weight: 500; font-size: 14px; color: var(--sub); justify-content: flex-start; gap: 8px; }
+  #hero { grid-column: 5 / span 4; align-self: center; z-index: 3; text-align: center; padding: 0; background: none; border: 0; box-shadow: none; }
+  #hero .box { margin: 0 auto; width: 100%; border-radius: 40px; padding: 26px 20px 22px;
+               background: linear-gradient(160deg, #3a8dff, #1b5be0); color: #fff;
+               box-shadow: 0 18px 40px rgba(30,90,220,.35), inset 0 2px 0 rgba(255,255,255,.35); }
+  #hero .wave { font-size: 66px; line-height: 1; }
+  #hero h1 { font-size: 46px; font-weight: 900; letter-spacing: 1px; margin-top: 8px; }
+  #hero .s { font-size: 17px; opacity: .92; margin-top: 8px; }
+  #hero .legend { display: flex; justify-content: center; gap: 16px; margin-top: 14px; font-size: 15px; font-weight: 700; }
+  #hero .legend span { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.95); color: var(--ink); padding: 4px 11px; border-radius: 999px; }
+  #hero .legend i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  #hero .hint { font-size: 13px; opacity: .85; margin-top: 11px; }
+  #links { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+  #foot { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font-size: 14px; color: var(--sub); z-index: 3; }
+</style>
+</head>
+<body>
+<svg id="links"></svg>
+<div id="wrap"></div>
+<div id="foot">● 已接入　○ 未接入　·　依据 MusicServiceCatalog 能力契约，2026-11-10 更新并在 Mac 版 Coda Dev 核对　·　顺序：网易云 · QQ 音乐 · 酷狗 · 汽水</div>
+<script>
+// 每项 [名称, 网易云, QQ, 酷狗, 汽水]，1 = 已接入
+const cards = [
+  { t: '登录与账号', s: '多平台登录，多账号切换', c: '#22b573', bg: '#eefaf3', i: '☻', span: 3, items: [
+    ['扫码登录',1,1,1,1], ['多账号切换',1,1,1,1], ['账号资料',1,1,1,1], ['会员身份',1,1,1,1],
+    ['凭证导入',0,1,1,1], ['跨设备同步',1,0,0,0] ] },
+  { t: '搜索与曲库', s: '快速搜索，发现全网好音乐', c: '#2f6bff', bg: '#eef4ff', i: '⌕', span: 3, items: [
+    ['搜索单曲',1,1,1,1], ['搜索歌手',1,1,1,1], ['搜索专辑',1,1,1,1], ['搜索歌单',1,1,1,1],
+    ['热搜 / 联想',1,1,1,1] ] },
+  { t: '榜单与目录', s: '榜单、歌单、专辑与歌手详情', c: '#8a5cf6', bg: '#f4f0ff', i: '☰', span: 3, items: [
+    ['排行榜',1,1,1,1], ['榜单歌曲',1,1,1,1], ['歌单详情',1,1,1,1], ['专辑详情',1,1,1,1],
+    ['歌手详情',1,1,1,1], ['歌手专辑',1,1,1,1], ['相似歌手',1,1,0,0], ['热门歌手',1,1,1,0] ] },
+  { t: '推荐与发现', s: '个性化推荐，发现更多好音乐', c: '#f0508a', bg: '#fff0f5', i: '★', span: 3, items: [
+    ['推荐歌单',1,1,1,1], ['每日推荐',1,1,1,0], ['私人 FM / 漫游',1,1,1,0], ['相似歌曲',1,1,0,0],
+    ['新碟上架',1,1,1,0], ['地区热歌',1,0,0,0], ['雷达 / 心动',1,0,0,0], ['推荐反馈',1,0,0,0] ] },
+
+  { t: '播放内容', s: '整曲播放、歌词与评论', c: '#22b573', bg: '#effaf3', i: '▶', span: 4, items: [
+    ['整曲播放',1,1,1,1], ['歌词 / 翻译',1,1,1,1], ['评论读取',1,1,1,1], ['播放上报',1,0,1,1],
+    ['音质切换',1,0,1,1], ['评论写入',1,0,0,0] ] },
+  null,
+  { t: '个人音乐库', s: '管理你的专属音乐空间', c: '#f59a23', bg: '#fff7ec', i: '♥', span: 4, items: [
+    ['我喜欢',1,1,1,1], ['账号歌单',1,1,1,1], ['最近播放',1,0,1,1], ['收藏专辑',1,1,0,1],
+    ['关注歌手',1,1,1,1], ['听歌排行',1,1,1,0], ['听歌统计',1,0,0,0] ] },
+
+  { t: '写入能力', s: '喜欢、建单、收藏、编辑', c: '#f0508a', bg: '#fff1f5', i: '✎', span: 4, items: [
+    ['喜欢 / 取消',1,1,1,1], ['创建歌单',1,1,1,1], ['删除歌单',1,1,1,1], ['加歌',1,1,1,1],
+    ['移歌',1,1,1,1], ['歌单改名',0,1,1,1], ['收藏歌单',1,1,1,1] ] },
+  { t: '云盘与下载', s: '云端文件与离线保存', c: '#1fa0e8', bg: '#eef8ff', i: '☁', span: 4, items: [
+    ['音乐云盘',1,1,1,0], ['云盘上传 / 删除',1,0,1,0], ['离线下载',1,0,1,0] ] },
+  { t: '平台无关能力', s: '由 Coda 播放器统一提供', c: '#2f6bff', bg: '#eef3ff', i: '⚙', span: 4, free: [
+    'AutoMix 衔接','分轨分离','响度补偿','音频频谱','AirPlay','CarPlay','罗马音 / 假名','跨源解锁','偏好 / 进度同步','桌面歌词' ] },
+];
+const plat = ['ne','qq','kg','qs'];
+const wrap = document.getElementById('wrap');
+cards.forEach(c => {
+  const el = document.createElement('section');
+  if (!c) {
+    el.className = 'card'; el.id = 'hero';
+    el.innerHTML = `<div class="box"><div class="wave">🎧</div><h1>Coda 四平台能力</h1>
+      <div class="s">一个界面，统一网易云、QQ 音乐、酷狗与汽水</div>
+      <div class="legend"><span><i style="background:var(--ne)"></i>网易云</span><span><i style="background:var(--qq)"></i>QQ</span><span><i style="background:var(--kg)"></i>酷狗</span><span><i style="background:var(--qs)"></i>汽水</span></div>
+      <div class="hint">macOS 15+ · iPhone · iPad · SwiftUI 原生</div></div>`;
+    el.style.gridColumn = '5 / span 4';
+    wrap.appendChild(el); return;
+  }
+  el.className = 'card'; el.style.setProperty('--c', c.c); el.style.setProperty('--bg', c.bg);
+  el.style.gridColumn = `span ${c.span}`;
+  let body = '';
+  if (c.items) body = c.items.map(r => `<div class="item"><span>${r[0]}</span><span class="dots">${plat.map((p,k)=>`<i class="d ${r[k+1]?'on':''} ${p}"></i>`).join('')}</span></div>`).join('');
+  else body = c.free.map(n => `<div class="item"><span>${n}</span><span class="dots"><i class="d on ne"></i><i class="d on qq"></i><i class="d on kg"></i><i class="d on qs"></i></span></div>`).join('');
+  el.innerHTML = `<div class="head"><div class="ico">${c.i}</div><div><h2>${c.t}</h2><p>${c.s}</p></div></div><div class="grid">${body}</div>`;
+  wrap.appendChild(el);
+});
+// 连接线：从中心卡到每张卡片的最近边
+requestAnimationFrame(() => {
+  const svg = document.getElementById('links'); const ns = 'http://www.w3.org/2000/svg';
+  svg.setAttribute('width', 1672); svg.setAttribute("height", 1110);
+  const hero = document.querySelector('#hero .box').getBoundingClientRect();
+  const hx = hero.left + hero.width/2, hy = hero.top + hero.height/2;
+  document.querySelectorAll('.card:not(#hero)').forEach(card => {
+    const r = card.getBoundingClientRect(); const cx = r.left + r.width/2, cy = r.top + r.height/2;
+    let sx, sy, ex, ey;
+    if (cy < hero.top) { ex = cx; ey = r.bottom; sx = Math.min(Math.max(cx, hero.left+60), hero.right-60); sy = hero.top; }
+    else if (cy > hero.bottom) { ex = cx; ey = r.top; sx = Math.min(Math.max(cx, hero.left+60), hero.right-60); sy = hero.bottom; }
+    else if (cx < hx) { ex = r.right; ey = cy; sx = hero.left; sy = hy; }
+    else { ex = r.left; ey = cy; sx = hero.right; sy = hy; }
+    const vertical = (sy !== hy);
+    const d = vertical ? `M${sx},${sy} C${sx},${(sy+ey)/2} ${ex},${(sy+ey)/2} ${ex},${ey}` : `M${sx},${sy} C${(sx+ex)/2},${sy} ${(sx+ex)/2},${ey} ${ex},${ey}`;
+    const p = document.createElementNS(ns, 'path'); p.setAttribute('d', d); p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#7fb0f5'); p.setAttribute('stroke-width', 2.2); svg.appendChild(p);
+    [[sx,sy],[ex,ey]].forEach(([x,y]) => { const c = document.createElementNS(ns,'circle'); c.setAttribute('cx',x); c.setAttribute('cy',y); c.setAttribute('r',6); c.setAttribute('fill','#fff'); c.setAttribute('stroke','#2f7df6'); c.setAttribute('stroke-width',3); svg.appendChild(c); });
+  });
+});
+</script>
+</body>
+</html>

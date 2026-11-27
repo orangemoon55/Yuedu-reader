@@ -1,0 +1,93 @@
+# XcodeGen manifest for the iOS app shell.
+# Regenerate the project with: cd ios && xcodegen generate
+name: CodaIOS
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: "../Sources/iOS&iPadOS/Config/Debug.xcconfig"
+  Release: "../Sources/iOS&iPadOS/Config/Release.xcconfig"
+packages:
+  Coda:
+    path: ..
+targets:
+  CodaIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: "../Sources/iOS&iPadOS/CodaIOSApp.swift"
+      - path: CodaIOS/Assets.xcassets
+        buildPhase: resources
+      - path: ../ThirdPartyNotices
+        type: folder
+        buildPhase: resources
+      - path: ../LICENSE
+        buildPhase: resources
+      - path: ../COPYING
+        buildPhase: resources
+      - path: ../Sources/Coda/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    configFiles:
+      Debug: "../Sources/iOS&iPadOS/Config/Debug.xcconfig"
+      Release: "../Sources/iOS&iPadOS/Config/Release.xcconfig"
+    dependencies:
+      - package: Coda
+        product: CodaCore
+    settings:
+      base:
+        # CODE_SIGN_ENTITLEMENTS is deliberately NOT set here. Target-level build
+        # settings override xcconfig, which would pin the entitlements file and
+        # silently defeat the CarPlay overlay in Config/Shared.xcconfig. The
+        # setting lives there instead, behind $(CODA_ENTITLEMENTS_FILE).
+        ENABLE_PREVIEWS: YES
+      configs:
+        Debug:
+          DEVELOPMENT_TEAM: 9ZGVJ862WJ
+        Release:
+          DEVELOPMENT_TEAM: M2DXV97G43
+  CodaIOSCoreTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - ../Tests/CodaIOSCoreTests
+    dependencies:
+      - package: Coda
+        product: CodaCore
+    settings:
+      base:
+        PRODUCT_NAME: $(TARGET_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: $(CODA_BUNDLE_IDENTIFIER).coretests
+        INFOPLIST_FILE: ""
+        CODE_SIGN_ENTITLEMENTS: ""
+  CodaIOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - CodaIOSUITests
+    configFiles:
+      Debug: "../Sources/iOS&iPadOS/Config/Tests.xcconfig"
+      Release: "../Sources/iOS&iPadOS/Config/Tests.xcconfig"
+    dependencies:
+      - target: CodaIOS
+schemes:
+  CodaIOS:
+    build:
+      targets:
+        CodaIOS: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CodaIOSUITests
+    archive:
+      config: Release
+  CodaIOSCoreTests:
+    build:
+      targets:
+        CodaIOSCoreTests: [test]
+    test:
+      config: Debug
+      targets:
+        - CodaIOSCoreTests

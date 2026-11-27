@@ -1,0 +1,518 @@
+{
+  "status": 1,
+  "data": {
+    "total": 10,
+    "songs": [
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 343942548,
+          "audio_name": "名字",
+          "album_audio_id": 621442433
+        },
+        "audio_info": {
+          "hash": "5C09E595AE0B889980A6D8A75BC386EF",
+          "bitrate": 128,
+          "duration_flac": 266000,
+          "filesize_320": 10656059,
+          "filesize_flac": 32067801,
+          "duration_320": 266370,
+          "filesize_high": 59550177,
+          "hash_320": "73880C7B2DB7794E835FE0D77F1099CB",
+          "duration": 266370,
+          "duration_high": 266342,
+          "hash_high": "FB031EC0DE6A50F1FEF87D0E1B42D89D",
+          "hash_super": "",
+          "filesize": 4262537,
+          "hash_128": "5C09E595AE0B889980A6D8A75BC386EF",
+          "bitrate_high": 1788,
+          "hash_flac": "1EBA76A06C2021ABDDD5AB6CA7EC56DD",
+          "filesize_128": 4262537,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 266370,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 1
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 347787632,
+          "audio_name": "黑马",
+          "album_audio_id": 626182648
+        },
+        "audio_info": {
+          "hash": "15A621E3497824A4BEE8FD32506A2646",
+          "bitrate": 128,
+          "duration_flac": 238000,
+          "filesize_320": 9550557,
+          "filesize_flac": 27582588,
+          "duration_320": 238733,
+          "filesize_high": 51883734,
+          "hash_320": "076F5ABB34E2BEBBE97A810E0F223205",
+          "duration": 238733,
+          "duration_high": 238695,
+          "hash_high": "5C9A2686A383B82E2FB099BF8D19E0B4",
+          "hash_super": "",
+          "filesize": 3820337,
+          "hash_128": "15A621E3497824A4BEE8FD32506A2646",
+          "bitrate_high": 1738,
+          "hash_flac": "95FF08D10A705764986B77A17A89FD45",
+          "filesize_128": 3820337,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 238733,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 2
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 351039165,
+          "audio_name": "另一端",
+          "album_audio_id": 629392487
+        },
+        "audio_info": {
+          "hash": "5D220A3CBCE6167B1B925C5984B6070A",
+          "bitrate": 128,
+          "duration_flac": 295722,
+          "filesize_320": 11831573,
+          "filesize_flac": 34682434,
+          "duration_320": 295758,
+          "filesize_high": 64784095,
+          "hash_320": "D5532AF9268B9EBAF34878D135B3C749",
+          "duration": 295758,
+          "duration_high": 295722,
+          "hash_high": "D1FA145CB0CAD622ADF96C4BD893465E",
+          "hash_super": "",
+          "filesize": 4732745,
+          "hash_128": "5D220A3CBCE6167B1B925C5984B6070A",
+          "bitrate_high": 1752,
+          "hash_flac": "FF896EC73CDB4B53E93610FE54454E2D",
+          "filesize_128": 4732745,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 295758,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 3
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 355673622,
+          "audio_name": "一百",
+          "album_audio_id": 634186196
+        },
+        "audio_info": {
+          "hash": "6AFE7A542A767171C05C0D16615011E7",
+          "bitrate": 128,
+          "duration_flac": 218557,
+          "filesize_320": 8744941,
+          "filesize_flac": 24623582,
+          "duration_320": 218592,
+          "filesize_high": 46780674,
+          "hash_320": "B8E4F6AA2BFCAB8E7AE4AD7F2A52B8DB",
+          "duration": 218592,
+          "duration_high": 218557,
+          "hash_high": "1DEBE617E32F2F8E579316F040D29096",
+          "hash_super": "",
+          "filesize": 3498090,
+          "hash_128": "6AFE7A542A767171C05C0D16615011E7",
+          "bitrate_high": 1712,
+          "hash_flac": "0636579E4CB846BD67BAABF37E037551",
+          "filesize_128": 3498090,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 218592,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 4
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 363537969,
+          "audio_name": "恋人",
+          "album_audio_id": 644833397
+        },
+        "audio_info": {
+          "hash": "9DA7851E2BF83B18C74CBBAB461CEFDD",
+          "bitrate": 128,
+          "duration_flac": 275912,
+          "filesize_320": 11039079,
+          "filesize_flac": 28164599,
+          "duration_320": 275957,
+          "filesize_high": 56219830,
+          "hash_320": "C8DE6F8214A0556AC3F0BE4872A6EED8",
+          "duration": 275957,
+          "duration_high": 275912,
+          "hash_high": "CE16C9658C82664796DBB7585588AAC5",
+          "hash_super": "",
+          "filesize": 4415928,
+          "hash_128": "9DA7851E2BF83B18C74CBBAB461CEFDD",
+          "bitrate_high": 1629,
+          "hash_flac": "34C52ED693A5519D72DA623EBA0E7DE1",
+          "filesize_128": 4415928,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 275957,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 5
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 369759145,
+          "audio_name": "走走",
+          "album_audio_id": 653866860
+        },
+        "audio_info": {
+          "hash": "0BD5B6F56CED35BB3380425EC02E1098",
+          "bitrate": 128,
+          "duration_flac": 303544,
+          "filesize_320": 12145039,
+          "filesize_flac": 33253492,
+          "duration_320": 303595,
+          "filesize_high": 64278018,
+          "hash_320": "071EC3A352A9CAE1E973205EF21304C0",
+          "duration": 303595,
+          "duration_high": 303544,
+          "hash_high": "4A67B34FD37724750721C55AB895EA55",
+          "hash_super": "",
+          "filesize": 4858129,
+          "hash_128": "0BD5B6F56CED35BB3380425EC02E1098",
+          "bitrate_high": 1693,
+          "hash_flac": "9CBD59B5910D5CCA10915611D5B43D4F",
+          "filesize_128": 4858129,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 303595,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 6
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 375849487,
+          "audio_name": "轻轻田园系",
+          "album_audio_id": 661846546
+        },
+        "audio_info": {
+          "hash": "F52591E2C083FF8E0F6B9085D02E0F3C",
+          "bitrate": 128,
+          "duration_flac": 219699,
+          "filesize_320": 8790928,
+          "filesize_flac": 25638312,
+          "duration_320": 219742,
+          "filesize_high": 48296573,
+          "hash_320": "187F307720AD1602C5FF2EC24BAE66C3",
+          "duration": 219742,
+          "duration_high": 219699,
+          "hash_high": "537194265432D7BD796978F73141A456",
+          "hash_super": "",
+          "filesize": 3516492,
+          "hash_128": "F52591E2C083FF8E0F6B9085D02E0F3C",
+          "bitrate_high": 1758,
+          "hash_flac": "8A13166FD4543F2C245D62A06B08F472",
+          "filesize_128": 3516492,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 219742,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 7
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 381874782,
+          "audio_name": "海陆风",
+          "album_audio_id": 668660195
+        },
+        "audio_info": {
+          "hash": "9CA760758BE8D1844A51D98E6D0A7E43",
+          "bitrate": 128,
+          "duration_flac": 285590,
+          "filesize_320": 11426153,
+          "filesize_flac": 32324575,
+          "duration_320": 285622,
+          "filesize_high": 0,
+          "hash_320": "160DE83FF8BD72AEA248D03B8A530AFC",
+          "duration": 285622,
+          "duration_high": 0,
+          "hash_high": "",
+          "hash_super": "",
+          "filesize": 4570577,
+          "hash_128": "9CA760758BE8D1844A51D98E6D0A7E43",
+          "bitrate_high": 0,
+          "hash_flac": "6665703164463994EC9BE028C813A4E4",
+          "filesize_128": 4570577,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 285622,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 8
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 389163234,
+          "audio_name": "鸿门宴",
+          "album_audio_id": 676802436
+        },
+        "audio_info": {
+          "hash": "44874695DC04ECC07948471C1D372D35",
+          "bitrate": 128,
+          "duration_flac": 204147,
+          "filesize_320": 8169206,
+          "filesize_flac": 23093230,
+          "duration_320": 204199,
+          "filesize_high": 43972005,
+          "hash_320": "342C96D2DAB2F1D04E8E8C79765EFC27",
+          "duration": 204199,
+          "duration_high": 204147,
+          "hash_high": "DA3C99E0F36AD659166E1D112EEB2557",
+          "hash_super": "",
+          "filesize": 3267798,
+          "hash_128": "44874695DC04ECC07948471C1D372D35",
+          "bitrate_high": 1722,
+          "hash_flac": "5B912EE60EE002B370999185451BD730",
+          "filesize_128": 3267798,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 204199,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 9
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      },
+      {
+        "base": {
+          "is_publish": 1,
+          "album_id": 106374641,
+          "author_name": "李荣浩",
+          "audio_id": 395186025,
+          "audio_name": "假面",
+          "album_audio_id": 683111931
+        },
+        "audio_info": {
+          "hash": "A144933E616FF194D973E59445742A46",
+          "bitrate": 128,
+          "duration_flac": 236594,
+          "filesize_320": 9466965,
+          "filesize_flac": 23614953,
+          "duration_320": 236643,
+          "filesize_high": 47820042,
+          "hash_320": "D61CD29B572109C3847201D0A3CB9291",
+          "duration": 236643,
+          "duration_high": 236594,
+          "hash_high": "66A5B18C18C5199B02DBE36A6ED82D06",
+          "hash_super": "",
+          "filesize": 3786900,
+          "hash_128": "A144933E616FF194D973E59445742A46",
+          "bitrate_high": 1616,
+          "hash_flac": "E19354B86C8AA260CFFB8FF99DA77A8F",
+          "filesize_128": 3786900,
+          "duration_super": 0,
+          "bitrate_super": 0,
+          "filesize_super": 0,
+          "extname": "mp3",
+          "duration_128": 236643,
+          "extname_super": ""
+        },
+        "album_info": {
+          "album_name": "黑马",
+          "cover": "http://imge.kugou.com/stdmusic/{size}/20241016/20241016175101115675.jpg"
+        },
+        "extend": {
+          "has_obbligato": 1,
+          "cd_name": "",
+          "disc": 1,
+          "sort": 10
+        },
+        "authors": [
+          {
+            "author_name": "李荣浩",
+            "author_id": 93475
+          }
+        ]
+      }
+    ]
+  }
+}

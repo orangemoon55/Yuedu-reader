@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coda · 原生多平台音乐客户端</title>
+  <meta name="description" content="面向 macOS、iPhone 与 iPad 的原生 SwiftUI 音乐客户端">
+  <meta property="og:title" content="Coda">
+  <meta property="og:description" content="面向 macOS、iPhone 与 iPad 的原生 SwiftUI 音乐客户端。">
+  <meta property="og:image" content="assets/icon.png">
+  <link rel="icon" href="assets/icon-256.png">
+  <link rel="apple-touch-icon" href="assets/icon-256.png">
+  <link rel="stylesheet" href="style.css?v=20261124">
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#top">
+        <img src="assets/icon-256.png" alt="" width="28" height="28">
+        <span>Coda</span>
+      </a>
+      <nav class="nav-links" aria-label="页面导航">
+        <a href="#features">功能</a>
+        <a href="#screenshots">截图</a>
+        <a href="#install">安装</a>
+      </nav>
+      <a class="btn btn-small btn-ghost" href="https://github.com/Wow-CaiCai/Coda">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- 首屏 -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <img class="hero-icon" src="assets/icon-256.png" alt="Coda 图标" width="96" height="96">
+          <h1>Coda</h1>
+          <p class="tagline">好的音乐，没有“围墙”。</p>
+          <p class="lead">面向 macOS、iPhone 与 iPad 的原生 SwiftUI 音乐客户端。</p>
+          <div class="cta">
+            <a class="btn btn-primary" href="https://github.com/Wow-CaiCai/Coda/releases">下载</a>
+            <a class="btn btn-ghost" href="https://github.com/Wow-CaiCai/Coda">查看源码</a>
+          </div>
+          <p class="requirements">macOS 15+ · iOS / iPadOS 16+ · 开源免费</p>
+        </div>
+        <div class="hero-visual">
+          <img class="hero-mac" src="assets/screenshots/mac/player.png" alt="Mac 上的正在播放与同步歌词" width="1702" height="979">
+          <img class="hero-pad" src="assets/screenshots/ipad/player.png" alt="iPad 横屏正在播放" width="1060" height="814">
+          <img class="hero-phone" src="assets/screenshots/ios/player.png" alt="iPhone 上的正在播放" width="752" height="1492">
+        </div>
+      </div>
+    </section>
+
+    <!-- 支持的平台 -->
+    <section class="services" aria-label="支持的音乐平台">
+      <div class="container services-inner">
+        <span class="services-label">已接入</span>
+        <ul>
+          <li>网易云音乐</li>
+          <li>QQ 音乐</li>
+          <li>酷狗音乐</li>
+          <li>汽水音乐</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 功能：三个大板块 -->
+    <div id="features">
+      <section class="showcase showcase-platforms" aria-labelledby="sc-platforms">
+        <div class="container showcase-inner">
+          <div class="showcase-copy">
+            <p class="eyebrow">多平台合一</p>
+            <h2 id="sc-platforms">所有曲库，<br>一个入口。</h2>
+            <p>网易云音乐、QQ 音乐、酷狗音乐和汽水音乐，在同一个界面里搜索、收藏和播放。扫码或导入凭证登录，可保存多个账号，在设置中随时切换。</p>
+            <ul class="chips">
+              <li><i style="--c:#e60026"></i>网易云音乐</li>
+              <li><i style="--c:#31c27c"></i>QQ 音乐</li>
+              <li><i style="--c:#2b8bf2"></i>酷狗音乐</li>
+              <li><i style="--c:#7c5cff"></i>汽水音乐</li>
+            </ul>
+            <p class="fine">各平台可用功能不同，以应用内为准。</p>
+          </div>
+          <div class="showcase-visual showcase-visual-grid">
+            <img loading="lazy" src="assets/screenshots/ios/home.png" alt="网易云音乐首页" width="752" height="1492">
+            <img loading="lazy" src="assets/screenshots/ios/home-qq.png" alt="QQ 音乐首页" width="752" height="1492">
+            <img loading="lazy" src="assets/screenshots/ios/home-kugou.png" alt="酷狗音乐首页" width="752" height="1492">
+            <img loading="lazy" src="assets/screenshots/ios/home-qishui.png" alt="汽水音乐首页" width="752" height="1492">
+          </div>
+        </div>
+      </section>
+
+      <section class="showcase showcase-lyrics showcase-reverse" aria-labelledby="sc-lyrics">
+        <div class="container showcase-inner">
+          <div class="showcase-copy">
+            <p class="eyebrow">沉浸歌词 · 流动背景</p>
+            <h2 id="sc-lyrics">歌词与背景，<br>随音乐一起流动。</h2>
+            <p>支持逐行同步与逐字同步歌词，可显示翻译，日语歌曲支持罗马音。歌词来源在多个平台间自动优选，也可按歌曲手动切换。背景从专辑封面取色，跟着节拍和旋律起伏律动。</p>
+            <ul class="chips">
+              <li>逐行同步</li>
+              <li>逐字同步</li>
+              <li>歌词翻译</li>
+              <li>罗马音</li>
+              <li>多平台优选</li>
+              <li>封面取色</li>
+              <li>随节拍律动</li>
+            </ul>
+          </div>
+          <!-- 实际录屏：视频垫在 iPhone 外壳下面，外壳屏幕区域是透明的 -->
+          <div class="live-phones">
+            <div class="live-phone">
+              <video class="live-screen" src="assets/video/iphone-lyrics-1.mp4" poster="assets/video/iphone-lyrics-1.jpg"
+                autoplay muted loop playsinline preload="metadata" aria-label="iPhone 歌词：英文歌词逐字同步，下方显示翻译"></video>
+              <img class="live-frame" src="assets/screenshots/ios/frame.png" alt="" width="752" height="1492">
+            </div>
+            <div class="live-phone">
+              <video class="live-screen" src="assets/video/iphone-lyrics-2.mp4" poster="assets/video/iphone-lyrics-2.jpg"
+                autoplay muted loop playsinline preload="metadata" aria-label="iPhone 歌词：中文歌词逐字高亮，背景从封面取色"></video>
+              <img class="live-frame" src="assets/screenshots/ios/frame.png" alt="" width="752" height="1492">
+            </div>
+            <div class="live-phone">
+              <video class="live-screen" src="assets/video/iphone-lyrics-3.mp4" poster="assets/video/iphone-lyrics-3.jpg"
+                autoplay muted loop playsinline preload="metadata" aria-label="iPhone 歌词：歌词滚动，背景随音乐律动"></video>
+              <img class="live-frame" src="assets/screenshots/ios/frame.png" alt="" width="752" height="1492">
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 其他功能 -->
+    <section class="section">
+      <div class="container">
+        <header class="section-head">
+          <h2>还有更多</h2>
+          <p>推荐、收藏、同步，日常听歌需要的都在这里。</p>
+        </header>
+        <div class="features">
+          <article class="feature">
+            <span class="feature-icon" aria-hidden="true">✦</span>
+            <h3>发现</h3>
+            <p>每日推荐、私人雷达、精选歌单、排行榜，以及单曲、歌手、专辑、歌单搜索。</p>
+          </article>
+          <article class="feature">
+            <span class="feature-icon" aria-hidden="true">♡</span>
+            <h3>我的音乐</h3>
+            <p>喜欢的音乐、创建与收藏的歌单、最近播放、下载和云盘。</p>
+          </article>
+          <article class="feature">
+            <span class="feature-icon" aria-hidden="true">↺</span>
+            <h3>灰色歌曲解锁</h3>
+            <p>无版权或已下架的歌曲，可从其他已启用的音源中匹配播放。</p>
+          </article>
+          <article class="feature">
+            <span class="feature-icon" aria-hidden="true">⇄</span>
+            <h3>同步</h3>
+            <p>偏好与进度通过 iCloud Drive 或自选文件夹同步。</p>
+          </article>
+          <article class="feature">
+            <span class="feature-icon" aria-hidden="true">▢</span>
+            <h3>响应式布局</h3>
+            <p>同一套界面适配 Mac 窗口、iPhone 与 iPad 的横竖屏。</p>
+          </article>
+          <article class="feature">
+            <span class="feature-icon" aria-hidden="true">⌂</span>
+            <h3>注重隐私</h3>
+            <p>登录凭证只保存在应用自己的钥匙串中。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 截图 -->
+    <section id="screenshots" class="section">
+      <div class="container">
+        <header class="section-head">
+          <h2>每块屏幕，都是原生体验</h2>
+        </header>
+
+        <div class="tabs" role="tablist" aria-label="设备">
+          <button class="tab" role="tab" aria-selected="true" aria-controls="panel-iphone" id="tab-iphone" data-os="iOS 16">iPhone</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-ipad" id="tab-ipad" data-os="iPadOS 26">iPad</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-mac" id="tab-mac" data-os="macOS 15">Mac</button>
+        </div>
+        <p class="os-note" aria-live="polite">当前演示：<span id="os-name">iOS 16</span></p>
+
+        <div class="panel gallery gallery-phone" id="panel-iphone" role="tabpanel" aria-labelledby="tab-iphone">
+          <figure><img loading="lazy" src="assets/screenshots/ios/home.png" alt="首页：每日推荐与私人雷达" width="752" height="1492"><figcaption>首页</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/featured.png" alt="精选：歌单与排行榜" width="752" height="1492"><figcaption>精选</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/search.png" alt="搜索歌手" width="752" height="1492"><figcaption>搜索</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/playlist.png" alt="歌单页" width="752" height="1492"><figcaption>歌单</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/artist.png" alt="歌手页" width="752" height="1492"><figcaption>歌手</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/player.png" alt="正在播放" width="752" height="1492"><figcaption>正在播放</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/lyrics.png" alt="流动背景歌词" width="752" height="1492"><figcaption>歌词</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ios/comments.png" alt="歌曲评论" width="752" height="1492"><figcaption>评论</figcaption></figure>
+          <figure class="span-all"><img loading="lazy" src="assets/screenshots/ios/landscape-player.png" alt="iPhone 横屏正在播放与同步歌词" width="1492" height="752"><figcaption>横屏播放</figcaption></figure>
+        </div>
+
+        <div class="panel gallery gallery-wide" id="panel-ipad" role="tabpanel" aria-labelledby="tab-ipad" hidden>
+          <figure><img loading="lazy" src="assets/screenshots/ipad/home.png" alt="横屏首页与侧栏" width="1060" height="814"><figcaption>首页</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ipad/search.png" alt="横屏搜索与迷你播放器" width="1060" height="814"><figcaption>搜索</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ipad/playlist.png" alt="双栏歌单页" width="1060" height="814"><figcaption>歌单</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ipad/artist.png" alt="歌手页与热门歌曲" width="1060" height="814"><figcaption>歌手</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ipad/player.png" alt="横屏正在播放与同步歌词" width="1060" height="814"><figcaption>正在播放</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/ipad/comments.png" alt="横屏正在播放与评论" width="1060" height="814"><figcaption>评论</figcaption></figure>
+        </div>
+
+        <div class="panel gallery gallery-wide" id="panel-mac" role="tabpanel" aria-labelledby="tab-mac" hidden>
+          <figure><img loading="lazy" src="assets/screenshots/mac/home.png" alt="Mac 首页与悬浮播放条" width="1702" height="979"><figcaption>首页</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/mac/search.png" alt="Mac 搜索" width="1702" height="979"><figcaption>搜索</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/mac/player.png" alt="Mac 正在播放与同步歌词" width="1702" height="979"><figcaption>正在播放</figcaption></figure>
+          <figure><img loading="lazy" src="assets/screenshots/mac/comments.png" alt="Mac 正在播放与评论" width="1702" height="979"><figcaption>评论</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 安装 -->
+    <section id="install" class="section">
+      <div class="container">
+        <header class="section-head">
+          <h2>下载安装</h2>
+          <p>从 GitHub Releases 获取最新版本。</p>
+        </header>
+        <div class="install">
+          <article class="install-card">
+            <h3>macOS</h3>
+            <p class="install-meta">macOS 15 或更高版本</p>
+            <ol>
+              <li>下载 <code>Coda-x.y.z.zip</code> 并解压到“应用程序”。</li>
+              <li>首次打开被拦截时，前往 <strong>系统设置 → 隐私与安全性</strong>，点击 <strong>仍要打开</strong>。</li>
+            </ol>
+            <a class="btn btn-primary" href="https://github.com/Wow-CaiCai/Coda/releases">下载 Mac 版</a>
+          </article>
+          <article class="install-card">
+            <h3>iPhone 与 iPad</h3>
+            <p class="install-meta">iOS / iPadOS 16 或更高版本</p>
+            <ol>
+              <li>下载 <code>Coda-iOS-x.y.z.ipa</code>。</li>
+              <li>用 AltStore 或 SideStore 以你自己的 Apple ID 签名安装。</li>
+            </ol>
+            <a class="btn btn-primary" href="https://github.com/Wow-CaiCai/Coda/releases">下载 iOS 版</a>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="assets/icon-256.png" alt="" width="24" height="24">
+        <span>Coda</span>
+      </div>
+      <p>以 AGPL-3.0-or-later 授权发布</p>
+      <nav class="footer-links" aria-label="更多">
+        <a href="https://github.com/Wow-CaiCai/Coda">源码</a>
+        <a href="https://github.com/Wow-CaiCai/Coda/releases">版本发布</a>
+        <a href="https://github.com/Wow-CaiCai/Coda/blob/main/README.md">English</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // 录屏视频：离开视口时暂停，系统要求减弱动态效果时不自动播放
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const liveObserver = new IntersectionObserver((entries) => {
+      if (still.matches) return;
+      entries.forEach(({ target, isIntersecting }) => {
+        if (isIntersecting) target.play().catch(() => {});
+        else target.pause();
+      });
+    });
+    document.querySelectorAll('.live-screen').forEach((live) => {
+      if (still.matches) { live.removeAttribute('autoplay'); live.pause(); }
+      liveObserver.observe(live);
+    });
+
+    // 截图区的设备切换
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach((t) => {
+          const on = t === tab;
+          t.setAttribute('aria-selected', String(on));
+          document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+        });
+        document.getElementById('os-name').textContent = tab.dataset.os;
+      });
+    });
+  </script>
+</body>
+</html>

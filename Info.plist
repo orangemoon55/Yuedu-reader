@@ -367,5 +367,9 @@
 	<string>Readcc</string>
 	<key>CFBundleName</key>
 	<string>readcc</string>
+	<key>CodaReleaseRepository</key>
+	<string>Wow-CaiCai/Coda</string>
+	<key>CodaDeveloperName</key>
+	<string>Wow-CaiCai</string>
 </dict>
 </plist>
