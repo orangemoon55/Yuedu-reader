@@ -222,6 +222,14 @@ struct HomeView: View {
     @State private var showNativeSettings = false
     @State private var showNativeSync = false
 
+    private var usesIPadSidebarOwner: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        false
+        #endif
+    }
+
     var body: some View {
         Group {
             if account.provider == .qishui {
@@ -232,7 +240,9 @@ struct HomeView: View {
             }
         }
         .toolbar {
-            if ReadccHostBridge.isEmbedded {
+            // The iPad's split-view detail owns its native toolbar in MainWindow;
+            // this page-level toolbar is for the compact iPhone tab stack only.
+            if ReadccHostBridge.isEmbedded && !usesIPadSidebarOwner {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { showNativeSettings = true } label: {
                         Image(systemName: "gearshape")

@@ -128,6 +128,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/MediaTabMenuTests'
     -only-testing:'yuedu appTests/RootTabCustomizationTests'
     -only-testing:'yuedu appTests/ReadccBackdropBlurTests'
+    -only-testing:'yuedu appUITests/CodaIPadNavigationUITests'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
   TEST_SELECTION=(
@@ -403,7 +404,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
       "$PHONE_STATUS" > "$PRIVATE/phone-test.log"
   fi
   write_media51_status
-  printf '===== iPhone MediaMenuCrashUITests (exit %s) =====\n' "$PHONE_STATUS" >> "$PRIVATE/test.log"
+  printf '===== iPhone CodaBottomBarUITests (exit %s) =====\n' "$PHONE_STATUS" >> "$PRIVATE/test.log"
   cat "$PRIVATE/phone-test.log" >> "$PRIVATE/test.log"
   cat "$PRIVATE/media51-exit-status.txt" >> "$PRIVATE/test.log"
   if [[ "$IPAD_STATUS" -ne 0 || "$PHONE_STATUS" -ne 0 ]]; then

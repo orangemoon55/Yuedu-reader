@@ -91,7 +91,7 @@ private struct AppNavigationBarBackground: ViewModifier {
         titleTracking(content)
             #if os(iOS)
             .toolbarRole(.navigationStack)
-            .toolbar(phoneLayout.isEnabled ? .visible : .hidden, for: .navigationBar)
+            .toolbar((phoneLayout.isEnabled || (ReadccHostBridge.isEmbedded && UIDevice.current.userInterfaceIdiom == .pad)) ? .visible : .hidden, for: .navigationBar)
             .modifier(PhoneNavigationGlass(backgroundColor: pageBackground))
             #else
             // MainWindowConfigurator controls NSToolbar visibility. Hiding the

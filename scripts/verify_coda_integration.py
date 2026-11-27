@@ -32,5 +32,34 @@ for images in sorted(assets.glob('*.imageset')):
 info=plistlib.loads((R/'Info.plist').read_bytes())
 check('Original Readcc background audio retained','audio' in info['UIBackgroundModes'])
 check('No false CarPlay entitlement claim', 'UIApplicationSceneManifest' not in info or 'CPTemplateApplicationSceneSessionRoleApplication' not in str(info['UIApplicationSceneManifest']))
-check('Real Coda destination and legacy escape hatch','IOSMainWindow(initialDestination:' in (R/'Modules/Features/Music/CodaMusicDestination.swift').read_text())
+destination=(R/'Modules/Features/Music/CodaMusicDestination.swift').read_text()
+root_view=(R/'Modules/Features/Music/MediaHubRootView.swift').read_text()
+check('Native Coda home/library route and reading-dismiss closure',
+      'IOSMainWindow(initialDestination: isLibrary ? .library : .home,' in destination and
+      'onReturnToReading: onClose' in destination)
+check('No legacy host JS music entry or bootstrap implementation',
+      'MusicJSSourceView' not in destination and
+      not (R/'Modules/Services/Music/MusicJSBootstrap.swift').exists() and
+      not (R/'scripts/test_music_js_bootstrap.cjs').exists())
+check('Host music root delegates directly without legacy header or JS layout',
+      'CodaMusicDestination(isLibrary: isLibrary, onClose: onClose)' in root_view and
+      '.toolbar' not in root_view and 'MusicJSSourceView' not in root_view)
+coda_ui=(R/'Tests/iOS-UI/CodaBottomBarUITests.swift').read_text()
+host_tests=(R/'Tests/iOS/yuedu appTests/CodaMusicHostIntegrationTests.swift').read_text()
+check('Retained Coda host tests cover audio ownership and embedded policy',
+      'final class CodaMusicHostIntegrationTests' in host_tests and
+      'testRepeatedTransfersStopOnlyOutgoingEngineOnce' in host_tests and
+      'testEmbeddedPolicyDisablesStandaloneUpdater' in host_tests)
+check('Retained Coda UI covers home settings and standalone sync',
+      'app.buttons["codaHost.settings"]' in coda_ui and
+      'app.buttons["codaHost.sync"]' in coda_ui and
+      'app.navigationBars["同步"]' in coda_ui)
+check('Embedded settings omit sync/about and Coda returns to reading',
+      'XCTAssertFalse(app.staticTexts["同步"].exists' in coda_ui and
+      'XCTAssertFalse(app.staticTexts["关于"].exists' in coda_ui and
+      'Returning from Coda did not restore reading' in coda_ui)
+check('Retained UI rejects legacy source entry and host bar overlap',
+      'XCTAssertFalse(app.buttons["codaHost.legacySources"].exists)' in coda_ui and
+      'Only Coda\'s native tab bar may be exposed' in coda_ui and
+      'Readcc chrome overlaps Coda' in coda_ui)
 print(json.dumps({'pass':True,'meaning':'Offline source/project/resource checks only, native compilation/runtime unverified','checks':checks,'pbxproj_parser_stdout':p.stdout,'pbxproj_parser_stderr':p.stderr,'pbxproj_parser_exit':p.returncode},ensure_ascii=False,indent=2))

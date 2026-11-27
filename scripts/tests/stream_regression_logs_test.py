@@ -81,6 +81,9 @@ class SnapshotTests(unittest.TestCase):
         before = self.hashes()
         proc = self.start()
         eventually(lambda: "iPhone independent evidence" in self.text("media51-phone-test.log"))
+        # Diagnostics is atomically committed after all log and exit-status files.
+        # Seeing the phone log alone does not mean the same snapshot is complete.
+        eventually(lambda: self.diagnostic().get("phase") == "phone-test")
         self.assertIsNone(proc.poll())
         self.assertIsNone(producer.poll(), "evidence must precede producer completion")
         self.assertIn("preparation compiler evidence", self.text("regressions.log"))
@@ -103,6 +106,9 @@ class SnapshotTests(unittest.TestCase):
     def test_missing_partial_xml_utf8_and_signal_flush(self):
         for sig in (signal.SIGTERM, signal.SIGINT):
             with self.subTest(signal=sig):
+                # The preceding signal subcase leaves a final diagnostic behind.
+                # Require a fresh process snapshot before signaling this child.
+                (self.output / "regression-diagnostics.json").unlink(missing_ok=True)
                 source = self.private / "test.log"
                 source.unlink(missing_ok=True)
                 proc = self.start("--max-read-bytes", "1024")
@@ -201,12 +207,22 @@ class ScriptIntegrationTests(unittest.TestCase):
         self.executable(self.bin / "xcodebuild", f"#!{sys.executable}\n" +
             "import os,sys,time\n"
             "if '-resolvePackageDependencies' in sys.argv:\n print('synthetic-package-evidence'); sys.exit(0)\n"
-            "phone=any('MediaMenuCrashUITests' in a for a in sys.argv)\n"
-            "if not phone:\n"
-            " assert '-only-testing:yuedu appTests/AddedFilmRemovalTests' in sys.argv\n"
-            " assert '-only-testing:yuedu appTests/RemovedVideoUIBoundaryTests' in sys.argv\n"
-            " assert '-only-testing:yuedu appTests/MusicPlayerPlaybackTests' in sys.argv\n"
-            " assert '-only-testing:yuedu appUITests/MediaTabToolbarUITests' in sys.argv\n"
+            "selectors=[a for a in sys.argv if a.startswith('-only-testing:')]\n"
+            "phone='-only-testing:yuedu appUITests/CodaBottomBarUITests' in selectors\n"
+            "if phone:\n"
+            " assert selectors == ['-only-testing:yuedu appUITests/CodaBottomBarUITests']\n"
+            "else:\n"
+            " assert selectors == [\n"
+            "  '-only-testing:yuedu appTests/AddedFilmRemovalTests',\n"
+            "  '-only-testing:yuedu appTests/RemovedVideoUIBoundaryTests',\n"
+            "  '-only-testing:yuedu appTests/CodaMusicHostIntegrationTests',\n"
+            "  '-only-testing:yuedu appTests/MediaHubInteractionTests',\n"
+            "  '-only-testing:yuedu appTests/SourceImportPlanTests',\n"
+            "  '-only-testing:yuedu appTests/MediaTabMenuTests',\n"
+            "  '-only-testing:yuedu appTests/RootTabCustomizationTests',\n"
+            "  '-only-testing:yuedu appTests/ReadccBackdropBlurTests',\n"
+            "  '-only-testing:yuedu appUITests/CodaIPadNavigationUITests',\n"
+            " ]\n"
             "print('synthetic-phone-evidence' if phone else 'synthetic-ipad-evidence',flush=True)\n"
             "if os.environ.get('FAKE_WAIT') == '1':\n"
             " open(os.environ['FAKE_READY'],'w').close(); time.sleep(30)\n"
@@ -222,8 +238,21 @@ class ScriptIntegrationTests(unittest.TestCase):
         path.chmod(0o700)
 
     def run_script(self, **env):
-        return subprocess.run(["bash", "scripts/test_qingyun_regressions.sh"], cwd=self.root,
-                              env={**self.env, **env}, capture_output=True, timeout=20)
+        command = ["bash", "scripts/test_qingyun_regressions.sh"]
+        proc = subprocess.Popen(command, cwd=self.root, env={**self.env, **env},
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=True)
+        try:
+            # This synthetic harness also runs on an emulated, contended iOS
+            # shell. Keep a finite infrastructure budget; no assertion changes.
+            out, err = proc.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            # Reap the complete fake-runner group, not only its Bash parent;
+            # orphan snapshot workers would contaminate later timing checks.
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise
+        return subprocess.CompletedProcess(command, proc.returncode, out, err)
 
     def test_retired_film_scopes_fail_before_preparation(self):
         for scope in ("catvod-home", "md5-import"):

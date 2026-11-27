@@ -14,6 +14,9 @@ struct MainWindow: View {
     @Environment(\.legacyIPadKeyboardOverlap) private var legacyKeyboardOverlap
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.returnToReadcc) private var returnToReadcc
+    @State private var showEmbeddedHostSettings = false
+    @State private var showEmbeddedHostSync = false
     // App-switcher snapshots can temporarily propose a compact size class.
     // Letting the split view adapt then destroys the entire detail subtree.
     // Real foreground multitasking changes must still adapt normally.
@@ -72,6 +75,12 @@ struct MainWindow: View {
     private var pathBinding: Binding<[Destination]> {
         externalPath ?? $localPath
     }
+
+    #if os(iOS)
+    private var embeddedIPadHostChrome: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && ReadccHostBridge.isEmbedded
+    }
+    #endif
 
     private var sidebarSelection: Binding<SidebarItem> {
         Binding(get: { selection }, set: selectSidebarItem)
@@ -568,6 +577,69 @@ struct MainWindow: View {
             #endif
             path = []
         }
+        #if os(iOS)
+        .toolbar(embeddedIPadHostChrome ? .visible : .automatic, for: .navigationBar)
+        .toolbar {
+            if embeddedIPadHostChrome {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if !compactLibraryVisible && selection == .home && path.isEmpty {
+                        Button { showEmbeddedHostSettings = true } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .accessibilityLabel("设置")
+                        .accessibilityIdentifier("codaHost.settings")
+                    }
+
+                    if account.provider == .netease,
+                       (compactLibraryVisible && path.isEmpty || selection == .home && path.isEmpty) {
+                        Button { showEmbeddedHostSync = true } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                        .accessibilityLabel("同步")
+                        .accessibilityIdentifier("codaHost.sync")
+                    }
+
+                    if let returnToReadcc {
+                        Button(action: returnToReadcc) {
+                            Image(systemName: "book")
+                        }
+                        .accessibilityLabel("返回阅读")
+                        .accessibilityIdentifier("mediaHub.close")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showEmbeddedHostSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("设置")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showEmbeddedHostSettings = false }
+                        }
+                    }
+            }
+            .environment(\.openDestination, { destination in
+                showEmbeddedHostSettings = false
+                openDestination(destination)
+            })
+        }
+        .sheet(isPresented: $showEmbeddedHostSync) {
+            NavigationStack {
+                Form {
+                    SyncSettingsSection()
+                }
+                .pageFormStyle()
+                .nativeTabBarScrolling()
+                .navigationTitle("同步")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { showEmbeddedHostSync = false }
+                    }
+                }
+            }
+        }
+        #endif
     }
 
     #if os(iOS)

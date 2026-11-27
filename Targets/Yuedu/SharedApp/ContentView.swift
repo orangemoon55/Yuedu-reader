@@ -413,6 +413,7 @@ struct ContentView: View {
                     rootTabPage(for: tab)
                 } label: {
                     rootTabItemLabel(for: tab)
+                        .accessibilityIdentifier("rootTab.\(tab.rawValue)")
                 }
                 // TabContent.contextMenu belongs on the Tab, not on its label.
                 // Apple's public API presents this menu in the native sidebar.
