@@ -155,7 +155,8 @@ enum CatVodContentParser {
     /// Opt-in request-context recovery; the strict overload and list validation stay unchanged.
     /// Yingxia Catalog.swift:154-156 uses an id as the missing name; :495-506 fills a
     /// missing vod_id from the detail request. Here only matching explicit vod_id-only
-    /// records, or named movie records with real metadata/routes, qualify (never {}).
+    /// records, named records with real metadata, or actual route-backed details qualify
+    /// for request-context recovery (never an empty object or a source error).
     /// The caller must supply the actual requested ID, not an ID invented from this response.
     static func detail(_ data: Data, fallbackID: String, fallbackTitle: String? = nil) throws -> CatVodVideo {
         let identifier = fallbackID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -235,17 +236,19 @@ enum CatVodContentParser {
         }
 
         if let item = value as? [String: Any] {
-            if let requestedID, let video = contextualDetail(item, requestedID: requestedID, fallbackTitle: fallbackTitle) {
-                return .video(video)
+            if validDetailEntityFields(item) {
+                if let requestedID, let video = contextualDetail(item, requestedID: requestedID, fallbackTitle: fallbackTitle) {
+                    return .video(video)
+                }
+                if isRecognizedVideoObject(item) { return .video(item) }
             }
-            if isRecognizedVideoObject(item) { return .video(item) }
 
             var sawEmpty = false
             var sawMalformed = false
-            for key in ["list", "videos", "video", "detail", "result", "data"] {
+            for key in ["list", "vodlist", "vodList", "items", "videos", "video", "detail", "result", "data"] {
                 guard let nested = item[key] else { continue }
                 if nested is NSNull {
-                    if key == "list" || key == "videos" { sawEmpty = true }
+                    if ["list", "vodlist", "vodList", "items", "videos"].contains(key) { sawEmpty = true }
                     else { sawMalformed = true }
                     continue
                 }
@@ -287,14 +290,25 @@ enum CatVodContentParser {
     private static func contextualDetail(
         _ item: [String: Any], requestedID: String, fallbackTitle: String?
     ) -> [String: Any]? {
-        guard !["list", "videos", "video", "detail", "result", "data"].contains(where: { item[$0] != nil }),
+        guard !["list", "vodlist", "vodList", "items", "videos", "video", "detail", "result", "data"].contains(where: { item[$0] != nil }),
               !["msg", "message", "errMsg", "error_msg", "errorMessage", "action"].contains(where: {
                   item[$0].map(isMeaningfulError) ?? false
               }) else { return nil }
-        let title = string(item["vod_name"] ?? item["title"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let identifier = string(item["vod_id"] ?? item["id"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = videoText(item, ["vod_name", "name", "vodName", "title"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let identifier = videoText(item, ["vod_id", "id", "vodId", "vid"]).trimmingCharacters(in: .whitespacesAndNewlines)
         var video = item
         if title.isEmpty {
+            // A route-backed detail can omit both display fields. Only the actual
+            // request supplies identity; never synthesize a film from {} or a message.
+            if identifier.isEmpty, !parseRoutes(item).isEmpty {
+                for key in ["vod_id", "id", "vodId", "vid", "vod_name", "name", "vodName", "title"] {
+                    if let raw = item[key], !(raw is NSNull), !(raw is String) { return nil }
+                }
+                let name = fallbackTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                video["vod_id"] = requestedID
+                video["vod_name"] = name.isEmpty ? requestedID : name
+                return video
+            }
             // Explicit vod_id is the upstream Video.init contract. A generic {id:...}
             // is not movie evidence; a mismatched ID must not inherit the selected title.
             guard let rawID = item["vod_id"], !(rawID is NSNull),
@@ -309,21 +323,50 @@ enum CatVodContentParser {
             return video
         }
         guard identifier.isEmpty else { return nil }
-        let metadataKeys = ["vod_pic", "vod_content", "vod_actor", "vod_director", "vod_year", "vod_area"]
+        let metadataKeys = ["vod_pic", "pic", "vodPic", "cover", "poster", "vod_content", "vod_actor", "vod_director", "vod_year", "vod_area"]
         guard !parseRoutes(item).isEmpty || metadataKeys.contains(where: {
             !string(item[$0]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) else { return nil }
         // Only genuinely omitted/null/blank IDs qualify, not malformed containers.
-        if let rawID = item["vod_id"] ?? item["id"], !(rawID is NSNull), !(rawID is String) { return nil }
+        for key in ["vod_id", "id", "vodId", "vid"] {
+            if let rawID = item[key], !(rawID is NSNull) {
+                guard let text = rawID as? String, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            }
+        }
         video["vod_id"] = requestedID
         return video
     }
 
+    private static func validDetailEntityFields(_ item: [String: Any]) -> Bool {
+        for key in ["vod_id", "id", "vodId", "vid", "vod_name", "name", "vodName", "title"] {
+            guard let raw = item[key], !(raw is NSNull) else { continue }
+            if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() { return false }
+            if !(raw is String) && !(raw is NSNumber) { return false }
+        }
+        return !["msg", "message", "errMsg", "error_msg", "errorMessage", "action"].contains {
+            item[$0].map(isMeaningfulError) ?? false
+        }
+    }
+
+    // Independently implement the observable id/name/pic aliases from the reference
+    // gateway. Do not stringify arbitrary containers or let malformed canonical fields
+    // inherit a plausible alias; request-context recovery remains detail-only.
+    private static func videoText(_ item: [String: Any], _ keys: [String]) -> String {
+        for key in keys {
+            guard let raw = item[key], !(raw is NSNull) else { continue }
+            if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() { return "" }
+            guard raw is String || raw is NSNumber else { return "" }
+            let text = string(raw)
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+        }
+        return ""
+    }
+
     private static func isRecognizedVideoObject(_ item: [String: Any]) -> Bool {
-        let title = string(item["vod_name"] ?? item["title"])
+        let title = videoText(item, ["vod_name", "name", "vodName", "title"])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
-        let identifier = string(item["vod_id"] ?? item["id"])
+        let identifier = videoText(item, ["vod_id", "id", "vodId", "vid"])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // Normal details require their identifier; some PanAdapter cloud-search
         // sites intentionally omit it but return explicit playable share routes.
@@ -353,7 +396,7 @@ enum CatVodContentParser {
         // {list:[], msg:"..."}; preserve that actionable cause instead of showing
         // the misleading generic missing-detail-field error.
         if let message = object["msg"], isMeaningfulError(message),
-           (object["list"] as? [Any])?.isEmpty == true {
+           ["list", "vodlist", "vodList", "items", "videos"].contains(where: { (object[$0] as? [Any])?.isEmpty == true }) {
             throw CatVodContentError.businessFailure(string(message))
         }
         if let status = object["status"], let failure = failureStatus(status) {
@@ -410,8 +453,9 @@ enum CatVodContentParser {
     }
 
     private static func videoList(in object: [String: Any]) -> [Any] {
-        if let list = object["list"] as? [Any] { return list }
-        if let videos = object["videos"] as? [Any] { return videos }
+        for key in ["list", "vodlist", "vodList", "items", "videos"] {
+            if let values = object[key] as? [Any] { return values }
+        }
         // An explicit null/missing list is a successful empty result unless a
         // business error/status was returned above.
         return []
@@ -427,8 +471,8 @@ enum CatVodContentParser {
     }
 
     private static func parseVideo(_ item: [String: Any], includeRoutes: Bool) -> CatVodVideo {
-        let title = string(item["vod_name"] ?? item["title"])
-        let identifier = string(item["vod_id"] ?? item["id"])
+        let title = videoText(item, ["vod_name", "name", "vodName", "title"])
+        let identifier = videoText(item, ["vod_id", "id", "vodId", "vid"])
         // Use a deterministic presentation identity only for explicitly route-backed
         // adapter details that omit IDs; play IDs remain the untouched route payload.
         let stableID = identifier.isEmpty && includeRoutes && !parseRoutes(item).isEmpty
@@ -436,8 +480,8 @@ enum CatVodContentParser {
         return CatVodVideo(
             id: stableID,
             title: title,
-            poster: string(item["vod_pic"] ?? item["poster"]),
-            remarks: string(item["vod_remarks"] ?? item["remarks"]),
+            poster: videoText(item, ["vod_pic", "pic", "vodPic", "cover", "poster"]),
+            remarks: videoText(item, ["vod_remarks", "remarks", "vodRemarks", "note"]),
             summary: string(item["vod_content"] ?? item["summary"]),
             actor: string(item["actor"] ?? item["vod_actor"]),
             director: string(item["director"] ?? item["vod_director"]),
@@ -491,8 +535,11 @@ enum CatVodContentParser {
     }
 
     private static func parseRoutes(_ item: [String: Any]) -> [CatVodRoute] {
-        let flags = string(item["vod_play_from"] ?? item["play_from"]).components(separatedBy: "$$$")
-        let groupValues = string(item["vod_play_url"] ?? item["play_url"]).components(separatedBy: "$$$")
+        guard let rawGroups = (item["vod_play_url"] ?? item["play_url"]) as? String else { return [] }
+        let rawFlags = item["vod_play_from"] ?? item["play_from"]
+        if let rawFlags, !(rawFlags is NSNull), !(rawFlags is String) { return [] }
+        let flags = (rawFlags as? String ?? "").components(separatedBy: "$$$")
+        let groupValues = rawGroups.components(separatedBy: "$$$")
         let groupCount = max(flags.count, groupValues.count)
         guard groupCount > 0 else { return [] }
         return (0..<groupCount).compactMap { groupIndex -> CatVodRoute? in

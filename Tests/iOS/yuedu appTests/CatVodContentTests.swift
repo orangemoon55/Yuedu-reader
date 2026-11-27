@@ -5,6 +5,72 @@ import Testing
 struct CatVodContentTests {
     private func data(_ text: String) -> Data { Data(text.utf8) }
 
+    @Test func referenceGatewayDetailAliasesKeepMovieAndCloudPayload() throws {
+        let entry: [String: Any] = ["vodId": 45, "name": "宝珠", "pic": "https://poster.invalid/a.jpg",
+                                  "note": "完结", "vod_play_from": "夸克", "vod_play_url": "第一集$opaque%2Fid?x=a%23b$tail"]
+        for key in ["list", "vodlist", "vodList", "items", "videos"] {
+            let bytes = try JSONSerialization.data(withJSONObject: ["data": [key: [entry]]])
+            let video = try CatVodContentParser.detail(bytes, fallbackID: "45", fallbackTitle: "宝珠")
+            #expect(video.id == "45")
+            #expect(video.title == "宝珠")
+            #expect(video.poster == "https://poster.invalid/a.jpg")
+            #expect(video.remarks == "完结")
+            #expect(video.routes.first?.episodes.first?.playID == "opaque%2Fid?x=a%23b$tail")
+        }
+    }
+
+    @Test func routeOnlyDetailsRequireActualRequestAndKeepEncodedPlayIDs() throws {
+        let bytes = data(#"{"list":[{"vod_play_from":"百度$$$夸克","vod_play_url":"全集$baidu://fixture/a%2Fb?pwd=c%23d$tail$$$4K$quark://fixture/q%2Fr"}]}"#)
+        let video = try CatVodContentParser.detail(bytes, fallbackID: "requested-film", fallbackTitle: "宝珠")
+        #expect(video.id == "requested-film")
+        #expect(video.title == "宝珠")
+        #expect(video.routes.map(\.flag) == ["百度", "夸克"])
+        #expect(video.routes.first?.episodes.first?.playID == "baidu://fixture/a%2Fb?pwd=c%23d$tail")
+        #expect(throws: CatVodContentError.self) { try CatVodContentParser.detail(bytes) }
+    }
+
+    @Test func contextNeverManufacturesMissingOrFailedAliasDetails() {
+        for text in [#"{}"#, #"{"items":[]}"#, #"{"items":[{}]}"#, #"{"id":"requested-film"}"#,
+                     #"{"vod_id":{},"vod_play_url":"E$opaque"}"#,
+                     #"{"vod_play_url":"E$opaque","msg":"需要登录"}"#,
+                     #"{"list":[{"vod_play_url":true}]}"#,
+                     #"{"list":[{"vod_play_url":123}]}"#,
+                     #"{"list":[{"play_url":true}]}"#,
+                     #"{"list":[{"vod_play_url":{}}]}"#,
+                     #"{"list":[{"vod_play_url":[]}]}"#,
+                     #"{"list":[{"vod_play_url":null}]}"#,
+                     #"{"list":[{"vod_play_url":" "}]}"#,
+                     #"{"list":[{"vod_play_from":true,"vod_play_url":"E$opaque"}]}"#,
+                     #"{"list":[{"vod_id":{},"name":"Bad identity","vod_play_url":"E$opaque"}]}"#,
+                     #"{"list":[{"vod_id":true,"name":"Bad identity","vod_play_url":"E$opaque"}]}"#,
+                     #"{"vod_id":"requested-film","name":{}}"#,
+                     #"{"id":"login","name":"需要登录","msg":"需要登录"}"#,
+                     #"{"code":401,"data":{"items":[{"id":"x","name":"错误内容"}]}}"#] {
+            #expect(throws: CatVodContentError.self) { try CatVodContentParser.detail(data(text)) }
+            #expect(throws: CatVodContentError.self) {
+                try CatVodContentParser.detail(data(text), fallbackID: "requested-film", fallbackTitle: "宝珠")
+            }
+        }
+    }
+
+    @Test func emptyAliasDetailsPreserveSourceFailureMessage() {
+        for key in ["vodlist", "vodList", "items", "videos"] {
+            let bytes = data("{\"\(key)\":[],\"msg\":\"需要登录\"}")
+            #expect(throws: CatVodContentError.businessFailure("需要登录")) {
+                try CatVodContentParser.detail(bytes, fallbackID: "requested-film", fallbackTitle: "宝珠")
+            }
+        }
+    }
+
+    @Test func alternateListMovieFieldsDoNotRelaxMalformedListProtection() throws {
+        let page = try CatVodContentParser.page(data(#"{"vodList":[{"vid":"45","vodName":"宝珠","cover":"https://poster.invalid/b.jpg"},{"vid":"invalid-no-title"}]}"#), requestedPage: 1)
+        #expect(page.videos.count == 1)
+        #expect(page.videos.first?.id == "45")
+        #expect(page.videos.first?.title == "宝珠")
+        #expect(page.videos.first?.poster == "https://poster.invalid/b.jpg")
+        #expect(!page.hasMore)
+    }
+
     @Test func categoriesAndFilters() throws {
         let home = try CatVodContentParser.home(data(CatVodFixtures.categories))
         #expect(home.categories == [CatVodCategory(id: "1", name: "电影")])

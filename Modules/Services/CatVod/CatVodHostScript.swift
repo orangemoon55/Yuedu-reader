@@ -79,30 +79,94 @@ function grant(state, value, base) {
   state.grants.add(key);
   return 'http://127.0.0.1:' + port + PREFIX + state.mediaScope + route + fragment;
 }
-// Register only poster fields and playback URL candidates from a successful site invocation.
-// The control payload (including stringified headers or nested envelopes) remains untouched.
+// Mirror CatVodContentParser's accepted address shapes, not arbitrary JSON traversal.
+// Pair labels, headers, malformed FongMi v containers and failed envelopes are not grants.
+function playbackAddresses(value, depth = 0, stringDepth = 0) {
+  if (depth >= 8) throw Error('playback nesting');
+  const scalar = v => typeof v === 'string' ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : null;
+  const valid = v => {
+    if (typeof v !== 'string') return false;
+    if (v.startsWith('/') && !v.startsWith('//') && !v.includes('\\')) return true;
+    try { const u = new URL(v); return ['http:', 'https:'].includes(u.protocol) && !!u.hostname; } catch (_) { return false; }
+  };
+  const meaningful = v => v != null && v !== false && v !== 0 && !(typeof v === 'string' && ['', 'false', 'null', '0'].includes(v.trim().toLowerCase())) && !(typeof v === 'object' && !Object.keys(v).length);
+  const failedStatus = v => {
+    if (v == null) return false;
+    if (typeof v === 'number' || typeof v === 'boolean') return Number(v) !== 0 && Number(v) !== 200;
+    if (typeof v !== 'string') return true;
+    const s = v.trim().toLowerCase();
+    return !['', '0', '200', 'ok', 'success', 'true'].includes(s) && !((s !== '') && [0, 200].includes(Number(s)));
+  };
+  const falseSuccess = v => {
+    if (typeof v === 'boolean' || typeof v === 'number') return Number(v) === 0;
+    const s = (scalar(v) || '').trim().toLowerCase();
+    if (['', 'false', 'no', 'off', '0'].includes(s)) return true;
+    return Number.isFinite(Number(s)) && Number(s) === 0;
+  };
+  const check = v => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return;
+    if (meaningful(v.error) || (meaningful(v.msg) && ['list', 'vodlist', 'vodList', 'items', 'videos'].some(k => Array.isArray(v[k]) && !v[k].length)) ||
+        ['status', 'code', 'status_code', 'error_code', 'errno'].some(k => failedStatus(v[k])) ||
+        ('success' in v && falseSuccess(v.success))) throw Error('playback business failure');
+  };
+  check(value);
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (s.startsWith('{') || s.startsWith('[')) {
+      if (stringDepth >= 1) throw Error('playback string nesting');
+      return playbackAddresses(JSON.parse(s), depth, stringDepth + 1);
+    }
+    return valid(s) ? [s] : [];
+  }
+  if (Array.isArray(value)) {
+    if (value.length && value.every(v => typeof v === 'string' && valid(v.trim()))) return value.map(v => v.trim());
+    const pairs = [];
+    for (let i = 0; i + 1 < value.length; i += 2) {
+      const name = scalar(value[i]), address = scalar(value[i + 1]);
+      if (name != null && address != null && valid(address.trim())) pairs.push(address.trim());
+    }
+    if (pairs.length) return pairs;
+    for (const item of value) if (item && typeof item === 'object') {
+      const found = playbackAddresses(item, depth + 1, stringDepth); if (found.length) return found;
+    }
+  } else if (value && typeof value === 'object') {
+    if (Array.isArray(value.values)) {
+      value.values.forEach(check);
+      const choices = value.values.flatMap(entry => {
+        const address = entry && !Array.isArray(entry) && typeof entry === 'object' ? scalar(entry.v) : null;
+        return address != null && valid(address.trim()) ? [address.trim()] : [];
+      });
+      if (choices.length) return choices;
+    }
+    for (const key of ['url', 'play', 'play_url', 'data', 'result']) if (key in value) {
+      const found = playbackAddresses(value[key], depth + 1, stringDepth); if (found.length) return found;
+    }
+  }
+  return [];
+}
+// The control payload, including headers and opaque episode IDs, remains untouched.
 function registerResponse(state, action, text) {
   let root; try { root = JSON.parse(text); } catch (_) { return; }
   const base = 'http://127.0.0.1:' + state.port + '/';
-  function visit(v, depth, candidate) {
+  if (action === 'play') {
+    try { for (const address of playbackAddresses(root)) grant(state, address, base); } catch (_) {}
+    return;
+  }
+  function visit(v, depth) {
     if (depth > 12 || v == null) return;
     if (typeof v === 'string') {
       const s = v.trim();
-      if ((s[0] === '{' || s[0] === '[') && depth < 3) {
-        try { visit(JSON.parse(s), depth + 1, candidate); } catch (_) {}
-      } else if (candidate && s && (/^(?:https?:|\/|\.|\?)/i.test(s) || /[/.?]/.test(s))) grant(state, s, base);
+      if ((s[0] === '{' || s[0] === '[') && depth < 3) { try { visit(JSON.parse(s), depth + 1); } catch (_) {} }
     } else if (Array.isArray(v)) {
-      for (const item of v) visit(item, depth + 1, candidate);
+      for (const item of v) visit(item, depth + 1);
     } else if (typeof v === 'object') {
       for (const [k, item] of Object.entries(v)) {
-        if (k === 'data') visit(item, depth + 1, candidate);
-        else if (action === 'play' && ['url', 'play', 'play_url'].includes(k)) visit(item, depth + 1, true);
-        else if (action !== 'play' && ['list', 'videos'].includes(k)) visit(item, depth + 1, false);
-        else if (action !== 'play' && ['vod_pic', 'poster'].includes(k) && typeof item === 'string') grant(state, item.trim(), base);
+        if (['data', 'result', 'list', 'vodlist', 'vodList', 'items', 'videos', 'video', 'detail'].includes(k)) visit(item, depth + 1);
+        else if (['vod_pic', 'pic', 'vodPic', 'cover', 'poster'].includes(k) && typeof item === 'string') grant(state, item.trim(), base);
       }
     }
   }
-  visit(root, 0, action === 'play');
+  visit(root, 0);
 }
 function rewritePlaylist(state, text, base) {
   const rewrite = raw => grant(state, raw, base) || 'about:blank';
@@ -227,7 +291,8 @@ async function loadBundle(config) {
   if (active && active.sourceID === config.sourceID && active.path === bundlePath && active.data === data) return description(active);
   const previous = active; active = null; await stopState(previous);
   const state = { sourceID: config.sourceID, path: bundlePath, data, servers: [], port: 0, sites: [],
-    bundle: null, mediaScope: randomKey(), bridge: randomKey(), grants: new Set() };
+    bundle: null, mediaScope: randomKey(), bridge: randomKey(), grants: new Set(),
+    siteConfigs: new Map(), initialized: new Map() };
   loading = state;
   try {
     fs.mkdirSync(data, { recursive: true }); process.chdir(data);
@@ -245,9 +310,15 @@ async function loadBundle(config) {
           if (!parsed.video || !Array.isArray(parsed.video.sites)) continue;
           state.port = port;
           state.sites = parsed.video.sites.filter(s => typeof s.api === 'string' && /^\/spider\/[A-Za-z0-9_./-]+$/.test(s.api) && !s.api.split('/').includes('..'))
-            .map(s => ({ key: String(s.key || s.api), name: String(s.name || s.key || ''), api: s.api,
-              type: Number(s.type || 0), searchable: s.searchable === 1 || s.searchable === true,
-              filterable: s.filterable === 1 || s.filterable === true, indexs: s.indexs === 1 || s.indexs === true }));
+            .map(s => {
+              const site = { key: String(s.key || s.api), name: String(s.name || s.key || ''), api: s.api,
+                type: Number(s.type || 0), searchable: s.searchable === 1 || s.searchable === true,
+                filterable: s.filterable === 1 || s.filterable === true, indexs: s.indexs === 1 || s.indexs === true };
+              // ext belongs to this installed site; never serialize it in description().
+              const ext = typeof s.ext === 'string' ? s.ext : s.ext && typeof s.ext === 'object' ? JSON.stringify(s.ext) : '';
+              state.siteConfigs.set(JSON.stringify([site.key, site.api]), ext);
+              return site;
+            });
           break;
         } catch (_) {}
       }
@@ -280,7 +351,22 @@ const control = http.createServer(async (req, res) => {
         const action = body.action;
         if (!['home', 'category', 'search', 'detail', 'play'].includes(action)) throw failure(400, 'unsupported action');
         if (body.arguments != null && (typeof body.arguments !== 'object' || Array.isArray(body.arguments))) throw failure(400, 'invalid arguments');
-        const reply = await proxy(state, state.port, site.api + '/' + action, 'POST', body.arguments || {}, 60000);
+        // One provider owns mutable state per API. A -> B -> A with different ext
+        // must initialize A again; failed init must never mark that API ready.
+        const ext = state.siteConfigs.get(JSON.stringify([site.key, site.api])) || '';
+        if (state.initialized.get(site.api) !== ext) {
+          state.initialized.delete(site.api);
+          const init = await proxy(state, state.port, site.api + '/init', 'POST', {
+            ext, bridge: 'http://127.0.0.1:' + state.port
+          }, 60000);
+          if (init.status !== 404 && !(init.status >= 200 && init.status < 300)) return init;
+          state.initialized.set(site.api, ext);
+        }
+        let reply = await proxy(state, state.port, site.api + '/' + action, 'POST', body.arguments || {}, 60000);
+        // Only these documented search outcomes mean no matches, never auth/5xx.
+        if (action === 'search' && (reply.status === 404 || (reply.status >= 200 && reply.status < 300 && !reply.body.trim()))) {
+          reply = { status: 200, body: '{"list":[]}' };
+        }
         if (reply.status >= 200 && reply.status < 300) registerResponse(state, action, reply.body);
         return reply;
       }
