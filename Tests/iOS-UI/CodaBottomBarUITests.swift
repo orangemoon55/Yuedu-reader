@@ -53,6 +53,21 @@ final class CodaBottomBarUITests: XCTestCase {
             } else {
                 XCTAssertEqual(app.tabBars.count, 0, "Coda's legacy bar must not expose Readcc's native bar")
             }
+            XCTAssertFalse(app.buttons["codaHost.legacySources"].exists)
+            // The home owns settings/sync, the library keeps its original initial route.
+            app.buttons.matching(NSPredicate(format: "label == %@", "推荐")).firstMatch.tap()
+            let settings = app.buttons["codaHost.settings"].firstMatch
+            XCTAssertTrue(settings.waitForExistence(timeout: 10))
+            settings.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["settingsForm"].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertFalse(app.staticTexts["同步"].exists, "Sync must be a separate native destination")
+            XCTAssertFalse(app.staticTexts["关于"].exists, "Embedded settings must be simplified")
+            app.buttons["完成"].firstMatch.tap()
+            let sync = app.buttons["codaHost.sync"].firstMatch
+            XCTAssertTrue(sync.waitForExistence(timeout: 10))
+            sync.tap()
+            XCTAssertTrue(app.navigationBars["同步"].waitForExistence(timeout: 10))
+            app.buttons["完成"].firstMatch.tap()
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "coda-single-bottom-bar-\(root)-\(cycle)"
             shot.lifetime = .keepAlways

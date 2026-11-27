@@ -149,25 +149,6 @@ struct SettingsView: View {
                     }
                     .interfaceSectionSurface()
 
-                    // ── 音樂 ──
-                    Section {
-                        NavigationLink {
-                            MediaSettingsView(area: .music)
-                        } label: {
-                            Label(localized("音乐设置"), systemImage: "music.note")
-                                .foregroundColor(DSColor.textPrimary)
-                                .labelStyle(IconConsistentLabelStyle())
-                        }
-                        .accessibilityIdentifier("settings.media.music")
-                    } header: {
-                        Text(localized("设定分组：音乐"))
-                            .foregroundStyle(DSColor.textSecondary)
-                    } footer: {
-                        Text(localized("音乐播放与封面偏好；来源与中继资料分开管理，不显示未实作的服务选项。"))
-                            .dsSectionFooter()
-                    }
-                    .interfaceSectionSurface()
-
                     // ── 閱讀 ──
                     Section {
                         DSSettingsRow(

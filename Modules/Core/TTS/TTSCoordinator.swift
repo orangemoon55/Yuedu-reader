@@ -23,7 +23,6 @@ enum TTSPlaybackRouting {
 }
 
 extension Notification.Name {
-    static let readccMusicOpenPlayer = Notification.Name("readccMusicOpenPlayer")
     static let ttsFloatingPlayerOpenPanel = Notification.Name("ttsFloatingPlayerOpenPanel")
 }
 
@@ -32,7 +31,6 @@ enum NowPlayingSource {
     case none
     case tts        // reader-scoped TTS narration (lives only while a reader is open)
     case audiobook  // app-global audiobook playback (persists across all pages)
-    case music      // imported/local or user-authorized music queue
 }
 
 /// Shared hub that backs the now-playing surfaces and routes their controls to whichever
@@ -88,7 +86,6 @@ final class NowPlayingHub: ObservableObject {
 
     private weak var coordinator: TTSCoordinator?
     private weak var audiobook: AudiobookPlayer?
-    private weak var music: MusicPlayer?
     private var audiobookCancellable: AnyCancellable?
     /// The readers on screen, each hosting a `.reader` mini-player. A set, not a flag: the
     /// next reader can appear before the one it replaces disappears.
@@ -124,7 +121,6 @@ final class NowPlayingHub: ObservableObject {
 
     func attach(_ coordinator: TTSCoordinator) {
         // TTS narration takes over the audio session from any other playback owner.
-        if source == .music { music?.stopForTakeover() }
         if source == .audiobook {
             audiobook?.stop()
             clearAudiobook()
@@ -292,7 +288,7 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .audiobook: audiobookBookId
         case .tts: holdsNarrationPastReader ? heldNarration?.narrationBookID : nil
-        case .none, .music: nil
+        case .none: nil
         }
     }
 
@@ -318,9 +314,6 @@ final class NowPlayingHub: ObservableObject {
                 return nil
             }
             return .audiobookPlayer(audiobookBookId)
-        case .music:
-            NotificationCenter.default.post(name: .readccMusicOpenPlayer, object: nil)
-            return nil
         case .none:
             return nil
         }
@@ -398,10 +391,6 @@ final class NowPlayingHub: ObservableObject {
     /// Stop TTS narration only (used when an audiobook takes over the audio session).
     func stopTTSIfActive() {
         if source == .tts { coordinator?.stop(reason: "audiobook takeover") }
-        if source == .music, let music {
-            music.stopForTakeover()
-            detachMusic(music)
-        }
     }
 
     /// A video takes the audio session: the audiobook pauses where it is, so its bar can
@@ -409,7 +398,6 @@ final class NowPlayingHub: ObservableObject {
     func yieldToVideo() {
         if source == .audiobook, audiobook?.isPlaying == true { audiobook?.pause() }
         if source == .tts { coordinator?.stop(reason: "video takeover") }
-        if source == .music, let music { music.stopForTakeover(); detachMusic(music) }
     }
 
     /// Coda claims only on playback. Clear the old hub synchronously, not on a view event.
@@ -417,12 +405,10 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .tts: coordinator?.stop(reason: "Coda takeover")
         case .audiobook: audiobook?.stopForCodaTakeover()
-        case .music: music?.stopForTakeover()
         case .none: break
         }
         clearAudiobook()
         coordinator = nil
-        music = nil
         releaseHeldNarration()
         source = .none
         isVisible = false
@@ -437,35 +423,9 @@ final class NowPlayingHub: ObservableObject {
 
     // MARK: - Audiobook source (app-global)
 
-    /// Bind the imported-music player as the single active system-audio owner. The hub routes
-    /// in-app/remote controls to exactly one source, alongside TTS and audiobooks.
-    func attachMusic(_ player: MusicPlayer) {
-        if source == .tts { coordinator?.stop(reason: "music takeover") }
-        if source == .audiobook { audiobook?.stop() }
-        music = player
-        audiobook = nil
-        coordinator = nil
-        source = .music
-        isVisible = false
-        showsGlobalBar = false
-        title = player.currentTrack?.title ?? ""
-        playbackState = player.isPlaying ? .playing : .paused
-    }
-
-    func detachMusic(_ player: MusicPlayer) {
-        guard music === player, source == .music else { return }
-        music = nil
-        source = .none
-        resetPlaybackFields()
-        isVisible = false
-        showsGlobalBar = false
-    }
-
     /// Bind the live audiobook session so the global mini-player can mirror and control it.
     /// Idempotent — safe to call on every `start`.
     func attachAudiobook(_ player: AudiobookPlayer) {
-        if source == .music, let music { music.stopForTakeover() }
-        music = nil
         audiobook = player
         source = .audiobook
         isVisible = false
@@ -520,7 +480,6 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .tts: coordinator?.toggle()
         case .audiobook: audiobook?.togglePlayPause()
-        case .music: music?.togglePlayPause()
         case .none: break
         }
     }
@@ -531,7 +490,6 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .tts: coordinator?.pause()
         case .audiobook: audiobook?.pause()
-        case .music: music?.pause()
         case .none: break
         }
     }
@@ -540,7 +498,6 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .tts: coordinator?.skipBackward()
         case .audiobook: audiobook?.skipBackward()
-        case .music: music?.seek(to: max(0, (music?.currentTime ?? 0) - 15))
         case .none: break
         }
     }
@@ -549,7 +506,6 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .tts: coordinator?.skipForward()
         case .audiobook: audiobook?.skipForward()
-        case .music: music?.seek(to: min(music?.duration ?? 0, (music?.currentTime ?? 0) + 15))
         case .none: break
         }
     }
@@ -561,7 +517,6 @@ final class NowPlayingHub: ObservableObject {
         // The reader's next chapter (`onNextTrackRequested`), as the lock screen's ⏭ is.
         case .tts: coordinator?.skipForward()
         case .audiobook: audiobook?.nextChapter()
-        case .music: music?.next()
         case .none: break
         }
     }
@@ -570,7 +525,6 @@ final class NowPlayingHub: ObservableObject {
         switch source {
         case .tts: coordinator?.stop(reason: "floating player stop")
         case .audiobook: audiobook?.stop()  // clears bookId → refresh detaches the bar
-        case .music: music?.stop()
         case .none: break
         }
     }
@@ -1220,7 +1174,6 @@ final class TTSCoordinator: ObservableObject {
 
     private func claimSystemMediaSession() {
         ReadccCodaAudioHost.claimReadcc()
-        if NowPlayingHub.shared.source == .music { NowPlayingHub.shared.stop() }
         if let activeCoordinator = Self.activeSystemMediaCoordinator,
            activeCoordinator !== self {
             ttsLog("[TTS][Coordinator] replacing active system media coordinator old=\(ObjectIdentifier(activeCoordinator)) new=\(ObjectIdentifier(self))")

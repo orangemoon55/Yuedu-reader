@@ -12,12 +12,7 @@ xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Y
 exec bash scripts/xctest.sh -t 1200 -- \
     -only-testing:'yuedu appTests/AddedFilmRemovalTests' \
     -only-testing:'yuedu appTests/RemovedVideoUIBoundaryTests' \
-    -only-testing:'yuedu appTests/MusicImportServiceTests' \
-    -only-testing:'yuedu appTests/MusicPlayerPlaybackTests' \
-    -only-testing:'yuedu appTests/MediaHubPresentationTests' \
+    -only-testing:'yuedu appTests/CodaMusicHostIntegrationTests' \
     -only-testing:'yuedu appTests/MediaTabMenuTests' \
-    -only-testing:'yuedu appTests/YingxiaMusicQueueTests' \
-    -only-testing:'yuedu appTests/MusicJSSourceTests' \
-    -only-testing:'yuedu appTests/MediaHubInteractionTests' \
     -only-testing:'yuedu appTests/SourceImportPlanTests' \
     "$@"

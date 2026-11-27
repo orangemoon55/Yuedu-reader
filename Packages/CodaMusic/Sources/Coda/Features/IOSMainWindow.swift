@@ -824,13 +824,16 @@ public struct IOSMainWindow: View {
 
     private let initialDestination: ReadccHostBridge.InitialDestination
     private let onDeclineDisclaimer: (() -> Void)?
+    private let onReturnToReading: (() -> Void)?
 
     /// Default construction remains the upstream home window. Only initial state is set:
     /// player destinations, independent tab paths and deferred dismiss navigation stay intact.
     public init(initialDestination: ReadccHostBridge.InitialDestination = .home,
-                onDeclineDisclaimer: (() -> Void)? = nil) {
+                onDeclineDisclaimer: (() -> Void)? = nil,
+                onReturnToReading: (() -> Void)? = nil) {
         self.initialDestination = initialDestination
         self.onDeclineDisclaimer = onDeclineDisclaimer
+        self.onReturnToReading = onReturnToReading
         _selectedTab = State(initialValue: initialDestination == .library ? .library : .home)
     }
 
@@ -851,6 +854,7 @@ public struct IOSMainWindow: View {
             .preferredColorScheme(settings.appearance.colorScheme)
             .environment(\.openLogin, { showLogin = true })
             .environment(\.openDestination, openDestination)
+            .environment(\.returnToReadcc, ReadccHostBridge.isEmbedded ? onReturnToReading : nil)
             .modifier(PlaybackLifecycle())
             .task {
                 // Prepare independently of authentication/download setup and page transitions.
@@ -1113,6 +1117,15 @@ public struct IOSMainWindow: View {
     ) -> some View {
         NavigationStack(path: binding(for: tab)) {
             content().appDestinations()
+                .toolbar {
+                    if tab != .home, ReadccHostBridge.isEmbedded, let onReturnToReading {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: onReturnToReading) { Image(systemName: "book") }
+                                .accessibilityLabel("返回阅读")
+                                .accessibilityIdentifier("mediaHub.close")
+                        }
+                    }
+                }
         }
     }
 

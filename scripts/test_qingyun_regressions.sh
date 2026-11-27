@@ -122,25 +122,12 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/AddedFilmRemovalTests'
     -only-testing:'yuedu appTests/RemovedVideoUIBoundaryTests'
-    -only-testing:'yuedu appTests/MusicImportServiceTests'
-    -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
-    -only-testing:'yuedu appTests/YingxiaMusicLyricsTests'
-    -only-testing:'yuedu appTests/MusicOnlineLyricsTests'
-    -only-testing:'yuedu appTests/MusicPlatformCatalogTests'
-    -only-testing:'yuedu appTests/MusicSevenPlatformCatalogTests'
-    -only-testing:'yuedu appTests/MusicPlaybackCapsuleTests'
-    -only-testing:'yuedu appTests/MusicPlayerViewInteractionTests'
-    -only-testing:'yuedu appTests/YingxiaMusicQueueTests'
-    -only-testing:'yuedu appTests/MusicJSSourceTests'
-    -only-testing:'yuedu appTests/MusicCatalogTests'
+    -only-testing:'yuedu appTests/CodaMusicHostIntegrationTests'
     -only-testing:'yuedu appTests/MediaHubInteractionTests'
     -only-testing:'yuedu appTests/SourceImportPlanTests'
     -only-testing:'yuedu appTests/MediaTabMenuTests'
-    -only-testing:'yuedu appTests/MediaHubPresentationTests'
-    -only-testing:'yuedu appTests/MediaPreferencesTests'
     -only-testing:'yuedu appTests/RootTabCustomizationTests'
     -only-testing:'yuedu appTests/ReadccBackdropBlurTests'
-    -only-testing:'yuedu appUITests/MediaTabToolbarUITests'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
   TEST_SELECTION=(
@@ -406,7 +393,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
       -resultBundlePath "$PRIVATE/phone-crash.xcresult" -parallel-testing-enabled NO \
       -collect-test-diagnostics never -testLanguage zh-Hans -testRegion CN \
       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-      -only-testing:'yuedu appUITests/MediaMenuCrashUITests'
+      -only-testing:'yuedu appUITests/CodaBottomBarUITests'
     PHONE_STATUS=$?
     set -e
     ACTIVE_SUITE=

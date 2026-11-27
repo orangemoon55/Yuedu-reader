@@ -454,13 +454,9 @@ struct ContentView: View {
             }
             // Keep navigation full-height: capsule overlays live content.
             // Only scroll-content margins reserve the reachable last row.
-            .modifier(MusicPlaybackRootAccessory(
-                showsFloatingBar: rootTabBar.showsFloatingTabBar(
-                    isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
-                ),
-                tabBarHidden: rootTabBar.isTabBarHidden,
-                keyboardVisible: rootKeyboardVisible
-            ) {
+            .modifier(FloatingRootTabBarContainer(isPresented: rootTabBar.showsFloatingTabBar(
+                isFloating: usesFloatingRootTabBar, keyboardVisible: rootKeyboardVisible
+            )) {
                 floatingRootTabBar
             })
     }

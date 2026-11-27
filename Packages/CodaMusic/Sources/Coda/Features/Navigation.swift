@@ -18,6 +18,10 @@ private struct OpenDestinationKey: EnvironmentKey {
     static let defaultValue: (Destination) -> Void = { _ in }
 }
 
+private struct ReturnToReadccKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
 extension EnvironmentValues {
     var popDestination: (() -> Void)? {
         get { self[PopDestinationKey.self] }
@@ -32,6 +36,11 @@ extension EnvironmentValues {
     var openDestination: (Destination) -> Void {
         get { self[OpenDestinationKey.self] }
         set { self[OpenDestinationKey.self] = newValue }
+    }
+
+    var returnToReadcc: (() -> Void)? {
+        get { self[ReturnToReadccKey.self] }
+        set { self[ReturnToReadccKey.self] = newValue }
     }
 }
 

@@ -71,12 +71,16 @@ struct SettingsView: View {
                 }
                 #endif
 
-                if account.provider == .netease { SyncSettingsSection() }
+                if account.provider == .netease && !ReadccHostBridge.isEmbedded {
+                    SyncSettingsSection()
+                }
 
-                if usesMainColumn {
-                    AboutSections(licensesRoute: Destination.openSourceLicenses, showsDisclaimer: $showsDisclaimer)
-                } else {
-                    AboutSections(licensesRoute: SettingsPage.licenses, showsDisclaimer: $showsDisclaimer)
+                if !ReadccHostBridge.isEmbedded {
+                    if usesMainColumn {
+                        AboutSections(licensesRoute: Destination.openSourceLicenses, showsDisclaimer: $showsDisclaimer)
+                    } else {
+                        AboutSections(licensesRoute: SettingsPage.licenses, showsDisclaimer: $showsDisclaimer)
+                    }
                 }
             }
             .pageFormRows()

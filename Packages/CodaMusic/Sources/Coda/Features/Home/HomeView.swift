@@ -217,13 +217,76 @@ final class HomeViewModel: ObservableObject {
 
 struct HomeView: View {
     @EnvironmentObject private var account: AccountStore
+    @Environment(\.openDestination) private var openDestination
+    @Environment(\.returnToReadcc) private var returnToReadcc
+    @State private var showNativeSettings = false
+    @State private var showNativeSync = false
 
     var body: some View {
-        if account.provider == .qishui {
-            QishuiHomeView()
-                .id(account.offlineScope)
-        } else {
-            StandardHomeView()
+        Group {
+            if account.provider == .qishui {
+                QishuiHomeView()
+                    .id(account.offlineScope)
+            } else {
+                StandardHomeView()
+            }
+        }
+        .toolbar {
+            if ReadccHostBridge.isEmbedded {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button { showNativeSettings = true } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("设置")
+                    .accessibilityIdentifier("codaHost.settings")
+
+                    if account.provider == .netease {
+                        Button { showNativeSync = true } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                        .accessibilityLabel("同步")
+                        .accessibilityIdentifier("codaHost.sync")
+                    }
+
+                    if let returnToReadcc {
+                        Button(action: returnToReadcc) {
+                            Image(systemName: "book")
+                        }
+                        .accessibilityLabel("返回阅读")
+                        .accessibilityIdentifier("mediaHub.close")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showNativeSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("设置")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showNativeSettings = false }
+                        }
+                    }
+            }
+            .environment(\.openDestination, { destination in
+                showNativeSettings = false
+                openDestination(destination)
+            })
+        }
+        .sheet(isPresented: $showNativeSync) {
+            NavigationStack {
+                Form {
+                    SyncSettingsSection()
+                }
+                .pageFormStyle()
+                .nativeTabBarScrolling()
+                .navigationTitle("同步")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { showNativeSync = false }
+                    }
+                }
+            }
         }
     }
 }

@@ -1,40 +1,15 @@
 import SwiftUI
 @preconcurrency import CodaCore
 
-/// Thin host chrome only: every music page, player, theme and animation is Coda's.
+/// Coda owns all music UI and settings. No legacy Readcc music toolbar or JS sheet.
 struct CodaMusicDestination: View {
     let isLibrary: Bool
     let onClose: () -> Void
-    @State private var showsLegacySources = false
 
     var body: some View {
         IOSMainWindow(initialDestination: isLibrary ? .library : .home,
-                      onDeclineDisclaimer: onClose)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack {
-                    Button(action: onClose) { Label("返回阅读", systemImage: "xmark") }
-                        .accessibilityIdentifier("mediaHub.close")
-                    Spacer()
-                    Button { showsLegacySources = true } label: {
-                        Label("JS 音乐源", systemImage: "chevron.left.forwardslash.chevron.right")
-                    }
-                    .accessibilityIdentifier("codaHost.legacySources")
-                }
-                .font(.subheadline)
-                .padding(.horizontal).padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-            }
-            .sheet(isPresented: $showsLegacySources) {
-                NavigationStack {
-                    MusicJSSourceView(isLibrary: isLibrary)
-                        .navigationTitle("JS 音乐源")
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button("关闭") { showsLegacySources = false }
-                            }
-                        }
-                }
-            }
+                      onDeclineDisclaimer: onClose,
+                      onReturnToReading: onClose)
     }
 }
 
