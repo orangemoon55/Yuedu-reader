@@ -1092,24 +1092,24 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
     let isLibrary: Bool
     let onClose: () -> Void
 
-    private var showsMedia: Bool { route != nil }
+    /// Coda has its own TabView. Present it outside Readcc's TabView controller,
+    /// otherwise both the host's floating/system bars and Coda's bar compete for
+    /// the same bottom safe area and UIKit tab items.
+    private var presentedMediaRoute: Binding<MediaHubRoute?> {
+        Binding {
+            route
+        } set: { nextRoute in
+            if nextRoute == nil { onClose() }
+        }
+    }
 
     var body: some View {
-        ZStack {
-            // Keep the original tab root and its NavigationStack alive beneath media.
-            root
-                .opacity(showsMedia ? 0 : 1)
-                .allowsHitTesting(!showsMedia)
-                .accessibilityHidden(showsMedia)
-
-            // Opacity/AX hiding does not relinquish a mounted stack's navigation bar
-            // or toolbar preferences. Remove the media toolbar's owner when its route
-            // closes, rather than leaving an empty, hidden NavigationStack over reading.
-            // Its identity stays stable across media kinds; the original root above
-            // stays mounted across every route change.
-            if let route {
-                // Coda owns its complete navigation hierarchy; the reading root above
-                // remains mounted with its original stack and state unchanged.
+        // Keep the reading root and its NavigationStack mounted and unchanged.
+        // A system full-screen presentation isolates Coda's native/legacy chrome;
+        // hiding a toolbar inside the nested TabView would also hide Coda's bar.
+        root
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .fullScreenCover(item: presentedMediaRoute) { route in
                 MediaHubRootView(
                     kind: route.kind,
                     isLibrary: isLibrary,
@@ -1118,8 +1118,6 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
                 )
                 .id(route.id)
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
