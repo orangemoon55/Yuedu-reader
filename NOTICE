@@ -45,21 +45,6 @@ aozora2html is dedicated to the public domain under CC0 1.0; no attribution is
 required, and it is given here as a courtesy.
 
 --------------------------------------------------------------------------------
-KSPlayer — GPL-3.0 (upstream tag 2.3.4)
-https://github.com/kingslay/KSPlayer
-Pinned revision: bdfa2da39bb18865b317c4ffd08cdef5f8efc043
---------------------------------------------------------------------------------
-
-Readcc's new NativeKSVideoKernel independently adapts KSPlayer's public interfaces.
-No executable or proprietary implementation from a reference IPA is transplanted.
-The upstream GPL text is preserved in LICENSES/KSPlayer-GPL-3.0.txt.
-FFmpegKit is pinned to 6.1.3 (85b77c589de0360c111de16752db86b60496d70b);
-its bundled libraries retain their own upstream licensing obligations.
-This source-only integration is not a redistribution clearance or a claim that
-native builds/device playback have passed. Complete dependency/licence review
-and the native playback acceptance tests before distributing a binary.
-
---------------------------------------------------------------------------------
 Yingxia / 映匣 (jo32/tvbox-silicon) — GPL-3.0-only
 https://github.com/jo32/tvbox-silicon
 Pinned revision: a6bcc00bbbdbd7c6af7b7223ca2fa6018d6d685c
@@ -67,15 +52,11 @@ Copyright (C) 2026 jo32 and Yingxia contributors.
 --------------------------------------------------------------------------------
 
 Readcc includes source adaptations, not merely interface inspiration:
-  Sources/TVCore/PlaybackResolution.swift:3-33 ->
-    Modules/Services/CatVod/YingxiaPlaybackChoices.swift
   Sources/TVCore/MusicQueue.swift (queue/cursor/failure/restart subset) ->
     Modules/Services/Music/YingxiaMusicQueue.swift
   Sources/TVCore/MusicLyrics.swift:3-99 (LRC parsing/timeline subset; upstream SHA-256
     6d631aa7a1f291c9f9807019c8c22f466fc5602ba3e6bcd71609c3f397a948bb) ->
     Modules/Services/Music/YingxiaMusicLyrics.swift (GPL-3.0-only; local LRC only)
-  Sources/TVCore/Catalog.swift:154-156,495-506 (detail identity/name recovery) ->
-    Modules/Services/CatVod/CatVodContent.swift, contextualDetail
 
 Adaptations and integration changes are documented in Technotes/YingxiaReuse.md.
 The original licence text is at LICENSES/Yingxia-GPL-3.0-only.txt. These adapted

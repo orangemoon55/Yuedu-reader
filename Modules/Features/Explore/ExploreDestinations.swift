@@ -21,10 +21,6 @@ private struct ExploreRouteDestinations: ViewModifier {
         content
             .navigationDestination(for: ExploreNavigationRoute.self, destination: destination)
             // 訂閱的最新文章's articles (5g): the RSS tab's own article page, which marks it read.
-            .navigationDestination(for: CatVodFeedRef.self) { ref in CatVodFeedPage(ref: ref) }
-            .navigationDestination(for: CatVodMovieRef.self) { ref in
-                CatVodMoviePage(sourceID: ref.sourceID, siteKey: ref.siteKey, videoID: ref.videoID, title: ref.title)
-            }
             .navigationDestination(for: SubscriptionArticleRoute.self) { route in
                 RSSArticleReaderView(articleID: route.articleID)
             }
@@ -115,7 +111,6 @@ enum ExploreItemTarget {
     ///   read, and then an Aozora item opens nothing.
     init?(_ route: WorkDetailRoute, aozoraIndex: AozoraCatalogIndex?) {
         switch route.opening {
-        case .catVodMovie(let ref): self = .push(.catVodMovie(ref))
         case .copy(let id):
             // Explore's own reader route, as the storefront's cards push it (the shelf's card
             // transition belongs to the shelf's stack).
@@ -143,8 +138,6 @@ struct SubscriptionArticleRoute: Hashable {
 
 enum ExplorePush: Hashable {
     case work(WorkDetailRoute)
-    case catVodFeed(CatVodFeedRef)
-    case catVodMovie(CatVodMovieRef)
     case reader(PublicLibraryReaderRoute)
     case explore(ExploreNavigationRoute)
     case feed(OPDSFeedRoute)
@@ -158,7 +151,6 @@ enum ExplorePush: Hashable {
     /// on 繼續閱讀 or 書架, which goes straight back into its reader as the shelf's own cards do
     /// (feedback #24; maintainer, 2026-10-20).
     static func card(_ route: WorkDetailRoute, in binding: HomeSectionBinding) -> ExplorePush {
-        if case .catVodMovie(let ref) = route.opening { return .catVodMovie(ref) }
         if binding == .continueReading || binding == .bookshelf, let id = route.shelfCopyID {
             return .reader(PublicLibraryReaderRoute(bookID: id))
         }
@@ -180,8 +172,6 @@ enum ExplorePush: Hashable {
     /// Appends the route itself, so it reaches the destination registered for its type.
     private func append(to path: inout NavigationPath) {
         switch self {
-        case .catVodFeed(let feed): path.append(feed)
-        case .catVodMovie(let movie): path.append(movie)
         case .work(let route): path.append(route)
         case .reader(let route): path.append(route)
         case .explore(let route): path.append(route)
@@ -233,7 +223,6 @@ enum ExplorePlace {
                         connections: RemoteLibraryConnectionStore = .shared) -> ExplorePush? {
         let gutenbergID = PublicLibraryID.gutenberg.rawValue
         switch row.section.binding {
-        case .catVod(let ref): return .catVodFeed(ref)
         case .latest:
             switch row.source.type {
             case .bookSource:
@@ -308,9 +297,6 @@ enum ExplorePlace {
     static func listsPage(_ rows: [HomeModel.Row], connections: RemoteLibraryConnectionStore = .shared) -> ExplorePush? {
         guard let row = rows.first, row.section.binding != .gutenbergLists,
               rows.allSatisfy({ $0.source == row.source }) else { return nil }
-        if case .catVod(let ref) = row.loadingSection.binding {
-            return rows.count == 1 ? .catVodFeed(ref) : nil
-        }
         return page(of: row.source, name: row.providerName, connections: connections)
     }
 

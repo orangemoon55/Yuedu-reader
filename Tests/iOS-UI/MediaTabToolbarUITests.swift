@@ -8,16 +8,16 @@ final class MediaTabToolbarUITests: XCTestCase {
     @MainActor
     func testWideLayoutOffersHomeAndLibraryMediaMenusWithoutReplacingRoots() throws {
         try withWideApp { app in
-            choose("video", for: "explore", in: app)
-            assertVisible("mediaHub.videoHome", in: app)
+            choose("music", for: "explore", in: app)
+            assertVisible("mediaHub.musicHome", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertReadingHome(in: app)
             assertGone("mediaHub.close", in: app)
 
             selectTab("bookshelf", in: app)
             assertVisible("home_options_menu", in: app)
-            choose("video", for: "bookshelf", in: app)
-            assertVisible("mediaHub.videoLibrary", in: app)
+            choose("music", for: "bookshelf", in: app)
+            assertVisible("mediaHub.musicLibrary", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertVisible("home_options_menu", in: app)
             assertGone("mediaHub.close", in: app)
@@ -25,14 +25,14 @@ final class MediaTabToolbarUITests: XCTestCase {
     }
 
     @MainActor
-    func testNativeSidebarLongPressOffersOnlyVideoMusicAndReading() throws {
+    func testNativeSidebarLongPressOffersOnlyMusicAndReading() throws {
         try XCTSkipIf(ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 18,
                       "Native Tab context menus require iPadOS 18")
         try withWideApp { app in
             sidebarTab("explore", in: app).press(forDuration: 1.0)
             let exploreMenu = try nativeSidebarMenu(for: "explore", in: app)
-            try XCTUnwrap(exploreMenu["影视"]).tap()
-            assertVisible("mediaHub.videoHome", in: app)
+            try XCTUnwrap(exploreMenu["音乐"]).tap()
+            assertVisible("mediaHub.musicHome", in: app)
             app.buttons["mediaHub.close"].firstMatch.tap()
             assertReadingHome(in: app)
 
@@ -50,25 +50,25 @@ final class MediaTabToolbarUITests: XCTestCase {
     @MainActor
     func testMediaChoicesStayInMemoryAcrossTabsButResetOnRelaunch() throws {
         try withWideApp { app in
-            choose("video", for: "explore", in: app)
-            assertVisible("mediaHub.videoHome", in: app)
+            choose("music", for: "explore", in: app)
+            assertVisible("mediaHub.musicHome", in: app)
             selectTab("settings", in: app)
             assertVisible("settings.form", in: app)
             selectTab("explore", in: app)
-            assertVisible("mediaHub.videoHome", in: app)
+            assertVisible("mediaHub.musicHome", in: app)
 
             XCUIDevice.shared.press(.home)
             XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5) || app.state == .runningBackgroundSuspended)
             app.activate()
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
-            assertVisible("mediaHub.videoHome", in: app)
+            assertVisible("mediaHub.musicHome", in: app)
 
             // The roots keep independent in-memory routes, never saved preferences.
             selectTab("bookshelf", in: app)
             choose("music", for: "bookshelf", in: app)
             assertVisible("mediaHub.musicLibrary", in: app)
             selectTab("explore", in: app)
-            assertVisible("mediaHub.videoHome", in: app)
+            assertVisible("mediaHub.musicHome", in: app)
             relaunch(app)
             assertReadingHome(in: app)
             assertGone("mediaHub.close", in: app)
@@ -82,11 +82,11 @@ final class MediaTabToolbarUITests: XCTestCase {
             relaunch(app)
             assertReadingHome(in: app)
             assertGone("mediaHub.musicHome", in: app)
-            choose("video", for: "explore", in: app)
-            assertVisible("mediaHub.videoHome", in: app)
+            choose("music", for: "explore", in: app)
+            assertVisible("mediaHub.musicHome", in: app)
             choose("reading", for: "explore", in: app)
             assertReadingHome(in: app)
-            assertGone("mediaHub.videoHome", in: app)
+            assertGone("mediaHub.musicHome", in: app)
             assertGone("mediaHub.close", in: app)
             selectTab("bookshelf", in: app)
             choose("music", for: "bookshelf", in: app)
@@ -217,8 +217,8 @@ final class MediaTabToolbarUITests: XCTestCase {
     private func nativeSidebarMenu(for tab: String, in app: XCUIApplication) throws -> [String: XCUIElement] {
         let expectedLabels: [String]
         switch tab {
-        case "explore": expectedLabels = ["影视", "音乐", "阅读首页"]
-        case "bookshelf": expectedLabels = ["影视库", "音乐库", "阅读书架"]
+        case "explore": expectedLabels = ["音乐", "阅读首页"]
+        case "bookshelf": expectedLabels = ["音乐库", "阅读书架"]
         default:
             XCTFail("Unexpected native media-menu root: \(tab)")
             return [:]
@@ -226,7 +226,7 @@ final class MediaTabToolbarUITests: XCTestCase {
 
         // Native Tab.contextMenu materializes as a sidebar CollectionView; its Button
         // accessibility identifiers are not surfaced by UIKit. Match the one container
-        // whose complete descendant button-label set is exactly the three menu actions.
+        // whose complete descendant button-label set is exactly the two menu actions.
         let matches = app.collectionViews.allElementsBoundByIndex.filter { container in
             let buttons = container.buttons.allElementsBoundByIndex.filter { $0.exists }
             return buttons.count == expectedLabels.count
@@ -246,23 +246,26 @@ final class MediaTabToolbarUITests: XCTestCase {
             items[label] = button
         }
 
-        // The exact three-label set excludes short drama and cross-root menu entries.
+        // The exact two-label set excludes film, short drama and cross-root menu entries.
+        XCTAssertFalse(container.buttons["影视"].exists)
+        XCTAssertFalse(container.buttons["影视库"].exists)
         XCTAssertFalse(container.buttons["短剧"].exists)
         XCTAssertFalse(container.buttons["短剧库"].exists)
         let otherRoot = tab == "explore" ? "bookshelf" : "explore"
-        XCTAssertFalse(app.buttons["rootTabMedia.\(otherRoot).video"].exists,
+        XCTAssertFalse(app.buttons["rootTabMedia.\(otherRoot).music"].exists,
                        "Inactive root media items leaked into the native menu")
         return items
     }
 
     @MainActor
     private func assertMenu(for tab: String, in app: XCUIApplication) {
-        for kind in ["video", "music", "reading"] {
+        for kind in ["music", "reading"] {
             XCTAssertTrue(app.buttons["rootTabMedia.\(tab).\(kind)"].firstMatch.waitForExistence(timeout: 5))
         }
+        XCTAssertFalse(app.buttons["rootTabMedia.\(tab).video"].exists)
         XCTAssertFalse(app.buttons["rootTabMedia.\(tab).drama"].exists)
         let other = tab == "explore" ? "bookshelf" : "explore"
-        XCTAssertFalse(app.buttons["rootTabMedia.\(other).video"].exists, "Inactive root leaked menu items")
+        XCTAssertFalse(app.buttons["rootTabMedia.\(other).music"].exists, "Inactive root leaked menu items")
     }
 
     @MainActor

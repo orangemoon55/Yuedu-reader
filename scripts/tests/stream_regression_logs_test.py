@@ -197,15 +197,16 @@ class ScriptIntegrationTests(unittest.TestCase):
             " case \"$2\" in prepare) echo synthetic-preparation-evidence; exit 0;; select-xcode) echo /fake-xcode; exit 0;; esac\nfi\n"
             f"exec '{sys.executable}' \"$@\"\n")
         (self.scripts / "ensure_metal_toolchain.sh").write_text("echo synthetic-metal-evidence\n")
-        (self.scripts / "normalize_ksplayer_frameworks.py").write_text("print('synthetic-normalization-evidence')\n")
         (self.scripts / "sim.sh").write_text("echo id=fake-simulator\n")
         self.executable(self.bin / "xcodebuild", f"#!{sys.executable}\n" +
             "import os,sys,time\n"
             "if '-resolvePackageDependencies' in sys.argv:\n print('synthetic-package-evidence'); sys.exit(0)\n"
             "phone=any('MediaMenuCrashUITests' in a for a in sys.argv)\n"
             "if not phone:\n"
-            " assert '-only-testing:yuedu appTests/VideoKernelPreferenceTests' in sys.argv\n"
-            " assert '-only-testing:yuedu appTests/MediaVideoLayoutSettingsTests' in sys.argv\n"
+            " assert '-only-testing:yuedu appTests/AddedFilmRemovalTests' in sys.argv\n"
+            " assert '-only-testing:yuedu appTests/RemovedVideoUIBoundaryTests' in sys.argv\n"
+            " assert '-only-testing:yuedu appTests/MusicPlayerPlaybackTests' in sys.argv\n"
+            " assert '-only-testing:yuedu appUITests/MediaTabToolbarUITests' in sys.argv\n"
             "print('synthetic-phone-evidence' if phone else 'synthetic-ipad-evidence',flush=True)\n"
             "if os.environ.get('FAKE_WAIT') == '1':\n"
             " open(os.environ['FAKE_READY'],'w').close(); time.sleep(30)\n"
@@ -223,6 +224,25 @@ class ScriptIntegrationTests(unittest.TestCase):
     def run_script(self, **env):
         return subprocess.run(["bash", "scripts/test_qingyun_regressions.sh"], cwd=self.root,
                               env={**self.env, **env}, capture_output=True, timeout=20)
+
+    def test_retired_film_scopes_fail_before_preparation(self):
+        for scope in ("catvod-home", "md5-import"):
+            with self.subTest(scope=scope):
+                result = self.run_script(QINGYUN_REGRESSION_SCOPE=scope)
+                self.assertEqual(result.returncode, 64, result.stderr)
+                self.assertIn(b"RETIRED", result.stderr)
+                self.assertNotIn(b"TEST SUCCEEDED", result.stdout + result.stderr)
+                self.assertFalse((self.root / "trollstore-output").exists())
+
+    def test_retired_native_importer_produces_no_historical_verdict_or_artifact(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/verify_readcc49_native.py")],
+            cwd=self.root, env=self.env, capture_output=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 64, result.stderr)
+        self.assertIn(b"RETIRED", result.stderr)
+        self.assertNotIn(b"PASS", result.stdout + result.stderr)
+        self.assertFalse((self.root / "trollstore-output").exists())
 
     def test_ipad_failure_still_runs_phone_and_preserves_independent_exit_codes(self):
         result = self.run_script(FAKE_IPAD_EXIT="65", FAKE_PHONE_EXIT="0")

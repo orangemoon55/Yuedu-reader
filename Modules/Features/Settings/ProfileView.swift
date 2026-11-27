@@ -149,25 +149,6 @@ struct SettingsView: View {
                     }
                     .interfaceSectionSurface()
 
-                    // ── 影視 ──
-                    Section {
-                        NavigationLink {
-                            MediaSettingsView(area: .video)
-                        } label: {
-                            Label(localized("影视设置"), systemImage: "play.rectangle.fill")
-                                .foregroundColor(DSColor.textPrimary)
-                                .labelStyle(IconConsistentLabelStyle())
-                        }
-                        .accessibilityIdentifier("settings.media.video")
-                    } header: {
-                        Text(localized("设定分组：影视"))
-                            .foregroundStyle(DSColor.textSecondary)
-                    } footer: {
-                        Text(localized("影片播放与首页展示偏好；来源汇入、Cookie、网路与快取沿用既有设定页。"))
-                            .dsSectionFooter()
-                    }
-                    .interfaceSectionSurface()
-
                     // ── 音樂 ──
                     Section {
                         NavigationLink {

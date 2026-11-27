@@ -27,21 +27,7 @@ final class VideoPlaybackController {
     /// legado-E's long-press speed default (`longPressSpeed` 30 = 3.0×).
     static let longPressRate: Float = 3
 
-    /// Construct AV only when its surface/selected path needs it; KS-only opens no AV item.
-    @ObservationIgnored private var avPlayer: AVPlayer?
-    var player: AVPlayer {
-        if let avPlayer { return avPlayer }
-        let next = AVPlayer()
-        next.defaultRate = rate
-        next.automaticallyWaitsToMinimizeStalling = true
-        avPlayer = next
-        return next
-    }
-    @ObservationIgnored let ksKernel = NativeKSVideoKernel()
-    @ObservationIgnored private var loadState: VideoPlaybackLoadState
-    private(set) var usesKSPlayer: Bool
-    private(set) var kernelName: String
-    private var currentStream: VideoStream?
+    let player = AVPlayer()
     let guide: VideoEpisodeGuide
     private(set) var book: ReadingBook
     private(set) var chapterIndex: Int
@@ -83,35 +69,25 @@ final class VideoPlaybackController {
     private let pictureInPictureDelegate = VideoPictureInPictureDelegate()
 
     /// `book` must carry its table of contents (`BookStore.readingBook(id:)`).
-    init(book: ReadingBook, store: BookStore, persists: Bool, prefersKSPlayer: Bool? = nil) {
-        let policy = VideoKernelPolicy(preference: MediaPreferences.videoKernel, legacyOverride: prefersKSPlayer)
-        self.loadState = VideoPlaybackLoadState(policy: policy)
-        self.usesKSPlayer = policy.initialKernel == .ksPlayer
-        self.kernelName = policy.initialKernel.title
+    init(book: ReadingBook, store: BookStore, persists: Bool) {
         self.book = book
         self.source = .book(store, persists: persists)
         self.guide = VideoEpisodeGuide(chapters: book.onlineChapters ?? [])
-        self.chapterIndex = (MediaPreferences.videoResumeEnabled
-                             ? guide.resumeEpisode(saved: book.audioChapterIndex) : guide.firstEpisode) ?? 0
-        self.rate = MediaPreferences.videoDefaultRate
+        self.chapterIndex = guide.resumeEpisode(saved: book.audioChapterIndex) ?? 0
+        player.automaticallyWaitsToMinimizeStalling = true
     }
 
     /// A script's link, opening where it was left (`VideoLinkPositions`).
-    init(link: VideoStream, title: String, prefersKSPlayer: Bool? = nil) {
-        let policy = VideoKernelPolicy(preference: MediaPreferences.videoKernel, legacyOverride: prefersKSPlayer)
-        self.loadState = VideoPlaybackLoadState(policy: policy)
-        self.usesKSPlayer = policy.initialKernel == .ksPlayer
-        self.kernelName = policy.initialKernel.title
+    init(link: VideoStream, title: String) {
         var book = ReadingBook(title: title, author: "", contentFilename: "")
         book.onlineChapters = [OnlineChapterRef(index: 0, title: title, url: (link.resumeKey ?? link.url).absoluteString)]
         book.audioChapterIndex = 0
-        book.audioTimeSeconds = MediaPreferences.videoResumeEnabled
-            ? (VideoLinkPositions.time(for: link.resumeKey ?? link.url) ?? 0) : 0
+        book.audioTimeSeconds = VideoLinkPositions.time(for: link.resumeKey ?? link.url) ?? 0
         self.book = book
         self.source = .link(link)
         self.guide = VideoEpisodeGuide(chapters: book.onlineChapters ?? [])
         self.chapterIndex = 0
-        self.rate = MediaPreferences.videoDefaultRate
+        player.automaticallyWaitsToMinimizeStalling = true
     }
 
     var route: VideoEpisodeGuide.Route? { guide.route(containing: chapterIndex) }
@@ -131,29 +107,23 @@ final class VideoPlaybackController {
     /// Opens the saved episode at its saved time.
     func start() {
         guard !guide.isEmpty else {
-            phase = .failed(localized("这部视频没有可播放的集数"))
+            phase = .failed(localized("這部影片沒有可播放的集數"))
             return
         }
         AudioSessionActivator.activate(category: .playback, mode: .moviePlayback)
         NowPlayingHub.shared.yieldToVideo()
-        let resumesSaved = MediaPreferences.videoResumeEnabled && chapterIndex == book.audioChapterIndex
+        observePlayer()
+        let resumesSaved = chapterIndex == book.audioChapterIndex
         play(chapterIndex: chapterIndex, at: resumesSaved ? book.audioTimeSeconds : 0)
     }
 
     /// Saves where it is and lets the player go.
     func close() {
         saveProgress(force: true)
-        loadState.close()
-        if phase == .loading || phase == .playing { phase = .paused }
-        isLongPressing = false
         loadTask?.cancel()
-        loadTask = nil
-        currentStream = nil
-        ksKernel.stop()
-        avPlayer?.pause()
-        avPlayer?.currentItem?.cancelPendingSeeks()
-        avPlayer?.replaceCurrentItem(with: nil)
-        if let timeObserver { avPlayer?.removeTimeObserver(timeObserver) }
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
@@ -196,23 +166,10 @@ final class VideoPlaybackController {
         if let previous = guide.episode(before: chapterIndex) { play(chapterIndex: previous) }
     }
 
-    private func load(at time: Double, preservingContinuation: Bool = false) {
-        let token = loadState.begin(preservingContinuation: preservingContinuation)
+    private func load(at time: Double) {
         loadTask?.cancel()
-        loadTask = nil
-        currentStream = nil
-        ksKernel.stop()
-        avPlayer?.pause()
-        avPlayer?.currentItem?.cancelPendingSeeks()
-        avPlayer?.replaceCurrentItem(with: nil)
-        if let timeObserver { avPlayer?.removeTimeObserver(timeObserver) }
-        timeObserver = nil
-        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-        endObserver = nil
-        usesKSPlayer = loadState.kernel == .ksPlayer
-        kernelName = loadState.kernel.title
-        nowPlayingSession = nil
-        pictureInPicture = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
         statusObservation = nil
         sizeObservation = nil
         timelineObservations = []
@@ -226,7 +183,7 @@ final class VideoPlaybackController {
         let store: BookStore
         switch source {
         case .link(let stream):
-            begin(stream, for: token)
+            begin(stream)
             return
         case .book(let bookStore, _):
             store = bookStore
@@ -239,12 +196,11 @@ final class VideoPlaybackController {
                     for: book, chapterIndex: chapterIndex, priority: .immediate, store: store
                 )
                 try Task.checkCancellation()
-                guard let self, self.loadState.accepts(token) else { return }
-                self.begin(stream, for: token)
+                self?.begin(stream)
             } catch is CancellationError {
                 return
             } catch VideoChapterLinkError.notALink(let preview) {
-                guard !Task.isCancelled, let self, self.loadState.accepts(token) else { return }
+                guard let self else { return }
                 // A chapter cached before the book was known as a video — read in the text
                 // reader, whose fetch shows a source's note and lets its script open a player
                 // or a page — holds that note, not the episode. It is fetched again once, as
@@ -255,103 +211,34 @@ final class VideoPlaybackController {
                     self.refetchedChapter = chapterIndex
                     AppLogger.info("[Video] cached episode is not a link; fetching it again", level: .notice)
                     VideoChapterLinks.discardResolvedLink(for: book, chapterIndex: chapterIndex, store: store)
-                    self.load(at: time, preservingContinuation: true)
+                    self.load(at: time)
                 } else {
                     AppLogger.info("[Video] episode is not a link: \(preview)", level: .error)
                     self.phase = .failed(VideoChapterLinkError.notALink(preview: preview).localizedDescription)
                 }
             } catch {
-                guard !Task.isCancelled, let self, self.loadState.accepts(token) else { return }
                 AppLogger.error("[Video] episode link failed", error: error,
                                 context: ["book": book.id.uuidString, "chapter": "\(chapterIndex)"])
-                self.phase = .failed(error.localizedDescription)
+                self?.phase = .failed(error.localizedDescription)
             }
         }
     }
 
-    private func begin(_ stream: VideoStream, for token: VideoPlaybackLoadState.Token) {
-        guard loadState.accepts(token) else { return }
-        currentStream = stream
-        if loadState.kernel == .avFoundation {
-            beginAV(stream, for: token)
-            return
-        }
-        // open clears the preceding engine AND its callbacks before installing this load's.
-        ksKernel.open(stream, prepareImmediately: false)
-        ksKernel.onTick = { [weak self] time, total, seekable, size in
-            guard let self, self.loadState.accepts(token, kernel: .ksPlayer) else { return }
-            self.duration = total
-            // Do not invent a live seek window when FFmpeg has not supplied one.
-            self.seekableRange = seekable && total > 0 ? 0...total : nil
-            if size.width > 0, size.height > 0 { self.pictureSize = size }
-            self.timeAdvanced(time)
-        }
-        ksKernel.onReady = { [weak self] in
-            guard let self, self.loadState.receiveReady(for: token, kernel: .ksPlayer) else { return }
-            let seek = self.pendingSeek
-            self.pendingSeek = 0
-            if seek > 0, self.duration == 0 || seek < self.duration - 1,
-               let operation = self.loadState.beginSeek() {
-                self.ksKernel.seek(to: seek) { [weak self] _ in
-                    guard let self, self.loadState.accepts(operation),
-                          self.loadState.accepts(token, kernel: .ksPlayer) else { return }
-                    self.preparationFinished(for: token)
-                }
-            } else {
-                self.preparationFinished(for: token)
-            }
-        }
-        ksKernel.onFinish = { [weak self] error in
-            guard let self, self.loadState.accepts(token, kernel: .ksPlayer) else { return }
-            if error != nil, let stream = self.currentStream, self.loadState.takeAVFallback(for: token) {
-                // Keep the same stream (including headers/resumeKey), user rate and pause intent.
-                self.pendingSeek = self.currentTime
-                self.ksKernel.stop()
-                self.usesKSPlayer = false
-                self.kernelName = "AVFoundation"
-                self.duration = 0
-                self.seekableRange = nil
-                self.pictureSize = nil
-                self.phase = .loading
-                self.beginAV(stream, for: token)
-            } else if let error {
-                self.ksKernel.stop()
-                self.phase = .failed(error.localizedDescription)
-            } else {
-                self.episodeEnded()
-            }
-        }
-        ksKernel.prepare()
-    }
-
-    private func preparationFinished(for token: VideoPlaybackLoadState.Token) {
-        guard phase == .loading, loadState.finishPreparing(for: token) else { return }
-        if loadState.wantsPlayback {
-            resume()
-        } else {
-            if usesKSPlayer { ksKernel.pause() } else { avPlayer?.pause() }
-            phase = .paused
-        }
-        if !usesKSPlayer { activateNowPlaying() }
-    }
-
-    private func beginAV(_ stream: VideoStream, for token: VideoPlaybackLoadState.Token) {
-        guard loadState.accepts(token, kernel: .avFoundation) else { return }
+    private func begin(_ stream: VideoStream) {
         let item = AVPlayerItem(asset: HeaderedMediaAsset.make(url: stream.url, headers: stream.headers))
         item.externalMetadata = nowPlayingMetadata()
         let identity = ObjectIdentifier(item)
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let status = item.status
             let message = item.error?.localizedDescription
-            Task { @MainActor in self?.itemStatusChanged(status, error: message, of: identity, for: token) }
+            Task { @MainActor in self?.itemStatusChanged(status, error: message, of: identity) }
         }
         sizeObservation = item.observe(\.presentationSize, options: [.new]) { [weak self] item, _ in
             let size = item.presentationSize
             guard size.width > 0, size.height > 0 else { return }
             Task { @MainActor in
-                guard let self, self.loadState.accepts(token, kernel: .avFoundation),
-                      self.avPlayer?.currentItem.map(ObjectIdentifier.init) == identity else { return }
-                self.pictureSize = size
+                guard self?.player.currentItem.map(ObjectIdentifier.init) == identity else { return }
+                self?.pictureSize = size
             }
         }
         // Both change after `readyToPlay`: an HLS playlist without `#EXT-X-ENDLIST` plays as
@@ -359,64 +246,48 @@ final class VideoPlaybackController {
         let timelineChanged: @Sendable (AVPlayerItem) -> Void = { [weak self] item in
             let timeline = VideoTimeline(duration: item.duration.seconds,
                                          seekable: item.seekableTimeRanges.map(\.timeRangeValue))
-            Task { @MainActor in self?.timelineChanged(timeline, of: identity, for: token) }
+            Task { @MainActor in self?.timelineChanged(timeline, of: identity) }
         }
         timelineObservations = [
             item.observe(\.duration, options: [.new]) { item, _ in timelineChanged(item) },
             item.observe(\.seekableTimeRanges, options: [.new]) { item, _ in timelineChanged(item) },
         ]
         player.replaceCurrentItem(with: item)
-        observePlayer(for: token, item: item)
-        // KVO may already be ready/failed before registration; identity/generation guard both paths.
-        itemStatusChanged(item.status, error: item.error?.localizedDescription, of: identity, for: token)
     }
 
-    private func itemStatusChanged(_ status: AVPlayerItem.Status, error: String?, of identity: ObjectIdentifier,
-                                   for token: VideoPlaybackLoadState.Token) {
-        // Keep object identity AND generation: a queued callback must not revive a closed load.
-        guard loadState.accepts(token, kernel: .avFoundation),
-              avPlayer?.currentItem.map(ObjectIdentifier.init) == identity else { return }
+    private func itemStatusChanged(_ status: AVPlayerItem.Status, error: String?, of item: ObjectIdentifier) {
+        // A change can arrive after the next episode has replaced the item it was about.
+        guard player.currentItem.map(ObjectIdentifier.init) == item else { return }
         switch status {
         case .readyToPlay:
-            guard phase == .loading, loadState.receiveReady(for: token, kernel: .avFoundation),
-                  let item = avPlayer?.currentItem else { return }
+            guard phase == .loading, let item = player.currentItem else { return }
             apply(VideoTimeline(duration: item.duration.seconds,
                                 seekable: item.seekableTimeRanges.map(\.timeRangeValue)))
             let seek = pendingSeek
             pendingSeek = 0
-            if seek > 0, duration == 0 || seek < duration - 1,
-               let operation = loadState.beginSeek() {
-                player.seek(to: CMTime(seconds: seek, preferredTimescale: 600)) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.loadState.accepts(operation),
-                              self.loadState.accepts(token, kernel: .avFoundation),
-                              self.avPlayer?.currentItem.map(ObjectIdentifier.init) == identity else { return }
-                        self.preparationFinished(for: token)
-                    }
-                }
-            } else {
-                preparationFinished(for: token)
+            if seek > 0, duration == 0 || seek < duration - 1 {
+                player.seek(to: CMTime(seconds: seek, preferredTimescale: 600))
             }
+            resume()
+            activateNowPlaying()
         case .failed:
             // A script's link has nothing to resolve it again from.
             if case .book(let store, _) = source, refetchedChapter != chapterIndex {
                 refetchedChapter = chapterIndex
                 AppLogger.info("[Video] link failed to play; resolving it again", level: .notice)
                 VideoChapterLinks.discardResolvedLink(for: book, chapterIndex: chapterIndex, store: store)
-                load(at: currentTime, preservingContinuation: true)
+                load(at: currentTime)
             } else {
                 AppLogger.info("[Video] episode failed to play: \(error ?? "-")", level: .error)
-                phase = .failed(error ?? localized("无法播放这一集"))
+                phase = .failed(error ?? localized("無法播放這一集"))
             }
         default:
             break
         }
     }
 
-    private func timelineChanged(_ timeline: VideoTimeline, of item: ObjectIdentifier,
-                                 for token: VideoPlaybackLoadState.Token) {
-        guard loadState.accepts(token, kernel: .avFoundation),
-              avPlayer?.currentItem.map(ObjectIdentifier.init) == item else { return }
+    private func timelineChanged(_ timeline: VideoTimeline, of item: ObjectIdentifier) {
+        guard player.currentItem.map(ObjectIdentifier.init) == item else { return }
         apply(timeline)
     }
 
@@ -439,56 +310,27 @@ final class VideoPlaybackController {
         case .paused: resume()
         case .ended: play(chapterIndex: guide.firstEpisode ?? chapterIndex)
         case .failed: retry()
-        case .loading:
-            if loadState.wantsPlayback { pause() } else { resume() }
+        case .loading: break
         }
     }
 
     func pause() {
-        guard loadState.token != nil, phase == .playing || phase == .loading || phase == .paused else { return }
-        loadState.setWantsPlayback(false)
-        if usesKSPlayer { ksKernel.pause() } else { avPlayer?.pause() }
-        // While preparing keep the spinner, but remember an explicit pause across ready/fallback.
-        if phase != .loading { phase = .paused }
+        guard phase == .playing else { return }
+        player.pause()
+        phase = .paused
         saveProgress(force: true)
     }
 
     func resume() {
-        guard let token = loadState.token else { return }
-        guard phase == .loading || phase == .playing || phase == .paused else { return }
-        loadState.setWantsPlayback(true)
-        guard !loadState.isPreparing else { return }
-        if usesKSPlayer {
-            guard ksKernel.isReady else { return }
-            NowPlayingHub.shared.yieldToVideo()
-            if phase == .paused, duration > 0, currentTime >= duration {
-                guard let operation = loadState.beginSeek() else { return }
-                ksKernel.seek(to: 0) { [weak self] finished in
-                    guard let self, finished, self.loadState.accepts(token, kernel: .ksPlayer),
-                          self.loadState.accepts(operation), self.loadState.wantsPlayback,
-                          self.phase == .paused else { return }
-                    self.currentTime = 0
-                    self.ksKernel.play(rate: self.isLongPressing ? Self.longPressRate : self.rate)
-                    self.phase = .playing
-                }
-            } else {
-                ksKernel.play(rate: isLongPressing ? Self.longPressRate : rate)
-                phase = .playing
-            }
-            return
-        }
         // A transport jump to the finite end holds this episode paused, rather than advancing.
         // Replay from that boundary waits for a seek to zero before resuming this same item.
-        guard let player = avPlayer, player.currentItem?.status == .readyToPlay else { return }
         if phase == .paused, duration > 0, currentTime >= duration {
-            guard let operation = loadState.beginSeek() else { return }
             let item = player.currentItem.map(ObjectIdentifier.init)
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
                 guard finished else { return }
                 Task { @MainActor [weak self] in
-                    guard let self, self.phase == .paused, self.loadState.wantsPlayback,
-                          self.loadState.accepts(token, kernel: .avFoundation), self.loadState.accepts(operation),
-                          self.avPlayer?.currentItem.map(ObjectIdentifier.init) == item else { return }
+                    guard let self, self.phase == .paused,
+                          self.player.currentItem.map(ObjectIdentifier.init) == item else { return }
                     self.currentTime = 0
                     self.player.playImmediately(atRate: self.isLongPressing ? Self.longPressRate : self.rate)
                     self.phase = .playing
@@ -501,38 +343,19 @@ final class VideoPlaybackController {
     }
 
     func retry() {
-        guard loadState.token != nil else { return }
         refetchedChapter = nil
         load(at: currentTime)
     }
 
     /// Does nothing while nothing is seekable: a live stream with no window, or one still loading.
     func seek(to seconds: Double) {
-        guard let token = loadState.token, !loadState.isPreparing,
-              phase == .playing || phase == .paused,
-              let target = VideoSeek.target(seconds, in: seekableRange),
-              let operation = loadState.beginSeek() else { return }
+        guard let target = VideoSeek.target(seconds, in: seekableRange) else { return }
         currentTime = target
-        if usesKSPlayer {
-            let shouldResume = phase == .playing
-            ksKernel.seek(to: target) { [weak self] finished in
-                guard let self, finished, self.loadState.accepts(token, kernel: .ksPlayer),
-                      self.loadState.accepts(operation) else { return }
-                if shouldResume, self.loadState.wantsPlayback, self.phase == .playing {
-                    self.ksKernel.play(rate: self.isLongPressing ? Self.longPressRate : self.rate)
-                } else if self.phase == .paused {
-                    self.ksKernel.pause()
-                }
-            }
-            return
-        }
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
-            Task { @MainActor [weak self] in
-                guard let self, self.loadState.accepts(token, kernel: .avFoundation),
-                      self.loadState.accepts(operation) else { return }
-                if !finished { AppLogger.info("[Video] seek to \(Int(target)) s did not finish", level: .notice) }
-            }
+                    toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+            // A later seek or the next episode cuts one short; a seek that never lands while the
+            // picture plays on is what FB-175 looked like from outside, so it is on record.
+            if !finished { AppLogger.info("[Video] seek to \(Int(target)) s did not finish", level: .notice) }
         }
     }
 
@@ -547,44 +370,32 @@ final class VideoPlaybackController {
 
     func setRate(_ rate: Float) {
         self.rate = rate
-        avPlayer?.defaultRate = rate
-        if usesKSPlayer {
-            if phase == .playing, !isLongPressing { ksKernel.setRate(rate) }
-        } else if phase == .playing, !isLongPressing { player.rate = rate }
+        player.defaultRate = rate
+        if phase == .playing, !isLongPressing { player.rate = rate }
     }
 
     /// legado-E's long press: a faster speed while the finger stays down.
     func setLongPressing(_ pressing: Bool) {
         guard pressing != isLongPressing else { return }
         isLongPressing = pressing
-        if phase == .playing {
-            let value = pressing ? Self.longPressRate : rate
-            if usesKSPlayer { ksKernel.setRate(value) } else { player.rate = value }
-        }
+        if phase == .playing { player.rate = pressing ? Self.longPressRate : rate }
     }
 
     // MARK: Observation
 
-    private func observePlayer(for token: VideoPlaybackLoadState.Token, item: AVPlayerItem) {
-        if let timeObserver { avPlayer?.removeTimeObserver(timeObserver) }
-        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-        let identity = ObjectIdentifier(item)
+    private func observePlayer() {
+        guard timeObserver == nil else { return }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 1, preferredTimescale: 600), queue: .main
         ) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self, self.loadState.accepts(token, kernel: .avFoundation),
-                      self.avPlayer?.currentItem.map(ObjectIdentifier.init) == identity else { return }
-                self.timeAdvanced(time.seconds)
-            }
+            MainActor.assumeIsolated { self?.timeAdvanced(time.seconds) }
         }
         endObserver = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
+            forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main
         ) { [weak self] notification in
             let item = notification.object as? AVPlayerItem
             MainActor.assumeIsolated {
-                guard let self, self.loadState.accepts(token, kernel: .avFoundation),
-                      item != nil, item === self.avPlayer?.currentItem else { return }
+                guard let self, item != nil, item === self.player.currentItem else { return }
                 self.episodeEnded()
             }
         }
@@ -611,7 +422,6 @@ final class VideoPlaybackController {
     // MARK: Progress
 
     func saveProgress(force: Bool) {
-        guard MediaPreferences.videoResumeEnabled else { return }
         lastSavedTime = currentTime
         book.audioChapterIndex = chapterIndex
         book.audioTimeSeconds = currentTime
@@ -633,42 +443,35 @@ final class VideoPlaybackController {
 
     /// The lock screen and Control Center through the player's own session, so the audiobook
     /// player's handlers on the shared command center are left as they are.
-    private func performAVCommand(for token: VideoPlaybackLoadState.Token,
-                                  _ action: (VideoPlaybackController) -> Void) {
-        guard loadState.accepts(token, kernel: .avFoundation) else { return }
-        action(self)
-    }
-
     private func activateNowPlaying() {
-        guard let token = loadState.token, loadState.kernel == .avFoundation else { return }
         if nowPlayingSession == nil {
             let session = MPNowPlayingSession(players: [player])
             session.automaticallyPublishesNowPlayingInfo = true
             let commands = session.remoteCommandCenter
             commands.playCommand.addTarget { @Sendable [weak self] _ in
-                Task { @MainActor in self?.performAVCommand(for: token) { $0.resume() } }
+                Task { @MainActor in self?.resume() }
                 return .success
             }
             commands.pauseCommand.addTarget { @Sendable [weak self] _ in
-                Task { @MainActor in self?.performAVCommand(for: token) { $0.pause() } }
+                Task { @MainActor in self?.pause() }
                 return .success
             }
             commands.togglePlayPauseCommand.addTarget { @Sendable [weak self] _ in
-                Task { @MainActor in self?.performAVCommand(for: token) { $0.togglePlayPause() } }
+                Task { @MainActor in self?.togglePlayPause() }
                 return .success
             }
             commands.nextTrackCommand.addTarget { @Sendable [weak self] _ in
-                Task { @MainActor in self?.performAVCommand(for: token) { $0.playNext() } }
+                Task { @MainActor in self?.playNext() }
                 return .success
             }
             commands.previousTrackCommand.addTarget { @Sendable [weak self] _ in
-                Task { @MainActor in self?.performAVCommand(for: token) { $0.playPrevious() } }
+                Task { @MainActor in self?.playPrevious() }
                 return .success
             }
             commands.changePlaybackPositionCommand.addTarget { @Sendable [weak self] event in
                 guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
                 let position = event.positionTime
-                Task { @MainActor in self?.performAVCommand(for: token) { $0.seek(to: position) } }
+                Task { @MainActor in self?.seek(to: position) }
                 return .success
             }
             nowPlayingSession = session

@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# Removed film/import scopes must never fall through to unrelated reading tests.
+case "${QINGYUN_REGRESSION_SCOPE:-all}" in
+  catvod-home|md5-import)
+    echo 'RETIRED: added film and MD5-import scopes were removed; no native verdict was produced.' >&2
+    exit 64
+    ;;
+esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 [[ "${GITHUB_ACTIONS:-}" == true && "$(uname -s)" == Darwin ]] || { echo '此检查需要云端 macOS 与 iOS 模拟器。' >&2; exit 1; }
@@ -113,24 +120,19 @@ fi
 DEST="$(< "$PRIVATE/destination.txt")"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
   TEST_SELECTION=(
-    -only-testing:'yuedu appTests/NativeKSVideoKernelTests'
-    -only-testing:'yuedu appTests/VideoKernelPreferenceTests'
-    -only-testing:'yuedu appTests/MediaVideoLayoutSettingsTests'
-    -only-testing:'yuedu appTests/CatVodPlaybackFlowTests'
+    -only-testing:'yuedu appTests/AddedFilmRemovalTests'
+    -only-testing:'yuedu appTests/RemovedVideoUIBoundaryTests'
     -only-testing:'yuedu appTests/MusicImportServiceTests'
     -only-testing:'yuedu appTests/MusicPlayerPlaybackTests'
     -only-testing:'yuedu appTests/YingxiaMusicLyricsTests'
     -only-testing:'yuedu appTests/MusicOnlineLyricsTests'
     -only-testing:'yuedu appTests/MusicPlatformCatalogTests'
     -only-testing:'yuedu appTests/MusicSevenPlatformCatalogTests'
-    -only-testing:'yuedu appTests/MediaHubVideoLayoutTests'
     -only-testing:'yuedu appTests/MusicPlaybackCapsuleTests'
     -only-testing:'yuedu appTests/MusicPlayerViewInteractionTests'
     -only-testing:'yuedu appTests/YingxiaMusicQueueTests'
     -only-testing:'yuedu appTests/MusicJSSourceTests'
     -only-testing:'yuedu appTests/MusicCatalogTests'
-    -only-testing:'yuedu appTests/ModuleMediaImportTests'
-    -only-testing:'yuedu appTests/CatVodHTTPPlaybackTests'
     -only-testing:'yuedu appTests/MediaHubInteractionTests'
     -only-testing:'yuedu appTests/SourceImportPlanTests'
     -only-testing:'yuedu appTests/MediaTabMenuTests'
@@ -138,17 +140,7 @@ if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
     -only-testing:'yuedu appTests/MediaPreferencesTests'
     -only-testing:'yuedu appTests/RootTabCustomizationTests'
     -only-testing:'yuedu appTests/ReadccBackdropBlurTests'
-    -only-testing:'yuedu appTests/VideoTransportTests'
-    -only-testing:'yuedu appTests/CatVodContentTests'
-    -only-testing:'yuedu appTests/MovieRatingTests'
-    -only-testing:'yuedu appTests/TMDBClientTests'
-    -only-testing:'yuedu appTests/CatVodHomeFlowTests'
     -only-testing:'yuedu appUITests/MediaTabToolbarUITests'
-  )
-elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == catvod-home ]]; then
-  TEST_SELECTION=(
-    -only-testing:'yuedu appTests/CatVodContentTests'
-    -only-testing:'yuedu appTests/CatVodHomeFlowTests'
   )
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
   TEST_SELECTION=(
@@ -162,7 +154,6 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc35 ]]; then
 elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == readcc33 ]]; then
   TEST_SELECTION=(
     -only-testing:'yuedu appTests/VideoSeekTests'
-    -only-testing:'yuedu appTests/VideoTransportTests'
     -only-testing:'yuedu appTests/VideoTimelineBarTests'
     -only-testing:'yuedu appTests/VideoHeroActionLayoutTests'
     -only-testing:'yuedu appTests/ReaderCompactTailTests'
@@ -362,6 +353,8 @@ elif [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == ranked-home ]]; then
   )
 else
   TEST_SELECTION=(
+    -only-testing:'yuedu appTests/AddedFilmRemovalTests'
+    -only-testing:'yuedu appTests/RemovedVideoUIBoundaryTests'
     -only-testing:'yuedu appTests/HomeSourceBookTests'
     -only-testing:'yuedu appTests/HomeSectionTests'
     -only-testing:'yuedu appTests/LayoutPreviewTests'
@@ -376,12 +369,10 @@ else
   )
 fi
 echo "正在验证范围：${QINGYUN_REGRESSION_SCOPE:-all}"
-# Resolve into this job's exact DerivedData before correcting the known upstream plist.
+# Resolve the retained reading/music packages into this job's exact DerivedData.
 set_phase resolve-packages
 run_private "$PRIVATE/test.log" xcodebuild -resolvePackageDependencies -project Yuedu-Reader.xcodeproj -scheme Yuedu-Reader \
   -derivedDataPath "$PRIVATE/Tests"
-set_phase normalize-frameworks
-run_private "$PRIVATE/test.log" python3 scripts/normalize_ksplayer_frameworks.py "$PRIVATE/Tests/SourcePackages"
 if [[ "${QINGYUN_REGRESSION_SCOPE:-all}" == media51 ]]; then
   # Run both device-class suites even if the iPad suite fails. Preserve independent logs
   # and statuses; the aggregate status below still fails if either test command fails.

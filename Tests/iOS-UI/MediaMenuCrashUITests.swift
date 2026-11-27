@@ -1,10 +1,10 @@
 import XCTest
 
-/// Exercises both long-press roots through repeated video/music route replacement,
+/// Exercises both long-press roots through repeated music/reading route replacement,
 /// then relaunches to prove the menu choice was only transient state.
 final class MediaMenuCrashUITests: XCTestCase {
     @MainActor
-    func testRepeatedVideoMusicContextMenuSwitchKeepsProcessAliveAndDoesNotPersist() throws {
+    func testRepeatedMusicReadingContextMenuSwitchKeepsProcessAliveAndDoesNotPersist() throws {
         continueAfterFailure = false
         _ = try StoreKitTestSessions.fresh(StoreKitTestSessions.yueduPro())
         let app = XCUIApplication()
@@ -24,20 +24,27 @@ final class MediaMenuCrashUITests: XCTestCase {
         guard home.waitForExistence(timeout: 30) else {
             XCTFail("Missing floating Home: \(app.debugDescription)"); return
         }
-        XCTAssertFalse(visible("mediaHub.videoHome", app).waitForExistence(timeout: 3),
+        XCTAssertFalse(visible("mediaHub.musicHome", app).waitForExistence(timeout: 3),
                        "A legacy saved Home destination must not be restored")
         XCTAssertFalse(visible("mediaHub.musicLibrary", app).exists,
                        "A legacy saved Library destination must not be restored")
 
         for cycle in 0..<5 {
-            for kind in ["music", "video"] {
+            for kind in ["music", "reading"] {
                 XCTAssertTrue(home.isHittable, app.debugDescription)
                 home.press(forDuration: 1.0)
                 let item = app.buttons["rootTabMedia.explore.\(kind)"].firstMatch
                 XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
+                XCTAssertFalse(app.buttons["rootTabMedia.explore.video"].exists)
+                XCTAssertFalse(app.buttons["rootTabMedia.explore.drama"].exists)
                 item.tap()
-                XCTAssertTrue(visible("mediaHub.\(kind)Home", app).waitForExistence(timeout: 20),
-                              "Home cycle \(cycle), \(kind): \(app.debugDescription)")
+                if kind == "music" {
+                    XCTAssertTrue(visible("mediaHub.musicHome", app).waitForExistence(timeout: 20),
+                                  "Home cycle \(cycle): \(app.debugDescription)")
+                } else {
+                    XCTAssertFalse(visible("mediaHub.close", app).exists)
+                    XCTAssertTrue(home.isHittable)
+                }
                 XCTAssertEqual(app.state, .runningForeground, "Home route switch terminated the process")
             }
         }
@@ -47,15 +54,21 @@ final class MediaMenuCrashUITests: XCTestCase {
         XCTAssertFalse(visible("mediaHub.musicLibrary", app).waitForExistence(timeout: 3),
                        "A legacy Library value must be ignored when that root becomes visible")
         for cycle in 0..<3 {
-            for kind in (cycle == 2 ? ["video", "music"] : ["music", "video"]) {
+            for kind in ["music", "reading"] {
                 XCTAssertTrue(bookshelf.isHittable, app.debugDescription)
                 bookshelf.press(forDuration: 1.0)
                 let item = app.buttons["rootTabMedia.bookshelf.\(kind)"].firstMatch
                 XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
+                XCTAssertFalse(app.buttons["rootTabMedia.bookshelf.video"].exists)
+                XCTAssertFalse(app.buttons["rootTabMedia.bookshelf.drama"].exists)
                 item.tap()
-                let page = kind == "music" ? "mediaHub.musicLibrary" : "mediaHub.videoLibrary"
-                XCTAssertTrue(visible(page, app).waitForExistence(timeout: 20),
-                              "Library cycle \(cycle), \(kind): \(app.debugDescription)")
+                if kind == "music" {
+                    XCTAssertTrue(visible("mediaHub.musicLibrary", app).waitForExistence(timeout: 20),
+                                  "Library cycle \(cycle): \(app.debugDescription)")
+                } else {
+                    XCTAssertFalse(visible("mediaHub.close", app).exists)
+                    XCTAssertTrue(visible("home_options_menu", app).exists)
+                }
                 XCTAssertEqual(app.state, .runningForeground, "Library route switch terminated the process")
             }
         }
@@ -64,11 +77,14 @@ final class MediaMenuCrashUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
 
+        bookshelf.press(forDuration: 1.0)
+        app.buttons["rootTabMedia.bookshelf.music"].firstMatch.tap()
+        XCTAssertTrue(visible("mediaHub.musicLibrary", app).waitForExistence(timeout: 20))
         app.terminate()
         app.launchArguments = baseArguments
         app.launch()
         XCTAssertTrue(home.waitForExistence(timeout: 30), app.debugDescription)
-        XCTAssertFalse(visible("mediaHub.videoHome", app).waitForExistence(timeout: 3),
+        XCTAssertFalse(visible("mediaHub.musicHome", app).waitForExistence(timeout: 3),
                        "Home menu choice survived relaunch")
         XCTAssertTrue(bookshelf.waitForExistence(timeout: 10), app.debugDescription)
         bookshelf.tap()

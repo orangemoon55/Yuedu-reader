@@ -9,8 +9,6 @@ struct MediaPreferencesTests {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        #expect(MediaPreferences.videoDefaultRate(in: defaults) == 1)
-        #expect(MediaPreferences.videoResumeEnabled(in: defaults))
         #expect(MediaPreferences.musicDefaultRate(in: defaults) == 1)
         #expect(MediaPreferences.musicResumeEnabled(in: defaults))
         #expect(MediaPreferences.musicLoopCurrent(in: defaults) == false)
@@ -29,8 +27,6 @@ struct MediaPreferencesTests {
             second.removePersistentDomain(forName: secondName)
         }
 
-        MediaPreferences.setVideoDefaultRate(2.5, in: first)
-        MediaPreferences.setVideoResumeEnabled(false, in: first)
         MediaPreferences.setMusicDefaultRate(0.75, in: first)
         MediaPreferences.setMusicResumeEnabled(false, in: first)
         MediaPreferences.setMusicLoopCurrent(true, in: first)
@@ -39,8 +35,6 @@ struct MediaPreferencesTests {
         MediaPreferences.setPosterColumns(5, in: first)
         MediaPreferences.setMusicArtworkSquare(false, in: first)
 
-        #expect(MediaPreferences.videoDefaultRate(in: first) == 2.5)
-        #expect(MediaPreferences.videoResumeEnabled(in: first) == false)
         #expect(MediaPreferences.musicDefaultRate(in: first) == 0.75)
         #expect(MediaPreferences.musicResumeEnabled(in: first) == false)
         #expect(MediaPreferences.musicLoopCurrent(in: first))
@@ -50,8 +44,6 @@ struct MediaPreferencesTests {
         #expect(MediaPreferences.musicArtworkSquare(in: first) == false)
 
         // A second suite remains at defaults, proving the helpers do not share state.
-        #expect(MediaPreferences.videoDefaultRate(in: second) == 1)
-        #expect(MediaPreferences.videoResumeEnabled(in: second))
         #expect(MediaPreferences.posterColumns(in: second) == 3)
     }
 
@@ -60,17 +52,13 @@ struct MediaPreferencesTests {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        MediaPreferences.setVideoDefaultRate(0.1, in: defaults)
         MediaPreferences.setMusicDefaultRate(4, in: defaults)
         MediaPreferences.setPosterColumns(1, in: defaults)
-        #expect(MediaPreferences.videoDefaultRate(in: defaults) == 0.5)
         #expect(MediaPreferences.musicDefaultRate(in: defaults) == 3)
         #expect(MediaPreferences.posterColumns(in: defaults) == 2)
 
-        MediaPreferences.setVideoDefaultRate(8, in: defaults)
         MediaPreferences.setMusicDefaultRate(-2, in: defaults)
         MediaPreferences.setPosterColumns(9, in: defaults)
-        #expect(MediaPreferences.videoDefaultRate(in: defaults) == 3)
         #expect(MediaPreferences.musicDefaultRate(in: defaults) == 0.5)
         #expect(MediaPreferences.posterColumns(in: defaults) == 5)
     }
@@ -80,16 +68,12 @@ struct MediaPreferencesTests {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        defaults.set("fast", forKey: MediaPreferences.videoDefaultRateKey)
         defaults.set(Float.nan, forKey: MediaPreferences.musicDefaultRateKey)
         defaults.set("three", forKey: MediaPreferences.posterColumnsKey)
-        defaults.set("yes", forKey: MediaPreferences.videoResumeEnabledKey)
         defaults.set(1, forKey: MediaPreferences.musicLoopCurrentKey)
 
-        #expect(MediaPreferences.videoDefaultRate(in: defaults) == 1)
         #expect(MediaPreferences.musicDefaultRate(in: defaults) == 1)
         #expect(MediaPreferences.posterColumns(in: defaults) == 3)
-        #expect(MediaPreferences.videoResumeEnabled(in: defaults))
         #expect(MediaPreferences.musicLoopCurrent(in: defaults) == false)
     }
 

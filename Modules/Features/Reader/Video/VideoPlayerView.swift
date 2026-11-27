@@ -47,16 +47,10 @@ struct VideoPlayerView: View {
         ZStack {
             DSColor.videoPlayerBackground.ignoresSafeArea()
             if let controller {
-                Group {
-                    if controller.usesKSPlayer {
-                        KSVideoSurface(renderView: controller.ksKernel.view, fillsScreen: fillsScreen)
-                    } else {
-                        VideoPlayerLayerView(player: controller.player, fillsScreen: fillsScreen,
-                                             onLayer: controller.attachPictureInPicture(to:))
-                    }
-                }
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
+                VideoPlayerLayerView(player: controller.player, fillsScreen: fillsScreen,
+                                     onLayer: controller.attachPictureInPicture(to:))
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
                 gestureSurface(controller)
                 if showsControls {
                     controls(controller)
@@ -260,12 +254,12 @@ struct VideoPlayerView: View {
                     .font(DSFont.toolbarIconLarge)
                     .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
             }
-            .accessibilityLabel(localized("关闭"))
+            .accessibilityLabel(localized("關閉"))
             VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                 Text(controller.book.title)
                     .font(DSFont.headline)
                     .lineLimit(1)
-                Text(subtitle(controller) + " · " + controller.kernelName)
+                Text(subtitle(controller))
                     .font(DSFont.caption)
                     .opacity(DSLayout.cardSecondaryTextOpacity)
                     .lineLimit(1)
@@ -285,7 +279,7 @@ struct VideoPlayerView: View {
                     .font(DSFont.toolbarIcon)
                     .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
             }
-            .accessibilityLabel(fillsScreen ? localized("完整画面") : localized("填满屏幕"))
+            .accessibilityLabel(fillsScreen ? localized("完整畫面") : localized("填滿螢幕"))
             if let orientation {
                 rotateButton(from: orientation)
             }
@@ -297,7 +291,7 @@ struct VideoPlayerView: View {
                         .font(DSFont.toolbarIcon)
                         .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
                 }
-                .accessibilityLabel(localized("选集"))
+                .accessibilityLabel(localized("選集"))
             }
         }
     }
@@ -314,7 +308,7 @@ struct VideoPlayerView: View {
                 .font(DSFont.toolbarIcon)
                 .frame(width: DSLayout.minimumTapTarget, height: DSLayout.minimumTapTarget)
         }
-        .accessibilityLabel(toPortrait ? localized("转为竖屏") : localized("转为横屏"))
+        .accessibilityLabel(toPortrait ? localized("轉為直向") : localized("轉為橫向"))
     }
 
     /// A script's single link has no episodes to choose from.
@@ -377,7 +371,7 @@ struct VideoPlayerView: View {
                 Text(message)
                     .font(DSFont.subheadline)
                     .multilineTextAlignment(.center)
-                Button(localized("重试")) { controller.retry() }
+                Button(localized("重試")) { controller.retry() }
                     .buttonStyle(.bordered)
             }
             .frame(maxWidth: DSLayout.readableListWidth)
@@ -391,7 +385,7 @@ struct VideoPlayerView: View {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(controller.phase == .playing ? localized("暂停") : localized("播放"))
+            .accessibilityLabel(controller.phase == .playing ? localized("暫停") : localized("播放"))
             .accessibilityIdentifier("video.playPause")
         }
     }
@@ -508,7 +502,7 @@ struct VideoTimelineBar: View {
             // Disabled only while nothing is seekable — a live stream with no window, or one
             // still loading. A playlist with no duration still seeks in its seekable ranges.
             .disabled(range == nil)
-            .accessibilityLabel(localized("播放进度"))
+            .accessibilityLabel(localized("播放進度"))
             .accessibilityValue(VideoPlayerFormat.position(shown, of: end))
             HStack {
                 Text(VideoPlayerFormat.time(shown))
@@ -523,7 +517,7 @@ struct VideoTimelineBar: View {
 }
 
 #Preview {
-    var book = ReadingBook(title: "示范短剧", author: "", contentFilename: "")
+    var book = ReadingBook(title: "示範短劇", author: "", contentFilename: "")
     book.isOnline = true
     book.contentPipelineKind = .video
     book.onlineChapters = [

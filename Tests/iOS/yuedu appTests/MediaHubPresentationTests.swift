@@ -3,85 +3,8 @@ import Testing
 @testable import yuedu_app
 
 @MainActor
-@Suite("Media hub presentation and bookmark compatibility", .serialized)
+@Suite("Music library persistence and bookmark compatibility", .serialized)
 struct MediaHubPresentationTests {
-    @Test("video.sites are not advertised as music even when their name says music")
-    func truthfulCapabilities() {
-        let sites = [site("a", name: "音樂 QQ music"), site("b", name: "電影"), site("a", name: "duplicate")]
-        #expect(MediaHubPresentation.compatibleSites(sites, kind: .video).map(\.key) == ["a", "b"])
-        #expect(MediaHubPresentation.compatibleSites(sites, kind: .music).isEmpty)
-        #expect(MediaHubPresentation.compatibleSites(sites, kind: .drama).isEmpty)
-    }
-
-    @Test("hero selection is bounded, deduplicated and backed by source posters")
-    func heroCandidates() {
-        let input = [video("empty", poster: ""), video("1"), video("1")]
-            + (2...8).map { video(String($0)) }
-        #expect(MediaHubPresentation.heroVideos(input).map(\.id) == ["1", "2", "3", "4", "5"])
-        #expect(MediaHubPresentation.uniqueVideos([video(""), video("1"), video("1")]).map(\.id) == ["1"])
-    }
-
-    @Test("hero facts use only supplied metadata, without a fabricated rating")
-    func sourceFacts() {
-        let item = video("1", year: " 2026 ", area: "日本", remarks: "<b>更新至 3 集</b>")
-        #expect(MediaHubPresentation.facts(for: item) == "2026 · 日本 · 更新至 3 集")
-        #expect(MediaHubPresentation.facts(for: video("2")).isEmpty)
-        #expect(MediaHubPresentation.plainText("<p>來源&nbsp;簡介</p>\n &amp; 其他") == "來源 簡介 & 其他")
-    }
-
-    @Test("category rails keep the site's exact ordering and names with bounded requests")
-    func categoryCandidates() {
-        let categories = [CatVodCategory(id: "movie", name: "電影"),
-                          CatVodCategory(id: "movie", name: "duplicate"),
-                          CatVodCategory(id: "series", name: "劇集"),
-                          CatVodCategory(id: "animation", name: "動畫"),
-                          CatVodCategory(id: "other", name: "其他")]
-        #expect(MediaHubPresentation.categoryCandidates(categories).map(\.id) == ["movie", "series", "animation"])
-    }
-
-    @Test("music only shows real records explicitly marked music, with local-only search")
-    func savedMediaIsolation() {
-        let movie = bookmark("1", title: "Music documentary", kind: .video)
-        let music = bookmark("2", title: "真實音樂收藏", kind: .music)
-        let other = bookmark("3", source: "another", title: "另一首", kind: .music)
-        let items = [movie, music, other]
-        #expect(MediaHubPresentation.savedItems(items, kind: .music).map(\.videoID) == ["2", "3"])
-        #expect(MediaHubPresentation.savedItems(items, kind: .music, query: "真實音樂").map(\.videoID) == ["2"])
-        #expect(MediaHubPresentation.savedItems(items, kind: .music, query: "真實站點").map(\.videoID) == ["2", "3"])
-        #expect(MediaHubPresentation.savedItems(items, kind: .music, sourceID: "another").map(\.videoID) == ["3"])
-        #expect(MediaHubPresentation.savedItems(items, kind: .video).map(\.videoID) == ["1"])
-    }
-
-    @Test("unclassified saved items group by actual site instead of a guessed movie or series type")
-    func bookmarkRails() {
-        let unknown = bookmark("1", title: "未知分類")
-        var categorized = bookmark("2", title: "來源電影")
-        categorized.categoryName = "電影"
-        let secondUnknown = bookmark("3", title: "另一收藏")
-        let rails = MediaHubPresentation.savedRails([unknown, categorized, secondUnknown])
-        #expect(rails.count == 2)
-        #expect(rails[0].title == "真實站點")
-        #expect(rails[0].items.map(\.videoID) == ["1", "3"])
-        #expect(rails[1].title == "電影")
-        #expect(rails[1].subtitle == "真實站點")
-    }
-
-    @Test("public saved artwork works without activating a source but never bypasses proxy safety")
-    func publicArtworkFallback() {
-        #expect(MediaHubPresentation.publicArtworkURL("https://example.invalid/art.jpg")?.host == "example.invalid")
-        #expect(MediaHubPresentation.publicArtworkURL("/relative/art.jpg") == nil)
-        #expect(MediaHubPresentation.publicArtworkURL("http://127.0.0.1:8123/art") == nil)
-        #expect(MediaHubPresentation.publicArtworkURL("https://example.invalid/art?token=secret") == nil)
-    }
-
-    @Test("poster density respects preferences and gives accessibility sizes a single grid column")
-    func posterDensity() {
-        #expect(MediaHubPresentation.posterColumnCount(3, accessibility: false) == 3)
-        #expect(MediaHubPresentation.posterColumnCount(0, accessibility: false) == 2)
-        #expect(MediaHubPresentation.posterColumnCount(99, accessibility: false) == 5)
-        #expect(MediaHubPresentation.posterColumnCount(5, accessibility: true) == 1)
-    }
-
     @Test("pre-metadata bookmarks decode without a migration reset or invented playback state")
     func legacySchemaDecoding() throws {
         let data = legacyJSON()
@@ -117,14 +40,14 @@ struct MediaHubPresentationTests {
         try store.save(item)
         // A detail page using the original initializer must not erase known source facts.
         try store.save(MediaHubLibraryItem(sourceID: item.sourceID, siteKey: item.siteKey,
-            videoID: item.videoID, title: "更新標題", poster: item.poster, kind: .video, siteName: item.siteName))
+            videoID: item.videoID, title: "更新標題", poster: item.poster, kind: .music, siteName: item.siteName))
         let reopened = MediaHubLibrary(fileURL: file)
         let updated = try #require(reopened.items.first)
         #expect(reopened.items.count == 1)
         #expect(updated.id == identity)
         #expect(updated.title == "更新標題")
         #expect(updated.categoryName == "電影")
-        #expect(MediaHubPresentation.facts(for: updated) == "2026 · 日本 · 來源備註")
+        #expect(updated.year == "2026" && updated.area == "日本" && updated.remarks == "來源備註")
         try reopened.remove(updated)
         #expect(MediaHubLibrary(fileURL: file).items.isEmpty)
     }
@@ -192,19 +115,8 @@ struct MediaHubPresentationTests {
         #expect(store.items.map(\.sourceID) == ["another", "source"])
     }
 
-    private func video(_ id: String, poster: String = "https://example.invalid/poster.jpg",
-                       year: String = "", area: String = "", remarks: String = "") -> CatVodVideo {
-        CatVodVideo(id: id, title: "來源影片 \(id)", poster: poster, remarks: remarks, summary: "",
-            actor: "", director: "", year: year, area: area, routes: [])
-    }
-
-    private func site(_ key: String, name: String) -> CatVodSite {
-        CatVodSite(key: key, name: name, api: "/source.js", type: 3,
-            searchable: true, filterable: true, indexs: true)
-    }
-
     private func bookmark(_ id: String, source: String = "source", title: String = "真實收藏",
-                          kind: MediaHubKind = .video,
+                          kind: MediaHubKind = .music,
                           poster: String = "https://example.invalid/poster.jpg") -> MediaHubLibraryItem {
         MediaHubLibraryItem(sourceID: source, siteKey: "site", videoID: id, title: title,
             poster: poster, kind: kind, siteName: "真實站點")
@@ -212,7 +124,7 @@ struct MediaHubPresentationTests {
 
     private func legacyJSON(poster: String = "https://example.invalid/old.jpg") -> Data {
         Data("""
-        [{"sourceID":"source","siteKey":"site","videoID":"old","title":"舊收藏","poster":"\(poster)","kind":"video","siteName":"舊站點"}]
+        [{"sourceID":"source","siteKey":"site","videoID":"old","title":"舊收藏","poster":"\(poster)","kind":"music","siteName":"舊站點"}]
         """.utf8)
     }
 

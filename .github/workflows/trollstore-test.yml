@@ -37,8 +37,6 @@ on:
           - toc-pins
           - ui-polish
           - module-compat
-          - md5-import
-          - catvod-home
           - media51
           - ranked-home
           - discovery-glass
@@ -72,22 +70,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: 离线验证回归日志快照与取消收尾
-        if: ${{ inputs.regression_scope != 'md5-import' }}
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python3 scripts/tests/stream_regression_logs_test.py
       - name: 运行定向 iOS 模拟器测试
-        if: ${{ inputs.regression_scope != 'md5-import' }}
         env:
           TEST_BUNDLE_ID: ${{ inputs.bundle_id }}
           TEST_DISPLAY_NAME: ${{ inputs.display_name }}
           QINGYUN_REGRESSION_SCOPE: ${{ inputs.regression_scope }}
         run: bash scripts/test_qingyun_regressions.sh
-      - name: 原生 Swift MD5 导入与回滚对照
-        if: ${{ inputs.regression_scope == 'md5-import' }}
-        run: |
-          mkdir -p trollstore-output
-          python3 -u scripts/verify_readcc49_native.py 2>&1 | tee trollstore-output/regressions.log
       - name: 保存回归日志和结果
         if: always()
         uses: actions/upload-artifact@v4
@@ -99,7 +90,6 @@ jobs:
             trollstore-output/media51-phone-test.log
             trollstore-output/media51-exit-status.txt
             trollstore-output/regression-diagnostics.json
-            trollstore-output/readcc49-native.json
             trollstore-output/regressions.xcresult.zip
             trollstore-output/layout-preview/
           if-no-files-found: warn

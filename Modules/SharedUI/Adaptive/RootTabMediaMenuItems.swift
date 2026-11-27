@@ -62,7 +62,7 @@ struct RootTabMediaToolbar: ToolbarContent {
                 Menu {
                     RootTabMediaMenuItems(tab: tab, onSelect: onSelect, onDefault: onDefault)
                 } label: {
-                    Label(localized(tab.titleKey), systemImage: "play.rectangle.on.rectangle")
+                    Label(localized(tab.titleKey), systemImage: "music.note.list")
                 }
                 .accessibilityIdentifier("rootTabMediaMenu.\(tab.rawValue)")
             }

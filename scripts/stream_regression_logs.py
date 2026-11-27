@@ -38,7 +38,7 @@ SOURCES = {
 }
 PHASES = {
     "starting", "preparing", "select-xcode", "metal-toolchain", "destination-ipad",
-    "destination", "resolve-packages", "normalize-frameworks", "ipad-test",
+    "destination", "resolve-packages", "ipad-test",
     "destination-phone", "phone-test", "test", "verify-results", "finishing",
     "cancelled-term", "cancelled-int", "finished",
 }

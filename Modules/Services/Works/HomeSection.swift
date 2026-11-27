@@ -126,8 +126,6 @@ enum HomeSectionBinding: Hashable, Sendable {
     /// `parameters`, by the module's parameter names. A build before it reads it as `.unknown`
     /// and writes it back as it came.
     case module(moduleID: String, entryID: String)
-    /// An installed CatVod site or one of its categories; no runtime URLs or credentials.
-    case catVod(CatVodFeedRef)
     /// AI 推薦, the official module (AI 推薦 plan 8c): the works the reader's AI service last
     /// suggested (`AIRecommendationProvider`), generated only when the reader asks. A build
     /// before it reads it as `.unknown` and writes it back as it came.
@@ -156,13 +154,13 @@ enum HomeSectionBinding: Hashable, Sendable {
 
 extension HomeSectionBinding: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, categories, connectionID, url, id, kind, moduleID, entryID, cards, book, catVodFeed
+        case type, categories, connectionID, url, id, kind, moduleID, entryID, cards, book
     }
 
     private enum Kind: String {
         case myLibrary, continueReading, bookshelf, latest, sourceCategories, sourceBook, opdsFeed
         case gutenbergCollection, gutenbergLists, gutenbergFeed, gutenbergShelf, aozoraNew, aozoraIndex, related, nextInSeries
-        case subscriptionArticles, module, aiRecommendations, lists, catVod
+        case subscriptionArticles, module, aiRecommendations, lists
     }
 
     init(from decoder: Decoder) throws {
@@ -197,7 +195,6 @@ extension HomeSectionBinding: Codable {
         case .module:
             self = .module(moduleID: try container.decode(String.self, forKey: .moduleID),
                            entryID: try container.decode(String.self, forKey: .entryID))
-        case .catVod: self = .catVod(try container.decode(CatVodFeedRef.self, forKey: .catVodFeed))
         case .lists: self = .lists(try container.decode([HomeListCard].self, forKey: .cards))
         }
     }
@@ -255,9 +252,6 @@ extension HomeSectionBinding: Codable {
             try container.encode(Kind.module.rawValue, forKey: .type)
             try container.encode(moduleID, forKey: .moduleID)
             try container.encode(entryID, forKey: .entryID)
-        case .catVod(let ref):
-            try container.encode(Kind.catVod.rawValue, forKey: .type)
-            try container.encode(ref, forKey: .catVodFeed)
         case .lists(let cards):
             try container.encode(Kind.lists.rawValue, forKey: .type)
             try container.encode(cards, forKey: .cards)

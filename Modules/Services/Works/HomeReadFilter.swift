@@ -24,7 +24,7 @@ struct HomeReadFilter {
         // article's read state is the RSS tab's. An index's chips and 我的書庫's tiles are not
         // books, nor are 精選書單's lists. A section of lists hides by each card's own list.
         case .sourceBook, .continueReading, .bookshelf, .nextInSeries, .subscriptionArticles, .aozoraIndex, .gutenbergLists, .lists,
-             .myLibrary, .catVod, .unknown:
+             .myLibrary, .unknown:
             return false
         }
     }

@@ -53,10 +53,7 @@ struct MusicCatalogTests {
     }
 
     @Test func continuationOnlyUsesRealMusicPlayerState() {
-        let video = MediaHubLibraryItem(sourceID: "fixture", siteKey: "site", videoID: "id", title: "Video",
-                                       poster: "", kind: .video, siteName: "fixture")
         #expect(MusicHomePresentation.continuation(currentTrack: nil) == nil)
-        #expect(MusicHomePresentation.continuation(currentTrack: video) == nil)
         let music = MediaHubLibraryItem(sourceID: "fixture", siteKey: "site", videoID: "music", title: "Fixture track",
                                        poster: "", kind: .music, siteName: "fixture")
         #expect(MusicHomePresentation.continuation(currentTrack: music)?.id == music.id)

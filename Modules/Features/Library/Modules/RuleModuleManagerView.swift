@@ -21,8 +21,6 @@ struct RuleModuleManagerView: View {
     @ObservedObject var library: RuleModuleLibrary
     @ObservedObject var repositories: RuleModuleRepositoryModel
     @ObservedObject private var availability = PublicLibraryAvailability.shared
-    @ObservedObject private var md5Library = Md5SourceLibrary.shared
-    @ObservedObject private var mediaImports = ModuleMediaImportStore.shared
     private var counts: ModuleLandingCounts {
         ModuleLandingCounts(appOfficial: AppOfficialModule.available(librariesAvailable: availability.isAvailable).count,
                             installedOfficial: library.official.count, installedImported: library.imported.count,
@@ -92,24 +90,6 @@ struct RuleModuleManagerView: View {
                     .dsSectionFooter()
             }
             .interfaceSectionSurface()
-            ForEach(ModuleMediaRoute.allCases) { route in
-                Section {
-                    NavigationLink {
-                        mediaDestination(route)
-                    } label: {
-                        RuleModuleOriginRow(title: localized(route.titleKey), systemImage: route.systemImage,
-                                            subtitle: mediaSubtitle(route), origin: localized("导入"), count: mediaCount(route))
-                            .padding(.vertical, DSSpacing.xs)
-                    }
-                    .accessibilityIdentifier(route.accessibilityIdentifier)
-                } footer: {
-                    if route == .catSources {
-                        Text(localized("弹幕与字幕来源目前仅登记，本地字幕可保存与预览，播放匹配尚未接入。猫源使用独立 CatVod 引擎，与 JSON 模组、音乐 JS 源分开；只汇入你信任的来源。"))
-                            .dsSectionFooter()
-                    }
-                }
-                .interfaceSectionSurface()
-            }
             if library.modules.contains(where: { $0.module.comments != nil }) {
                 Section {
                     Toggle(localized("在正文顯示模組的評論"), isOn: $showsModuleComments)
@@ -138,37 +118,10 @@ struct RuleModuleManagerView: View {
             Text(repositories.message ?? "")
         }
         .task {
-            mediaImports.loadIfNeeded()
-            md5Library.loadIfNeeded()
             guard !hasLoaded else { return }
             hasLoaded = true
             await library.loadIfNeeded()
             await repositories.load()
-        }
-    }
-
-    @ViewBuilder
-    private func mediaDestination(_ route: ModuleMediaRoute) -> some View {
-        switch route {
-        case .danmaku: ModuleMediaManagerView(kind: .danmaku)
-        case .subtitles: ModuleMediaManagerView(kind: .subtitle)
-        case .catSources: Md5SourceManagerView(library: md5Library)
-        }
-    }
-
-    private func mediaSubtitle(_ route: ModuleMediaRoute) -> String {
-        switch route {
-        case .danmaku: localized("登记弹弹 play 相容来源；播放匹配尚未接入")
-        case .subtitles: localized("线上来源登记、本地 SRT / VTT 汇入与预览")
-        case .catSources: localized("CatVod 影视来源与网盘帐号配置")
-        }
-    }
-
-    private func mediaCount(_ route: ModuleMediaRoute) -> Int? {
-        switch route {
-        case .danmaku: mediaImports.isLoaded ? mediaImports.archive.danmaku.count : nil
-        case .subtitles: mediaImports.isLoaded ? mediaImports.archive.subtitle.count + mediaImports.archive.files.count : nil
-        case .catSources: md5Library.isLoaded ? md5Library.sources.count : nil
         }
     }
 

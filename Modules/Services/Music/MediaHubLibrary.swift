@@ -1,7 +1,8 @@
 import Foundation
 import Combine
 
-/// A saved CatVod item. Keep this record deliberately free of runtime URLs, ports and credentials.
+/// A saved music track. Keep this record free of runtime ports and credentials.
+/// The legacy `videoID` storage key is retained so existing music bookmarks stay readable.
 struct MediaHubLibraryItem: Codable, Hashable, Identifiable, Sendable {
     let sourceID: String
     let siteKey: String
@@ -132,7 +133,7 @@ final class MediaHubLibrary: ObservableObject {
         }
         do {
             let data = try Data(contentsOf: fileURL)
-            let decoded = try JSONDecoder().decode([MediaHubLibraryItem].self, from: data)
+            let decoded = try Self.decodeMusicRecords(data)
             var seen = Set<String>()
             items = decoded.filter { seen.insert($0.id).inserted }.map { item in
                 var safe = item
@@ -144,6 +145,23 @@ final class MediaHubLibrary: ObservableObject {
             // Preserve the original file until an explicit successful save/remove.
             items = []
             loadFailure = error.localizedDescription
+        }
+    }
+
+    /// Read music out of the legacy mixed archive without changing the archive on disk.
+    /// Unsupported historical records do not stop valid music from loading.
+    static func decodeMusicRecords(_ data: Data) throws -> [MediaHubLibraryItem] {
+        try JSONDecoder().decode([StoredMusicRecord].self, from: data).compactMap(\.item)
+    }
+
+    private struct StoredMusicRecord: Decodable {
+        private enum Key: String, CodingKey { case kind }
+        let item: MediaHubLibraryItem?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            let kind = try container.decode(String.self, forKey: .kind)
+            item = kind == MediaHubKind.music.rawValue ? try MediaHubLibraryItem(from: decoder) : nil
         }
     }
 

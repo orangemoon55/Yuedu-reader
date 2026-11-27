@@ -67,7 +67,7 @@ struct WorkDetailRoute: Hashable, Sendable {
         case .aozora, .gutenberg, .opdsEntry, .webDAVFile, .moduleBook: true
         case .copy, .onlineBook: false
         // Open Library is never where a copy came from; it only fills one in.
-        case .catVodMovie, .bibliographic: false
+        case .bibliographic: false
         }
     }
 
@@ -78,7 +78,7 @@ struct WorkDetailRoute: Hashable, Sendable {
         switch opening {
         case .copy, .gutenberg, .aozora, .onlineBook, .moduleBook: true
         case .opdsEntry, .webDAVFile: record.acquisitions.contains { $0 != .viewOnly }
-        case .catVodMovie, .bibliographic: false
+        case .bibliographic: false
         }
     }
 }

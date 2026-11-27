@@ -1,20 +1,24 @@
 # Swift Package Dependencies
 
-This document records the Swift Package dependencies configured in the Xcode project and their resolved versions.
+This document records the Swift Package dependencies configured in `Yuedu-Reader.xcodeproj/project.pbxproj` and their checked-in `Package.resolved` versions. The entries below were checked locally after removing the added standalone-film dependencies; no packages were fetched or re-resolved for this cleanup.
 
-## Direct Dependencies (9 items)
+## Direct Dependencies (11 items: 8 remote, 3 local)
 
 | Package Name | Repository URL | Dependency Rule | Current Resolved Version |
 |--------------|----------------|-----------------|--------------------------|
 | **Firebase** | `https://github.com/firebase/firebase-ios-sdk` | Up to Next Major Version (`12.14.0` < `13.0.0`) | `12.14.0` |
 | **ReadiumFuzi** | `https://github.com/readium/Fuzi.git` | Up to Next Major Version (`4.0.0` < `5.0.0`) | `4.0.0` |
-| **GoogleSignIn** | `https://github.com/google/GoogleSignIn-iOS` | Up to Next Major Version (`9.1.0` < `10.0.0`) | `9.1.0` |
+| **GoogleSignIn** | `https://github.com/google/GoogleSignIn-iOS` | Up to Next Major Version (`10.0.0` < `11.0.0`) | `10.0.0` |
 | **iosMath** | `https://github.com/kostub/iosMath.git` | Up to Next Major Version (`2.3.1` < `3.0.0`) | `2.3.1` |
-| **Nuke** | `https://github.com/kean/Nuke` | Up to Next Major Version (`12.0.0` < `13.0.0`) | `12.0.0` |
+| **Nuke** | `https://github.com/kean/Nuke` | Up to Next Major Version (`12.0.0` < `13.0.0`) | `12.9.0` |
 | **Readium** | `https://github.com/readium/swift-toolkit.git` | Up to Next Major Version (`3.8.0` < `4.0.0`) | `3.8.0` |
 | **SwiftSoup** | `Packages/SwiftSoup` (vendored from `https://github.com/scinfu/SwiftSoup`) | Local package; also stands in for the copy Readium and YueduCoreText depend on | `2.13.7` + one backported fix, see its `VENDOR-MANIFEST.json` |
 | **LNPopupUI** | `Packages/LNPopupUI` (vendored from `https://github.com/LeoNatan/LNPopupUI`, MIT), product `LNPopupUI-Static` | Local package; brings `Packages/LNPopupController` (`4.6.2`), `Packages/LNSwiftUIUtils` (`1.1.5`) and `Packages/LNSystemMarqueeLabel` (`0.1.2`), each vendored beside it | `4.0.4`, sources only — the upstream histories hold ~2 GB of demo media; see each `VENDOR-MANIFEST.json` |
 | **ReadiumZIPFoundation** | `https://github.com/readium/ZIPFoundation.git` | Up to Next Major Version (`3.0.1` < `4.0.0`) | `3.0.1` |
+| **YueduCoreText** | `https://github.com/CHANG-JUI-LIN/YueduCoreText` | Up to Next Minor Version (`0.19.0` < `0.20.0`), product `YueduCoreTextTypography` | `0.19.0` |
+| **CLexbor** | `Packages/CLexbor` (vendored from `https://github.com/lexbor/lexbor.git`) | Local package; source and provenance are recorded in its `VENDOR-MANIFEST.json` | `3.0.0` |
+
+The retained packages above support reading, accounts, image loading and shared UI. The added standalone-film package references, framework product and lockfile pins have been removed; their download/embedding and framework-plist preprocessing steps are not part of the current build.
 
 ## Transitive Dependencies
 
@@ -40,6 +44,7 @@ These are dependencies of our direct dependencies that Xcode Cloud resolves and 
     *   `google/GoogleAppMeasurement`
     *   `google/grpc-binary`
     *   `firebase/leveldb`
+    *   `firebase/nanopb`
     *   `googleads/google-ads-on-device-conversion-ios-sdk`
 
 ## Ported Code

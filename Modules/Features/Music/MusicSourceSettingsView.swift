@@ -1,8 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The only source-import surface. There are intentionally no CatVod, direct URL, audio,
-/// playlist-file, or remote-script-URL import controls here.
+/// The music source-import surface accepts trusted JavaScript music sources only.
+/// It does not expose direct URL, audio-file, playlist-file, or remote-script-URL imports.
 struct MusicSourceSettingsView: View {
     @Binding var selectedSourceID: String
     @Binding var quality: String

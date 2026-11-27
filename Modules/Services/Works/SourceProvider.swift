@@ -135,7 +135,6 @@ enum ItemOpening: Hashable, Sendable {
     case moduleBook(ModuleBook)
     /// A book-source result: `ExploreNavigationRoute.book`.
     case onlineBook(FrozenOnlineBook)
-    case catVodMovie(CatVodMovieRef)
     /// A bibliographic database's record (Open Library, unified search 4b-3): data only, with
     /// nothing to open; 作品詳情 offers 尋找可用來源.
     case bibliographic

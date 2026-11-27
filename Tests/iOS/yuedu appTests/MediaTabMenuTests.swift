@@ -3,16 +3,14 @@ import Testing
 @testable import yuedu_app
 
 struct MediaTabMenuTests {
-    @Test("home quick menu contains only video and music")
+    @Test("home quick menu contains only music")
     func discoveryMenuOrder() {
-        #expect(MediaHubKind.quickActionKinds(for: .explore) == [.video, .music])
-        #expect(!MediaHubKind.quickActionKinds(for: .explore).contains(.drama))
+        #expect(MediaHubKind.quickActionKinds(for: .explore) == [.music])
     }
 
-    @Test("bookshelf quick menu contains only video and music libraries")
+    @Test("bookshelf quick menu contains only music library")
     func bookshelfMenuOrder() {
-        #expect(MediaHubKind.quickActionKinds(for: .bookshelf) == [.video, .music])
-        #expect(!MediaHubKind.quickActionKinds(for: .bookshelf).contains(.drama))
+        #expect(MediaHubKind.quickActionKinds(for: .bookshelf) == [.music])
     }
 
     @Test("other root tabs do not receive a media menu")
@@ -39,9 +37,9 @@ struct MediaTabMenuTests {
     @MainActor func immediateMenuSelection() {
         let coordinator = RootTabMediaActionCoordinator()
         var selected: [String] = []
-        coordinator.perform { selected.append("video") }
-        #expect(selected == ["video"])
         coordinator.perform { selected.append("music") }
-        #expect(selected == ["video", "music"])
+        #expect(selected == ["music"])
+        coordinator.perform { selected.append("reading") }
+        #expect(selected == ["music", "reading"])
     }
 }

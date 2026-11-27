@@ -36,7 +36,7 @@ enum BookOriginName {
         case .aozora: localized("青空文庫")
         case .moduleBook(let book):
             RuleModuleLibrary.shared.installed(id: book.reference.moduleID)?.module.title ?? localized("模組")
-        case .copy, .onlineBook, .catVodMovie, .bibliographic: nil
+        case .copy, .onlineBook, .bibliographic: nil
         }
     }
 }

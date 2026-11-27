@@ -44,7 +44,6 @@ private struct ExploreHomeRoot: View {
     @ObservedObject private var aggregation = AggregationSettingsStore.shared
     /// Its installs, updates and removals change the rows (Phase 6f).
     @ObservedObject private var modules = RuleModuleLibrary.shared
-    @ObservedObject private var md5Library = Md5SourceLibrary.shared
     @AppStorage(ExploreSettings.modeKey) private var storedMode = ExploreMode.publicLibraries.rawValue
     @Environment(\.rootTabMediaMenuContext) private var mediaMenuContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -159,7 +158,7 @@ private struct ExploreHomeRoot: View {
         // 中繼資料語言偏好推薦: a module's 地區 that follows it reads it.
         [tabModel.isLoaded, pageStore.page, connections.catalogs.map(\.id), exploreSources.map(\.bookSourceUrl), availability.isAvailable,
          aozora.catalog != nil, aggregation.settings.hiddenFromLatest, aggregation.readingLanguages.language,
-         modules.modules.map { "\($0.module.id)@\($0.module.version)" }, md5Library.sources.map(\.id)]
+         modules.modules.map { "\($0.module.id)@\($0.module.version)" }]
     }
 
     /// Every section is settled with nothing in it, so the home would be blank: a China

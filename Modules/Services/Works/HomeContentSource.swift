@@ -20,7 +20,6 @@ enum HomeContentOwner: Hashable, Sendable {
     case bookSource(url: String)
     /// An installed module (Phase 6f).
     case module(id: String)
-    case catVod(id: String)
     /// The app's own modules: AI 推薦 (AI 推薦 plan 8c).
     case official
 }
@@ -36,7 +35,6 @@ extension HomeSectionBinding {
         case .sourceCategories(let references): references.first.map { .bookSource(url: $0.sourceURL) }
         case .sourceBook(let book): .bookSource(url: book.sourceURL)
         case .module(let moduleID, _): .module(id: moduleID)
-        case .catVod(let ref): .catVod(id: ref.sourceID)
         case .aiRecommendations: .official
         // A section of lists from one source is that source's; from several, no one's.
         case .lists(let cards):
