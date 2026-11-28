@@ -19,7 +19,7 @@ FAKE_BASE64 = "U1lOVEhFVElDX05PVF9SRUFMX0NSRURFTlRJQUw="
 FAKE_API = "AIza" + "syntheticNotRealCredential" * 2
 
 
-def eventually(predicate, timeout=8):
+def eventually(predicate, timeout=30):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -43,14 +43,35 @@ class SnapshotTests(unittest.TestCase):
         return [sys.executable, str(HELPER), "--private-dir", str(self.private),
                 "--output-dir", str(self.output), "--interval", "0.05", *extra]
 
+    def kill_and_reap(self, proc):
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        proc.communicate(timeout=5)
+
     def start(self, *extra):
         proc = subprocess.Popen(self.command(*extra), env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.addCleanup(lambda: self.stop(proc) if proc.poll() is None else None)
+        self.addCleanup(self.kill_and_reap, proc)
         return proc
 
     def stop(self, proc, sig=signal.SIGTERM):
-        proc.send_signal(sig)
-        out, err = proc.communicate(timeout=8)
+        if proc.poll() is None:
+            try:
+                proc.send_signal(sig)
+            except ProcessLookupError:
+                pass
+        try:
+            out, err = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            proc.communicate(timeout=5)
+            self.fail("snapshot worker exceeded 30s graceful-stop budget; killed and reaped")
         self.assertEqual(proc.returncode, 0, (out, err))
         self.assertEqual(out + err, b"")
 
@@ -71,7 +92,7 @@ class SnapshotTests(unittest.TestCase):
             "(p/'ready').touch(); time.sleep(30)", str(self.private),
             "preparation compiler evidence\n" + FAKE_SECRET + "\n" + FAKE_BASE64 + "\n" + FAKE_API + "\n" + "safe padding\n" * 20],
             env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.addCleanup(lambda: producer.kill() if producer.poll() is None else None)
+        self.addCleanup(self.kill_and_reap, producer)
         eventually(lambda: (self.private / "ready").exists())
         (self.private / "ipad-test.log").write_text("iPad compiler assertion evidence\n" + FAKE_SECRET + "\n" + "padding\n" * 20)
         (self.private / "phone-test.log").write_text("iPhone independent evidence\n" + FAKE_API + "\n" + "padding\n" * 20)

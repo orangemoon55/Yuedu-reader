@@ -1141,7 +1141,7 @@ extension PlatformMusicAPI {
               item.isOwned == true, item.ownerID == KugouMusicAuth.shared.userId,
               !catalog.charts.contains(id) else { throw MusicProviderError.missingTrack }
         let ticket = MusicProviderContext.shared.ticket
-        let songs = try trackIDs.map(song)
+        let songs = try trackIDs.map { try song($0) }
         try await KugouMusicAPI.shared.addSongs(listID: item.id, songs: songs)
         try MusicProviderContext.shared.check(ticket)
     }
@@ -1156,7 +1156,7 @@ extension PlatformMusicAPI {
     func removeKugouPlaylistTracks(id: Int, trackIDs: [Int]) async throws {
         let item = try ownedKugouPlaylist(id)
         let ticket = MusicProviderContext.shared.ticket
-        try await KugouMusicAPI.shared.deleteSongs(listID: item.id, songs: try trackIDs.map(song))
+        try await KugouMusicAPI.shared.deleteSongs(listID: item.id, songs: try trackIDs.map { try song($0) })
         try MusicProviderContext.shared.check(ticket)
         AccountStore.shared.invalidateLibrary()
     }
@@ -1322,11 +1322,11 @@ extension PlatformMusicAPI {
     func updateQQPlaylistTracks(id: Int, trackIDs: [Int], adding: Bool) async throws {
         guard provider == .qq, let item = catalog.playlists[id], item.source == .qq else { throw MusicProviderError.missingTrack }
         let ticket = MusicProviderContext.shared.ticket
-        let songs = try trackIDs.map(song)
+        let songs = try trackIDs.map { try song($0) }
         if item.id == QQMusicAPI.qqLikedPlaylistID, !adding, let song = songs.first, songs.count == 1, let mid = song.qqMid {
             try await QQMusicAPI.shared.like(songID: song.id, songmid: mid, liked: false)
         } else {
-            try await QQMusicAPI.shared.updatePlaylistTracks(tid: item.id, songIDs: songs.map(\.id), adding: adding)
+            try await QQMusicAPI.shared.updatePlaylistTracks(tid: item.id, songIDs: songs.map { $0.id }, adding: adding)
         }
         try MusicProviderContext.shared.check(ticket)
         AccountStore.shared.invalidateLibrary()
