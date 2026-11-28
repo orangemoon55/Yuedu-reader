@@ -187,7 +187,7 @@ struct PortraitLyricsSwipeObserver: UIViewRepresentable {
             return bounds.contains(touch.location(in: self))
         }
 
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             let translation = pan.translation(in: self)
             let velocity = pan.velocity(in: self)
             // Reject vertical intent before recognition, not merely at release.
