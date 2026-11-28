@@ -39,6 +39,43 @@ struct NowPlayingPosterLayoutTests {
         #expect(layout.contentWidth == 0)
     }
 
+    @Test func rightSwipeOpensAndLeftSwipeClosesOnly() {
+        #expect(NowPlayingPortraitLyricsSwipe.targetVisibility(
+            translation: CGSize(width: 56, height: 4), expanded: false) == true)
+        #expect(NowPlayingPortraitLyricsSwipe.targetVisibility(
+            translation: CGSize(width: -56, height: 4), expanded: true) == false)
+        #expect(NowPlayingPortraitLyricsSwipe.targetVisibility(
+            translation: CGSize(width: -100, height: 0), expanded: false) == nil)
+        #expect(NowPlayingPortraitLyricsSwipe.targetVisibility(
+            translation: CGSize(width: 100, height: 0), expanded: true) == nil)
+    }
+
+    @Test(arguments: [CGSize(width: 55, height: 0), CGSize(width: 0, height: 120),
+                      CGSize(width: 70, height: 60), CGSize(width: 72, height: 40),
+                      CGSize(width: .nan, height: 0), CGSize(width: 100, height: .infinity)])
+    func shortVerticalDiagonalAndInvalidDragsDoNotToggle(translation: CGSize) {
+        #expect(NowPlayingPortraitLyricsSwipe.targetVisibility(translation: translation, expanded: false) == nil)
+        #expect(NowPlayingPortraitLyricsSwipe.targetVisibility(translation: translation, expanded: true) == nil)
+    }
+
+    @Test func previewIsBoundedButFullLyricsRetainEveryLine() {
+        #expect(NowPlayingPortraitLyricWindow.indices(count: 0, focus: nil, expanded: false).isEmpty)
+        #expect(NowPlayingPortraitLyricWindow.indices(count: 2, focus: -9, expanded: false) == 0..<2)
+        #expect(NowPlayingPortraitLyricWindow.indices(count: 20, focus: 10, expanded: false) == 9..<13)
+        #expect(NowPlayingPortraitLyricWindow.indices(count: 20, focus: 99, expanded: false) == 16..<20)
+        #expect(NowPlayingPortraitLyricWindow.indices(count: 20, focus: 10, expanded: true) == 0..<20)
+    }
+
+    @Test(arguments: [CGSize(width: 272, height: 506), CGSize(width: 345, height: 759),
+                      CGSize(width: 382, height: 844)])
+    func persistentPosterControlsReserveTheSameSpaceAtLargeType(size: CGSize) {
+        let standard = NowPlayingPosterLayout(width: size.width, height: size.height, controlsHeight: 250)
+        let largeType = NowPlayingPosterLayout(width: size.width, height: size.height, controlsHeight: 250,
+                                               accessibilityText: true)
+        #expect(standard.viewportHeight == largeType.viewportHeight)
+        #expect(largeType.viewportHeight >= 0)
+    }
+
     @Test func oversizedControlsLeaveANonnegativeScrollViewport() {
         let layout = NowPlayingPosterLayout(width: 320, height: 100, controlsHeight: 500)
         #expect(layout.viewportHeight == 0)

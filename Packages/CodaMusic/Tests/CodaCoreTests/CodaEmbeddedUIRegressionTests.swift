@@ -20,6 +20,16 @@ struct CodaEmbeddedUIRegressionTests {
             }
         }
     }
+    @Test func readingContextMenuRequiresEmbeddedRecommendationAndDedicatedAction() {
+        for embedded in [false, true] {
+            for home in [false, true] {
+                for action in [false, true] {
+                    #expect(CodaEmbeddedUIPolicy.showsReadingContextMenu(embedded: embedded,
+                        recommendation: home, hasAction: action) == (embedded && home && action))
+                }
+            }
+        }
+    }
     @Test func preferenceHidesOnlyGuestLikedSection() {
         for login in [false, true] {
             for show in [false, true] {
@@ -52,11 +62,14 @@ struct CodaEmbeddedUIRegressionTests {
     @Test func stationaryHoldReturnsOnceAndNeverBecomesTapOrDrag() {
         var touch = CodaTabBarInteraction()
         touch.begin(index: 0)
-        #expect(touch.recognizeHold(allowed: true))
-        #expect(!touch.recognizeHold(allowed: true))
+        let firstHold = touch.recognizeHold(allowed: true)
+        #expect(firstHold)
+        let repeatedHold = touch.recognizeHold(allowed: true)
+        #expect(!repeatedHold)
         touch.move(horizontal: 150, vertical: 0)
         #expect(!touch.isDragging)
-        #expect(touch.finish(index: 1, inside: true) == .none)
+        let finish = touch.finish(index: 1, inside: true)
+        #expect(finish == .none)
         #expect(touch.startIndex == nil)
     }
     @Test func slowNineToSeventeenPointDragCanNeverReturnOrTap() {
@@ -64,28 +77,37 @@ struct CodaEmbeddedUIRegressionTests {
             var touch = CodaTabBarInteraction()
             touch.begin(index: 0)
             touch.move(horizontal: distance, vertical: 0)
-            #expect(!touch.recognizeHold(allowed: true))
-            #expect(touch.finish(index: 1, inside: true) == .drag(1))
+            let hold = touch.recognizeHold(allowed: true)
+            #expect(!hold)
+            let finish = touch.finish(index: 1, inside: true)
+            #expect(finish == .drag(1))
         }
     }
     @Test func cancellationDoesNotSwallowTheNextTap() {
         var touch = CodaTabBarInteraction()
         touch.begin(index: 0)
-        #expect(touch.recognizeHold(allowed: true))
+        let hold = touch.recognizeHold(allowed: true)
+        #expect(hold)
         touch.cancel()
         touch.begin(index: 2)
-        #expect(touch.finish(index: 2, inside: true) == .tap(2))
+        let finish = touch.finish(index: 2, inside: true)
+        #expect(finish == .tap(2))
     }
     @Test func outsideAndVerticalMovementDoNotTapOrReturn() {
         var touch = CodaTabBarInteraction()
         touch.begin(index: 0)
-        #expect(touch.finish(index: 0, inside: false) == .none)
+        let outside = touch.finish(index: 0, inside: false)
+        #expect(outside == .none)
         touch.begin(index: 0)
         touch.move(horizontal: 0, vertical: 9)
-        #expect(!touch.recognizeHold(allowed: true))
-        #expect(touch.finish(index: 0, inside: true) == .none)
+        let verticalHold = touch.recognizeHold(allowed: true)
+        #expect(!verticalHold)
+        let verticalFinish = touch.finish(index: 0, inside: true)
+        #expect(verticalFinish == .none)
         touch.begin(index: 1)
-        #expect(!touch.recognizeHold(allowed: false))
-        #expect(touch.finish(index: 1, inside: true) == .tap(1))
+        let disallowedHold = touch.recognizeHold(allowed: false)
+        #expect(!disallowedHold)
+        let finish = touch.finish(index: 1, inside: true)
+        #expect(finish == .tap(1))
     }
 }

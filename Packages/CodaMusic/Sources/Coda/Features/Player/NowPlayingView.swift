@@ -62,6 +62,9 @@ struct NowPlayingView: View {
     @State private var portraitControlsHeight: CGFloat = 320
     @State private var portraitControlsActivityGeneration = 0
     @State private var portraitControlsInteractionActive = false
+    // iPhone portrait uses a local, swipe-only read-only lyric page. Do not
+    // inherit the legacy single-column button's persisted choice.
+    @State private var portraitFullLyricsPresented = false
     @Environment(\.accessibilityVoiceOverEnabled) private var playerVoiceOverEnabled
     #endif
     @State private var showLyricsOnMobile = false
@@ -78,7 +81,13 @@ struct NowPlayingView: View {
                     .ignoresSafeArea()
                 #endif
                 #if os(iOS)
-                if !backgroundIsExternal || (usesPortraitLayout(size: geo.size) && portraitShowsArtwork) { backdrop }
+                if usesPortraitLayout(size: geo.size), UIDevice.current.userInterfaceIdiom == .phone,
+                   geo.size.height > geo.size.width {
+                    NowPlayingSoftMistBackground(artwork: artworkImage,
+                        artworkKey: player.currentTrack?.album.picUrl, colors: colors)
+                } else if !backgroundIsExternal || (usesPortraitLayout(size: geo.size) && portraitShowsArtwork) {
+                    backdrop
+                }
                 #else
                 backdrop
                 #endif
@@ -131,10 +140,20 @@ struct NowPlayingView: View {
         }
         #endif
         .onChange(of: player.currentTrack?.id) { _ in
+            #if os(iOS)
+            // Resident reset also covers a track change while rotated out of
+            // the phone portrait subtree.
+            portraitFullLyricsPresented = false
+            #endif
             if playlistTrack != nil { playlistTrack = player.currentTrack }
             iPadComments = iPadPanel == .comments
                 ? player.currentTrack.map { SongCommentsStore(trackID: $0.id) } : nil
         }
+        #if os(iOS)
+        .onChange(of: player.showNowPlaying) { shown in
+            if !shown { portraitFullLyricsPresented = false }
+        }
+        #endif
         #if os(macOS)
         .onExitCommand {
             close()
@@ -339,8 +358,135 @@ struct NowPlayingView: View {
     #if os(iOS)
     /// Shared vertical composition for iPad portrait and iPhone. The viewport
     /// reuses the landscape panels while the controls keep their own space.
+    @ViewBuilder
     private func portraitLayout(size: CGSize) -> some View {
-        portraitControlsAutoHide(portraitLayoutContent(size: size), showsArtwork: portraitShowsArtwork)
+        if UIDevice.current.userInterfaceIdiom == .phone && size.height > size.width {
+            phonePortraitLyricsLayout(size: size)
+        } else {
+            portraitControlsAutoHide(portraitLayoutContent(size: size), showsArtwork: portraitShowsArtwork)
+        }
+    }
+
+    /// A bounded content region, not a page-wide gesture. Header links, the
+    /// scrubber and transport controls remain outside the swipe observer.
+    private func phonePortraitLyricsLayout(size: CGSize) -> some View {
+        let width = max(0, min(size.width - 48, 440))
+        let controlsWidth = portraitControlsWidth(availableWidth: width, phonePoster: true)
+        let showsLyrics = iPadPanel == .lyrics && playlistTrack == nil
+        return VStack(spacing: 12) {
+            if showsLyrics && portraitFullLyricsPresented {
+                singleColumnTrackHeader(width: controlsWidth)
+            }
+            Group {
+                if showsLyrics && portraitFullLyricsPresented {
+                    NowPlayingPortraitLyrics(lyrics: player.lyrics, cursor: player.lyricsCursor,
+                        expanded: true, loadFailed: player.lyricsLoadFailed)
+                        .id(player.currentTrack?.id)
+                        .transition(.opacity)
+                        .background {
+                            PortraitLyricsSwipeObserver(expanded: true) {
+                                setPhonePortraitLyricsPresented($0)
+                            }
+                        }
+                        .accessibilityAction(named: Text("收回完整歌词")) {
+                            setPhonePortraitLyricsPresented(false)
+                        }
+                } else if showsLyrics {
+                    phonePortraitArtworkPoster(width: width)
+                        .transition(.opacity)
+                        .background {
+                            PortraitLyricsSwipeObserver(expanded: false) {
+                                setPhonePortraitLyricsPresented($0)
+                            }
+                        }
+                        .accessibilityAction(named: Text("显示完整歌词")) {
+                            setPhonePortraitLyricsPresented(true)
+                        }
+                } else {
+                    playbackContentPanel
+                        .environment(\.nowPlayingFlushPanelEdges, true)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            if showsLyrics {
+                HStack {
+                    if portraitFullLyricsPresented {
+                        Text("向左滑动收回歌词")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.65))
+                            .accessibilityIdentifier("portraitLyricsSwipeHint")
+                    } else {
+                        Color.clear.frame(height: 44).accessibilityHidden(true)
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        playlistTrack = nil
+                        iPadPanel = .queue
+                        registerPortraitControlsActivity()
+                    } label: {
+                        Image(systemName: "list.bullet").frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .accessibilityLabel("待播清单")
+                }
+                .frame(width: controlsWidth)
+            }
+            // Keep one seek/transport/volume tree mounted beneath either page.
+            portraitPlaybackControls(width: width, allowsArtwork: true, metrics: posterControlMetrics, phonePoster: true)
+        }
+        .frame(width: width)
+        .padding(.top, 34)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { registerPortraitControlsActivity() }
+        .onChange(of: player.currentTrack?.id) { _ in
+            portraitFullLyricsPresented = false
+            registerPortraitControlsActivity()
+        }
+        .onChange(of: player.showNowPlaying) { shown in
+            if !shown { portraitFullLyricsPresented = false }
+            registerPortraitControlsActivity()
+        }
+        .accessibilityIdentifier("portraitNowPlaying")
+    }
+
+    /// Album cover, track identity and a non-button swipe affordance. Keeping
+    /// the cover passive prevents the legacy album link from winning a swipe.
+    private func phonePortraitArtworkPoster(width: CGFloat) -> some View {
+        GeometryReader { available in
+            let layout = NowPlayingPosterLayout(width: width, height: available.size.height,
+                                                controlsHeight: 0,
+                                                accessibilityText: posterDynamicTypeSize.isAccessibilitySize)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 12)
+                    NowPlayingPortraitArtwork(image: artworkImage, isArtworkPage: true, isPlaying: player.isPlaying)
+                        .frame(width: layout.coverSide, height: layout.coverSide)
+                        .accessibilityLabel(player.currentTrack.map { "专辑封面：\($0.album.name)" } ?? "专辑封面")
+                        .padding(.bottom, 24)
+                    portraitPosterMetadata.frame(width: layout.contentWidth)
+                    Text("向右滑动查看完整歌词")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.64))
+                        .padding(.top, 24)
+                        .accessibilityIdentifier("portraitLyricsSwipeHint")
+                    Spacer(minLength: 12)
+                }
+                .frame(width: width)
+                .frame(minHeight: layout.viewportHeight)
+            }
+            .frame(width: width, height: layout.viewportHeight)
+            .accessibilityIdentifier("softMistArtworkPoster")
+        }
+    }
+
+    private func setPhonePortraitLyricsPresented(_ presented: Bool) {
+        withAnimation(PortraitPageMotion.opacity(reduced: reducePlayerMotion)) {
+            portraitFullLyricsPresented = presented
+        }
+        registerPortraitControlsActivity()
     }
 
     private var portraitShowsArtwork: Bool {
@@ -636,16 +782,19 @@ struct NowPlayingView: View {
         iPadPanel == .lyrics && playlistTrack == nil && player.lyrics?.isEmpty == false
     }
 
-    private func portraitControlsWidth(availableWidth: CGFloat) -> CGFloat {
-        if portraitShowsArtwork { return max(0, min(availableWidth - 16, 440)) }
+    private func portraitControlsWidth(availableWidth: CGFloat, phonePoster: Bool = false) -> CGFloat {
+        if phonePoster || portraitShowsArtwork {
+            return max(0, min(availableWidth - 16, 440))
+        }
         return UIDevice.current.userInterfaceIdiom == .pad
             ? max(0, availableWidth) : max(0, min(availableWidth - 16, 420))
     }
 
     private func portraitPlaybackControls(width: CGFloat, allowsArtwork: Bool,
-                                          metrics: ControlMetrics? = nil) -> some View {
-        let controlsWidth = portraitControlsWidth(availableWidth: width)
-        let showsPoster = allowsArtwork && portraitShowsArtwork
+                                          metrics: ControlMetrics? = nil, phonePoster: Bool = false) -> some View {
+        let controlsWidth = portraitControlsWidth(availableWidth: width, phonePoster: phonePoster)
+        let showsPoster = allowsArtwork && iPadPanel == .lyrics && playlistTrack == nil
+            && (phonePoster || portraitShowsArtwork)
         return playbackControls(width: controlsWidth, animated: true,
                                 metrics: metrics ?? (showsPoster ? posterControlMetrics : nil)) {
             if showsPoster {
@@ -791,6 +940,16 @@ struct NowPlayingView: View {
                     iPadPanel = iPadPanel == .queue && playlistTrack == nil ? .lyrics : .queue
                     playlistTrack = nil
                 }
+                if allowsArtwork && UIDevice.current.userInterfaceIdiom == .phone {
+                    // Returning from queue/comments restores only the preview;
+                    // the old single-column lyric toggle is not an entry point.
+                    iPadPanelButton("chevron.backward", label: "返回播放", selected: false) {
+                        portraitFullLyricsPresented = false
+                        playlistTrack = nil
+                        iPadPanel = .lyrics
+                        registerPortraitControlsActivity()
+                    }
+                } else {
                 iPadPanelButton("quote.bubble", label: "歌词",
                                 selected: iPadPanel == .lyrics && playlistTrack == nil
                                     && (!allowsArtwork || showsSingleColumnLyrics)) {
@@ -812,6 +971,7 @@ struct NowPlayingView: View {
                     && (!allowsArtwork || showsSingleColumnLyrics) ? "已显示" : "已收起")
                 .accessibilityHint(allowsArtwork ? "切换歌词与大封面" : "显示歌词")
                 .accessibilityIdentifier("portraitLyricsToggle")
+                }
             }
             .fixedSize(horizontal: true, vertical: false)
         }

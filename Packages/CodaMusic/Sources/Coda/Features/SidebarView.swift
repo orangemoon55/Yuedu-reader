@@ -399,22 +399,19 @@ struct SidebarView: View {
                 .foregroundStyle(Theme.accent)
         }
         return Group {
-            if CodaEmbeddedUIPolicy.canReturnToBookshelf(embedded: ReadccHostBridge.isEmbedded,
-                                                       recommendation: item == .home,
-                                                       hasAction: returnToBookshelf != nil) {
-                content.highPriorityGesture(
-                    LongPressGesture(minimumDuration: 0.7, maximumDistance: 7)
-                        .exclusively(before: TapGesture())
-                        .onEnded { result in
-                            switch result {
-                            case .first(true): returnToBookshelf?()
-                            case .second: selection = .home
-                            default: break
-                            }
-                        })
-                    .accessibilityHint("长按返回书架")
-                    .accessibilityAction(named: Text("返回书架")) { returnToBookshelf?() }
-                    .accessibilityIdentifier("codaTab.home")
+            if CodaEmbeddedUIPolicy.showsReadingContextMenu(embedded: ReadccHostBridge.isEmbedded,
+                                                             recommendation: item == .home,
+                                                             hasAction: returnToBookshelf != nil) {
+                content.contextMenu {
+                    Button {
+                        returnToBookshelf?()
+                    } label: {
+                        Label("阅读", systemImage: "book")
+                    }
+                    .accessibilityIdentifier("codaTab.reading")
+                }
+                .accessibilityHint("长按显示阅读操作")
+                .accessibilityIdentifier("codaTab.home")
             } else { content }
         }
     }

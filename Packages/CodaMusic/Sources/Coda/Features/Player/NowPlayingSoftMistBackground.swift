@@ -1,8 +1,9 @@
 import SwiftUI
 
 #if os(iOS)
-/// Independent cover-derived poster surface. No display link, audio-reactive
-/// shader, bundled reference assets or network work belongs to this view.
+/// Independent cover-derived portrait surface, shared by preview/full lyrics.
+/// No display link, audio-reactive shader, bundled reference assets or network
+/// work belongs to this view. A bottom scrim keeps persistent controls readable.
 struct NowPlayingSoftMistBackground: View {
     let artwork: PlatformImage?
     let artworkKey: String?
@@ -25,17 +26,17 @@ struct NowPlayingSoftMistBackground: View {
                             .scaledToFill()
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .scaleEffect(1.18)
-                            .blur(radius: 62, opaque: true)
-                            .saturation(0.72)
-                            .opacity(0.72)
+                            .blur(radius: 72, opaque: true)
+                            .saturation(0.64)
+                            .opacity(0.66)
                             .id(artworkKey)
                             .transition(.opacity)
                     }
-                    Color.black.opacity(contrast == .increased ? 0.50 : 0.26)
+                    Color.black.opacity(contrast == .increased ? 0.56 : 0.30)
                     LinearGradient(stops: [
-                        .init(color: .black.opacity(0.02), location: 0),
-                        .init(color: .black.opacity(0.12), location: 0.40),
-                        .init(color: .black.opacity(0.62), location: 1)
+                        .init(color: .black.opacity(0.08), location: 0),
+                        .init(color: .black.opacity(0.20), location: 0.40),
+                        .init(color: .black.opacity(0.78), location: 1)
                     ], startPoint: .top, endPoint: .bottom)
                 }
             }

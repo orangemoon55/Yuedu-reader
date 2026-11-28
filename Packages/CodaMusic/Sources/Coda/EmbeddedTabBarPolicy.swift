@@ -27,13 +27,17 @@ public enum CodaEmbeddedUIPolicy {
     public static func showsLikedRecommendations(loggedIn: Bool, showLoginRequired: Bool) -> Bool {
         loggedIn || showLoginRequired
     }
+    /// Availability only: showing the native menu must not execute the host callback.
+    public static func showsReadingContextMenu(embedded: Bool, recommendation: Bool, hasAction: Bool) -> Bool {
+        canReturnToBookshelf(embedded: embedded, recommendation: recommendation, hasAction: hasAction)
+    }
     public static func canReturnToBookshelf(embedded: Bool, recommendation: Bool, hasAction: Bool) -> Bool {
         embedded && recommendation && hasAction
     }
 }
 
-/// One contact owns tap, horizontal slide and hold. No Button/gesture race and
-/// no suppression flag can survive the end or cancellation of a contact.
+/// Value-only legacy contact model retained for movement/cancellation regressions.
+/// GlassTabBar no longer uses it: native Buttons and context menus own embedded contacts.
 struct CodaTabBarInteraction: Equatable {
     enum Outcome: Equatable { case none, tap(Int), drag(Int) }
     private(set) var startIndex: Int?

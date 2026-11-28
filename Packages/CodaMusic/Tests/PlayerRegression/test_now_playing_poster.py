@@ -62,10 +62,62 @@ class PlayerPosterRegression(unittest.TestCase):
         old, new = functions(self.old), functions(self.view)
         for name in ["volumeControl", "phoneRegularLayout", "iPadRegularLayout", "desktopRegularLayout",
                      "landscapeLyricsColumn", "togglePlaylistPanel", "cancelScrubbing", "scrubber",
-                     "timeLabels", "loadArtwork", "applyArtwork", "portraitUtilityBar"]:
+                     "timeLabels", "loadArtwork", "applyArtwork"]:
             with self.subTest(function=name):
                 self.assertIn(name, old)
                 self.assertEqual(old[name], new[name])
+
+        # The requested phone-only return-to-preview branch is verified below;
+        # remove only that exact new branch before the original byte equality.
+        name = "portraitUtilityBar"
+        self.assertEqual(len(new[name]), len(old[name]))
+        self.assertEqual(len(new[name]), 1, "No extra overload may escape the exact branch comparison")
+        current = new[name][0]
+        phone_branch = '''if allowsArtwork && UIDevice.current.userInterfaceIdiom == .phone {
+                    // Returning from queue/comments restores only the preview;
+                    // the old single-column lyric toggle is not an entry point.
+                    iPadPanelButton("chevron.backward", label: "返回播放", selected: false) {
+                        portraitFullLyricsPresented = false
+                        playlistTrack = nil
+                        iPadPanel = .lyrics
+                        registerPortraitControlsActivity()
+                    }
+                } else {
+                '''
+        self.assertEqual(current.count(phone_branch), 1)
+        self.assertEqual(current.count('\n                }\n            }\n            .fixedSize'), 1)
+        restored = current.replace(phone_branch, '', 1).replace(
+            '\n                }\n            }\n            .fixedSize', '\n            }\n            .fixedSize', 1)
+        self.assertEqual(old[name], [restored], "All original non-phone branches and controls must remain exact")
+
+    def test_phone_full_lyrics_are_swipe_only_and_read_only(self):
+        phone = self.view.split('private func phonePortraitLyricsLayout', 1)[1].split(
+            'private var portraitShowsArtwork', 1)[0]
+        self.assertIn('== .phone && size.height > size.width', self.view)
+        for forbidden in ['portraitLyricsToggle', 'AppleMusicLyricsColumn', 'onTapGesture', 'portraitControlsAutoHide']:
+            self.assertNotIn(forbidden, phone)
+        for token in ['PortraitLyricsSwipeObserver(expanded: false)', 'PortraitLyricsSwipeObserver(expanded: true)',
+                      '向右滑动查看完整歌词', 'portraitFullLyricsPresented = false']:
+            self.assertIn(token, phone)
+        self.assertEqual(phone.count('portraitPlaybackControls('), 1)
+        self.assertIn('phonePoster: true', phone)
+        self.assertIn('.accessibilityAction(named: Text("显示完整歌词"))', phone)
+        resident = self.view.split('private var hasLyricsColumn', 1)[0]
+        reset = resident.split('.onChange(of: player.currentTrack?.id)', 1)[1]
+        self.assertIn('portraitFullLyricsPresented = false', reset.split('#if os(macOS)', 1)[0])
+        self.assertIn('.onChange(of: player.showNowPlaying)', resident)
+        self.assertIn('phonePoster: Bool = false', self.view)
+        self.assertIn('if phonePoster || portraitShowsArtwork', self.view)
+        self.assertEqual(self.view.count('phonePoster: true'), 2)
+        source = read(PLAYER / 'NowPlayingPortraitArtwork.swift')
+        readonly = source.split('struct NowPlayingPortraitLyrics:', 1)[1].split('struct PortraitLyricsSwipeObserver:', 1)[0]
+        for forbidden in ['onTapGesture', 'Button(', 'player.seek', 'cursor.seek']:
+            self.assertNotIn(forbidden, readonly)
+        self.assertIn('.task(id: expanded)', readonly)
+        self.assertNotIn('.onChange(of: cursor', readonly)
+        for token in ['pan.cancelsTouchesInView = false', 'bounds.contains(touch.location(in: self))',
+                      'shouldRecognizeSimultaneouslyWith', 'view.detach()']:
+            self.assertIn(token, source)
 
     def test_native_engine_and_shared_integrations_are_not_replaced(self):
         paths = [PLAYER / name for name in ["PlayerBar.swift", "AppleMusicLyricsColumn.swift",

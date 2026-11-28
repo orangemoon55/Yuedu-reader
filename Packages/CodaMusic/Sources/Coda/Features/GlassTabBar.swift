@@ -65,16 +65,9 @@ struct GlassTabBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.returnToBookshelf) private var returnToBookshelf
     @Environment(\.readccTabBarMetrics) private var embeddedMetrics
-    @GestureState private var contactActive = false
-    @State private var interaction = CodaTabBarInteraction()
-    @State private var holdTask: Task<Void, Never>?
 
     private var hostMetrics: ReadccTabBarMetrics? {
         ReadccHostBridge.isEmbedded ? (embeddedMetrics ?? ReadccTabBarMetrics()) : nil
-    }
-    private var canReturn: Bool {
-        CodaEmbeddedUIPolicy.canReturnToBookshelf(embedded: ReadccHostBridge.isEmbedded,
-                                                recommendation: true, hasAction: returnToBookshelf != nil)
     }
 
     /// Finger x (in content space) while actively dragging the pill; nil at rest.
@@ -97,27 +90,29 @@ struct GlassTabBar: View {
                 ? min(max(dragX ?? restX, cellW / 2), geo.size.width - cellW / 2)
                 : restX
 
-            ZStack(alignment: .leading) {
+            let controls = ZStack(alignment: .leading) {
                 selectionPill
                     .frame(width: cellW - 8, height: contentHeight)
                     .position(x: pillX, y: geo.size.height / 2)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
 
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     tabControl(item)
-                    .accessibilityIdentifier("codaTab.\(item.tab)")
-                    .accessibilityAddTraits(selection == item.tab ? .isSelected : [])
-                    .frame(width: cellW, height: contentHeight)
-                    .position(x: cellW * (CGFloat(index) + 0.5), y: contentHeight / 2)
+                        .frame(width: cellW, height: contentHeight)
+                        .position(x: cellW * (CGFloat(index) + 0.5), y: contentHeight / 2)
                 }
             }
             .contentShape(Rectangle())
-            .gesture(contactGesture(cellW: cellW, count: count, bounds: geo.size),
-                     including: ReadccHostBridge.isEmbedded ? .all : .none)
-            .simultaneousGesture(standaloneDragGesture(cellW: cellW, count: count),
-                                 including: ReadccHostBridge.isEmbedded ? .none : .all)
-            .onChange(of: contactActive) { active in if !active { cancelContact() } }
-            .onDisappear { cancelContact() }
+
+            if ReadccHostBridge.isEmbedded {
+                // No parent contact recognizer: Button and contextMenu own their touches.
+                controls
+            } else {
+                controls.simultaneousGesture(standaloneDragGesture(cellW: cellW, count: count))
+            }
         }
+        .onDisappear { dragX = nil; isDragging = false }
         .frame(height: contentHeight)
         .padding(innerInset)
         .blocksTouchPassThrough(in: Capsule())
@@ -126,19 +121,30 @@ struct GlassTabBar: View {
 
     @ViewBuilder
     private func tabControl(_ item: Item) -> some View {
-        if ReadccHostBridge.isEmbedded {
-            itemLabel(item)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text(item.title))
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { activate(item.tab) }
-                .modifier(RecommendationReturnAccessibility(
-                    enabled: item.tab == .home && canReturn,
-                    action: { returnToBookshelf?() }))
+        if CodaEmbeddedUIPolicy.showsReadingContextMenu(embedded: ReadccHostBridge.isEmbedded,
+                                                       recommendation: item.tab == .home,
+                                                       hasAction: returnToBookshelf != nil) {
+            tabButton(item)
+                .contextMenu {
+                    Button {
+                        returnToBookshelf?()
+                    } label: {
+                        Label("阅读", systemImage: "book")
+                    }
+                    .accessibilityIdentifier("codaTab.reading")
+                }
+                .accessibilityHint("长按显示阅读操作")
         } else {
-            Button { activate(item.tab) } label: { itemLabel(item) }
-                .buttonStyle(.plain)
+            tabButton(item)
         }
+    }
+
+    private func tabButton(_ item: Item) -> some View {
+        Button { activate(item.tab) } label: { itemLabel(item) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(item.title))
+            .accessibilityIdentifier("codaTab.\(item.tab)")
+            .accessibilityAddTraits(selection == item.tab ? .isSelected : [])
     }
 
     private func standaloneDragGesture(cellW: CGFloat, count: Int) -> some Gesture {
@@ -196,65 +202,6 @@ struct GlassTabBar: View {
         else { withAnimation(settle) { selection = tab } }
     }
 
-    private func cancelContact() {
-        holdTask?.cancel(); holdTask = nil
-        interaction.cancel()
-        dragX = nil; isDragging = false
-    }
-
-    private func contactGesture(cellW: CGFloat, count: Int, bounds: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .updating($contactActive) { _, active, _ in active = true }
-            .onChanged { value in
-                guard !items.isEmpty else { return }
-                if interaction.startIndex == nil {
-                    let start = index(for: value.startLocation.x, cellW: cellW, count: count)
-                    interaction.begin(index: start)
-                    if items[start].tab == .home && canReturn {
-                        holdTask?.cancel()
-                        holdTask = Task { @MainActor in
-                            do { try await Task.sleep(nanoseconds: 700_000_000) }
-                            catch { return }
-                            guard !Task.isCancelled, interaction.recognizeHold(allowed: canReturn) else { return }
-                            dragX = nil; isDragging = false
-                            returnToBookshelf?()
-                        }
-                    }
-                }
-                interaction.move(horizontal: value.translation.width, vertical: value.translation.height)
-                if interaction.moved { holdTask?.cancel(); holdTask = nil }
-                guard interaction.isDragging, !interaction.holdRecognized else { return }
-                isDragging = true
-                dragX = value.location.x
-                let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
-                if tab != selection { selection = tab }
-            }
-            .onEnded { value in
-                guard !items.isEmpty else { cancelContact(); return }
-                interaction.move(horizontal: value.translation.width, vertical: value.translation.height)
-                let end = index(for: value.location.x, cellW: cellW, count: count)
-                let inside = value.location.x >= 0 && value.location.x <= bounds.width
-                    && value.location.y >= 0 && value.location.y <= bounds.height
-                let outcome = interaction.finish(index: end, inside: inside)
-                cancelContact()
-                switch outcome {
-                case .tap(let index): activate(items[index].tab)
-                case .drag(let index): withAnimation(settle) { selection = items[index].tab }
-                case .none: break
-                }
-            }
-    }
-}
-
-private struct RecommendationReturnAccessibility: ViewModifier {
-    let enabled: Bool
-    let action: () -> Void
-    @ViewBuilder func body(content: Content) -> some View {
-        if enabled {
-            content.accessibilityHint("长按返回书架")
-                .accessibilityAction(named: Text("返回书架"), action)
-        } else { content }
-    }
 }
 
 /// Shared floating glass material for the tab capsule.
