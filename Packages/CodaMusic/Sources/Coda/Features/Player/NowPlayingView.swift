@@ -6,11 +6,6 @@ import SwiftUI
 // NowPlayingMotionSpec.swift and the shared overlay in NowPlayingView.swift.
 // See ThirdPartyNotices/MeloX.md for iOS 16 and renderer adaptations.
 private enum PortraitPageMotion {
-    static func artwork(reduced: Bool) -> Animation? {
-        guard !reduced else { return nil }
-        return smooth(duration: 0.30)
-    }
-
     static func lyricsSpatial(reduced: Bool) -> Animation? {
         guard !reduced else { return nil }
         return .interpolatingSpring(mass: 1, stiffness: 350, damping: 40, initialVelocity: 0)
@@ -55,14 +50,14 @@ struct NowPlayingView: View {
     @ScaledMetric(relativeTo: .title3) private var iPadMetadataHeight: CGFloat = 56
     #if os(iOS)
     // Restore the last explicit lyric/artwork choice across presentations and launches.
-    @AppStorage("player.singleColumnLyricsVisible") private var showsSingleColumnLyrics = true
+    @AppStorage("player.singleColumnLyricsVisible") private var showsSingleColumnLyrics = false
+    @Environment(\.dynamicTypeSize) private var posterDynamicTypeSize
     @State private var loadedArtwork = CachedImageState()
     @State private var loadedArtworkColors: ArtworkColors = .fallback
     @State private var portraitLyricsEntrancePresented = true
     @State private var portraitLyricsEntranceStartedAt: ContinuousClock.Instant?
     @State private var portraitLyricsExitStartedAt: ContinuousClock.Instant?
     @State private var portraitPreparedLyricsTrackID: Int?
-    @State private var portraitArtworkPageFrame: CGRect = .zero
     @State private var portraitControlsCollapsed = false
     @State private var portraitControlsHeight: CGFloat = 320
     @State private var portraitControlsActivityGeneration = 0
@@ -83,7 +78,7 @@ struct NowPlayingView: View {
                     .ignoresSafeArea()
                 #endif
                 #if os(iOS)
-                if !backgroundIsExternal { backdrop }
+                if !backgroundIsExternal || (usesPortraitLayout(size: geo.size) && portraitShowsArtwork) { backdrop }
                 #else
                 backdrop
                 #endif
@@ -233,17 +228,18 @@ struct NowPlayingView: View {
     /// Slider dimensions shared across devices; the iPhone also uses this spacing rhythm.
     private struct ControlMetrics {
         let scale: CGFloat
+        var isPoster = false
         init(width: CGFloat) { scale = min(1.15, max(0.95, width / 356)) }
-        init(scale: CGFloat) { self.scale = scale }
+        init(scale: CGFloat, isPoster: Bool = false) { self.scale = scale; self.isPoster = isPoster }
         var progressHeight: CGFloat { 52 * scale }
-        var progressGap: CGFloat { 24 * scale }
+        var progressGap: CGFloat { (isPoster ? 12 : 24) * scale }
         var transportHeight: CGFloat { 82 * scale }
-        var transportGap: CGFloat { 36 * scale }
+        var transportGap: CGFloat { (isPoster ? 12 : 36) * scale }
         var volumeHeight: CGFloat { 32 * scale }
-        var utilityGap: CGFloat { 4 * scale }
+        var utilityGap: CGFloat { (isPoster ? 10 : 4) * scale }
         var utilityHeight: CGFloat { 50 * scale }
         var trackHeight: CGFloat { 7 * scale }
-        var totalHeight: CGFloat { 280 * scale }
+        var totalHeight: CGFloat { (isPoster ? 250 : 280) * scale }
     }
 
     private func playbackControls<Utility: View>(width: CGFloat, animated: Bool = false,
@@ -253,11 +249,20 @@ struct NowPlayingView: View {
         return VStack(spacing: 0) {
             controlLayer(animated: animated, offset: 180, showDelay: 0.025, hideDelay: 0.075) {
                 NowPlayingScrubber(showsRemainingTime: true, rowHeight: metrics.progressHeight,
-                                   trackHeight: metrics.trackHeight)
+                                   trackHeight: metrics.trackHeight,
+                                   tint: metrics.isPoster ? Color(red: 0.98, green: 0.77, blue: 0.49) : .white)
             }
             Color.clear.frame(height: metrics.progressGap)
             controlLayer(animated: animated, offset: 165, showDelay: 0.05, hideDelay: 0.05) {
+                #if os(iOS)
+                if metrics.isPoster {
+                    NowPlayingPosterTransportControls(width: width, height: metrics.transportHeight)
+                } else {
+                    PlayerTransportControls(width: width, height: metrics.transportHeight)
+                }
+                #else
                 PlayerTransportControls(width: width, height: metrics.transportHeight)
+                #endif
             }
             Color.clear.frame(height: metrics.transportGap)
             controlLayer(animated: animated, offset: 148, showDelay: 0.075, hideDelay: 0.025) {
@@ -467,27 +472,6 @@ struct NowPlayingView: View {
             .accessibilityHidden(showsFullControls && portraitControlsCollapsed)
         }
         .frame(width: width)
-        .background {
-            portraitArtworkContent(width: width, measuresArtwork: true)
-                .hidden()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-        .overlay {
-            portraitSharedArtwork(expanded: showsArtwork, headerLeading: (width - contentWidth) / 2)
-        }
-        .coordinateSpace(name: "NowPlayingPortraitArtwork")
-        .onPreferenceChange(PortraitArtworkFrameKey.self) { frame in
-            guard frame.width > 0, frame.height > 0,
-                  frame.minX.isFinite, frame.minY.isFinite,
-                  frame.width.isFinite, frame.height.isFinite else { return }
-            if abs(frame.minX - portraitArtworkPageFrame.minX) > 0.5
-                || abs(frame.minY - portraitArtworkPageFrame.minY) > 0.5
-                || abs(frame.width - portraitArtworkPageFrame.width) > 0.5
-                || abs(frame.height - portraitArtworkPageFrame.height) > 0.5 {
-                portraitArtworkPageFrame = frame
-            }
-        }
         .padding(.top, UIDevice.current.userInterfaceIdiom == .pad ? 64 : 34)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -524,64 +508,105 @@ struct NowPlayingView: View {
 
     /// Artwork occupies the space above metadata and the same playback controls.
     /// Its size follows the available height so small phones keep every control reachable.
-    private func portraitArtworkContent(width: CGFloat, measuresArtwork: Bool = false) -> some View {
+    /// Only this artwork layer is replaced. The resident lyric/panel tree and
+    /// one live controls tree remain above/below it, including their bindings.
+    private func portraitArtworkContent(width: CGFloat) -> some View {
         GeometryReader { available in
             let controlsWidth = portraitControlsWidth(availableWidth: width)
-            let metrics = ControlMetrics(width: controlsWidth)
+            let metrics = posterControlMetrics
             let controlsHeight = metrics.progressHeight + metrics.progressGap
                 + metrics.transportHeight + metrics.transportGap
                 + metrics.volumeHeight + metrics.utilityGap + metrics.utilityHeight
-            let coverSize = max(0, min(width,
-                available.size.height - controlsHeight - iPadMetadataHeight - 32))
-            VStack(spacing: 0) {
-                portraitArtworkLink(size: coverSize, expanded: true)
-                    .background {
-                        if measuresArtwork {
-                            GeometryReader { geometry in
-                                Color.clear.preference(key: PortraitArtworkFrameKey.self,
-                                    value: geometry.frame(in: .named("NowPlayingPortraitArtwork")))
-                            }
+            let layout = NowPlayingPosterLayout(width: controlsWidth, height: available.size.height,
+                                                controlsHeight: controlsHeight,
+                                                accessibilityText: posterDynamicTypeSize.isAccessibilitySize)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 12)
+                    portraitArtworkLink(size: layout.coverSide, expanded: true)
+                        .padding(.bottom, 24)
+                    portraitPosterMetadata
+                        .frame(width: layout.contentWidth)
+                    HStack(spacing: 20) {
+                        Button(action: showPortraitLyrics) {
+                            Label(posterLyricsTitle, systemImage: "quote.bubble")
+                                .font(.subheadline.weight(.medium))
+                                .frame(minHeight: 44)
                         }
+                        .accessibilityHint("显示当前歌曲的完整歌词")
+                        .accessibilityIdentifier("portraitLyricsToggle")
+                        Button {
+                            playlistTrack = nil
+                            iPadPanel = .queue
+                            registerPortraitControlsActivity()
+                        } label: {
+                            Image(systemName: "list.bullet")
+                                .font(.title3)
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("待播清单")
+                        .accessibilityIdentifier("posterQueueButton")
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                NowPlayingTrackInfoRow(
-                    onOpenDestination: openTrackDestination,
-                    largeMetadata: true,
-                    usesPortraitHeaderSizing: true,
-                    movesMoreToDeviceRow: true,
-                    showsMoreBesideFavorite: true,
-                    metadataWidth: max(0, controlsWidth - portraitMetadataActionsWidth),
-                    onAddToPlaylist: togglePlaylistPanel
-                )
-                .frame(width: controlsWidth, alignment: .leading)
-                .frame(minHeight: iPadMetadataHeight)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
-                Color.clear.frame(height: controlsHeight)
-                    .accessibilityHidden(true)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.78))
+                    .padding(.top, 16)
+                    Spacer(minLength: 12)
+                }
+                .frame(width: width)
+                .frame(minHeight: layout.viewportHeight)
             }
-            .frame(width: width, height: available.size.height)
+            .frame(width: width, height: layout.viewportHeight)
+            .accessibilityIdentifier("softMistArtworkPoster")
         }
     }
 
-    /// One overlay travels between the stationary artwork-page measurement and
-    /// the 72pt song header; page details animate independently underneath it.
-    @ViewBuilder
-    private func portraitSharedArtwork(expanded: Bool, headerLeading: CGFloat) -> some View {
-        if portraitArtworkPageFrame.width > 0 {
-            let frame = expanded ? portraitArtworkPageFrame : CGRect(x: headerLeading, y: 0, width: 72, height: 72)
-            let pausedInset = expanded && !player.isPlaying ? frame.width * (1 - 0.74) / 2 : 0
-            let displayedFrame = frame.insetBy(dx: pausedInset, dy: pausedInset)
-            NowPlayingPortraitArtwork(image: artworkImage, isArtworkPage: expanded, isPlaying: player.isPlaying)
-                .frame(width: displayedFrame.width, height: displayedFrame.height)
-                .position(x: displayedFrame.midX, y: displayedFrame.midY)
-                .animation(PortraitPageMotion.artwork(reduced: reducePlayerMotion), value: expanded)
-                .animation(reducePlayerMotion ? nil : PortraitPageMotion.smooth(duration: 0.48),
-                           value: player.isPlaying)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+    private var posterLyricsTitle: String {
+        guard player.currentTrack != nil else { return "歌词" }
+        if player.lyrics == nil { return "歌词加载中…" }
+        if player.lyrics?.isInstrumental == true { return "纯音乐 · 查看歌词" }
+        return player.lyrics?.isEmpty == false ? "查看完整歌词" : "暂无歌词"
+    }
+
+    private var posterMusicSource: String {
+        if let source = player.unblockSource, !source.isEmpty { return source }
+        let provider = MusicProvider(rawValue: player.currentTrack?.platformSong?.source.rawValue ?? "") ?? .netease
+        return provider.name
+    }
+
+    private var portraitPosterMetadata: some View {
+        VStack(spacing: 10) {
+            Text(player.currentTrack?.name ?? "尚未播放")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("posterTrackTitle")
+            if let track = player.currentTrack {
+                NowPlayingTrackDestinationLinks(track: track, font: .body.weight(.medium),
+                                                color: .white.opacity(0.72),
+                                                onOpenDestination: openTrackDestination)
+                Text(posterMusicSource)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color(white: 0.20)))
+                    .accessibilityLabel("音乐来源：\(posterMusicSource)")
+                    .accessibilityIdentifier("posterMusicSource")
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("immersiveTrackMetadata")
+    }
+
+    private func showPortraitLyrics() {
+        showsSingleColumnLyrics = true
+        playlistTrack = nil
+        iPadPanel = .lyrics
+        registerPortraitControlsActivity()
     }
 
     @ViewBuilder
@@ -590,39 +615,44 @@ struct NowPlayingView: View {
             Button {
                 openTrackDestination(.album(album.id))
             } label: {
-                Color.clear
+                NowPlayingPortraitArtwork(image: artworkImage, isArtworkPage: expanded, isPlaying: player.isPlaying)
                     .frame(width: size, height: size)
-                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: expanded ? 1000 : 12, style: .continuous))
             }
             .buttonStyle(.plain)
             .noFocusRing()
             .accessibilityLabel("打开专辑：\(album.name)")
             .accessibilityIdentifier(expanded ? "portraitLargeArtwork" : "portraitSmallArtwork")
         } else {
-            Color.clear.frame(width: size, height: size)
-                .allowsHitTesting(false)
+            NowPlayingPortraitArtwork(image: artworkImage, isArtworkPage: expanded, isPlaying: player.isPlaying)
+                .frame(width: size, height: size)
                 .accessibilityHidden(true)
         }
     }
 
-    private var portraitMetadataActionsWidth: CGFloat {
-        player.currentTrack == nil ? 0 : 132 + 3 * Theme.Spacing.small
-    }
+    private var posterControlMetrics: ControlMetrics { ControlMetrics(scale: 1, isPoster: true) }
 
     private var usesPortraitLyricsInterface: Bool {
         iPadPanel == .lyrics && playlistTrack == nil && player.lyrics?.isEmpty == false
     }
 
     private func portraitControlsWidth(availableWidth: CGFloat) -> CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad
+        if portraitShowsArtwork { return max(0, min(availableWidth - 16, 440)) }
+        return UIDevice.current.userInterfaceIdiom == .pad
             ? max(0, availableWidth) : max(0, min(availableWidth - 16, 420))
     }
 
     private func portraitPlaybackControls(width: CGFloat, allowsArtwork: Bool,
                                           metrics: ControlMetrics? = nil) -> some View {
         let controlsWidth = portraitControlsWidth(availableWidth: width)
-        return playbackControls(width: controlsWidth, animated: true, metrics: metrics) {
-            portraitUtilityBar(allowsArtwork: allowsArtwork)
+        let showsPoster = allowsArtwork && portraitShowsArtwork
+        return playbackControls(width: controlsWidth, animated: true,
+                                metrics: metrics ?? (showsPoster ? posterControlMetrics : nil)) {
+            if showsPoster {
+                portraitPosterUtilityBar
+            } else {
+                portraitUtilityBar(allowsArtwork: allowsArtwork)
+            }
         }
         .background {
             Color.clear.contentShape(Rectangle()).onTapGesture {}
@@ -696,6 +726,51 @@ struct NowPlayingView: View {
                 portraitControlsCollapsed = true
             }
         }
+    }
+
+    private var portraitPosterUtilityBar: some View {
+        HStack(spacing: 0) {
+            iPadPanelButton("text.bubble", label: "歌曲评论", selected: false) {
+                if let track = player.currentTrack {
+                    iPadComments = SongCommentsStore(trackID: track.id)
+                    iPadPanel = .comments
+                    playlistTrack = nil
+                    registerPortraitControlsActivity()
+                }
+            }
+            .disabled(player.currentTrack == nil)
+            .background(NowPlayingPosterControlDisc())
+            Spacer(minLength: 0)
+            if let track = player.currentTrack {
+                PlayerFavoriteButton(trackID: track.id, size: 22, side: 44, tint: .white)
+                    .background(NowPlayingPosterControlDisc())
+                    .accessibilityIdentifier("immersiveFavoriteButton")
+                Spacer(minLength: 0)
+                Menu {
+                    TrackDownloadActions(track: track, showsIcons: true)
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+                .background(NowPlayingPosterControlDisc())
+                .disabled(!account.provider.supportsDownloads || track.platformSong?.kugouCloud != nil)
+                .accessibilityLabel("下载操作")
+                .accessibilityIdentifier("posterDownloadMenu")
+                Spacer(minLength: 0)
+            }
+            CurrentPlaybackDeviceButton(showsName: false)
+                .background(NowPlayingPosterControlDisc())
+            if let track = player.currentTrack {
+                Spacer(minLength: 0)
+                NowPlayingTrackMoreMenu(track: track, onAddToPlaylist: togglePlaylistPanel,
+                                        onOpenDestination: openTrackDestination)
+                    .background(NowPlayingPosterControlDisc())
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("posterUtilityControls")
     }
 
     private func portraitUtilityBar(allowsArtwork: Bool) -> some View {
@@ -1557,6 +1632,14 @@ struct NowPlayingTrackMoreMenu: View {
         SleepTimerMenu(player: player)
         #endif
         Divider()
+        #if os(iOS)
+        if let onAddToPlaylist {
+            Button(action: onAddToPlaylist) {
+                Label("添加到歌单", systemImage: "text.badge.plus")
+            }
+            .accessibilityIdentifier("posterAddToPlaylist")
+        }
+        #endif
         if track.album.id != 0 {
             let album = track.album
             Button { onOpenDestination?(.album(album.id)) } label: {

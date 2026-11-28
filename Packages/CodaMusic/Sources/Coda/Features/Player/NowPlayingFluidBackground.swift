@@ -32,6 +32,9 @@ struct NowPlayingFluidBackground: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        NowPlayingSoftMistBackground(artwork: artwork, artworkKey: artworkKey, colors: colors)
+        #else
         FluidBackgroundSurface(artwork: artwork, artworkKey: artworkKey, colors: colors,
             running: playing && !reduceMotion && allowsAnimation && visibility.isVisible,
             dark: colorScheme == .dark, increasedContrast: contrast == .increased,
@@ -39,6 +42,7 @@ struct NowPlayingFluidBackground: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             .ignoresSafeArea()
+        #endif
     }
 }
 

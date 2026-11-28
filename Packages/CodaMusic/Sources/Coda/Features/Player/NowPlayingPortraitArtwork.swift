@@ -4,77 +4,35 @@
 import SwiftUI
 
 #if os(iOS)
-/// Portrait artwork backed by the already-loaded cover image.
+/// Independently implemented, steady circular artwork for the mist poster.
+/// The compact lyric header keeps its rounded-square shape. No fabricated
+/// rotation or playback-driven bounce is used; pausing never hides the cover.
 struct NowPlayingPortraitArtwork: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     let image: PlatformImage?
     let isArtworkPage: Bool
     let isPlaying: Bool
 
-    @State private var bounceScale: CGFloat = 1
-
     var body: some View {
         ZStack {
-            Rectangle().fill(.white.opacity(0.06))
-                .overlay {
-                    if image == nil {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 48, weight: .light))
-                            .foregroundStyle(.white.opacity(0.3))
-                    }
-                }
+            Color(white: 0.15)
             if let image {
                 Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "music.note")
+                    .font(.system(size: isArtworkPage ? 48 : 24, weight: .light))
+                    .foregroundStyle(.white.opacity(0.55))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .scaleEffect(bounceScale)
-        .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, y: shadowOffset)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: isPlaying)
-        .task(id: shouldBounce) { await animateBounce() }
-        .onChange(of: reduceMotion) { reduced in
-            if reduced { resetBounce() }
+        .clipShape(RoundedRectangle(cornerRadius: isArtworkPage ? 1000 : 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: isArtworkPage ? 1000 : 12, style: .continuous)
+                .strokeBorder(.white.opacity(isArtworkPage ? 0.14 : 0), lineWidth: 1)
         }
-    }
-
-    private var shouldBounce: Bool { isArtworkPage && isPlaying && !reduceMotion }
-    private var shadowOpacity: Double { isArtworkPage ? (isPlaying ? 0.34 : 0.18) : 0 }
-    private var shadowRadius: CGFloat { isArtworkPage ? (isPlaying ? 26 : 14) : 0 }
-    private var shadowOffset: CGFloat { isArtworkPage ? (isPlaying ? 15 : 8) : 0 }
-
-    private func resetBounce() {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { bounceScale = 1 }
-    }
-
-    private func animateBounce() async {
-        resetBounce()
-        guard shouldBounce else { return }
-        await Task.yield()
-        guard !Task.isCancelled else { return }
-        withAnimation(.easeOut(duration: 0.17)) { bounceScale = 1.055 }
-        do { try await Task.sleep(for: .milliseconds(170)) }
-        catch { return }
-        guard !Task.isCancelled else { return }
-        if #available(iOS 17, *) {
-            withAnimation(.spring(duration: 0.42, bounce: 0.24)) { bounceScale = 1 }
-        } else {
-            // iOS 16 has no duration/bounce spring API.
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.76)) { bounceScale = 1 }
-        }
-    }
-}
-
-struct PortraitArtworkFrameKey: PreferenceKey {
-    static let defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        let next = nextValue()
-        if next.width > 0, next.height > 0 { value = next }
+        .shadow(color: .black.opacity(isArtworkPage ? 0.24 : 0),
+                radius: isArtworkPage ? 24 : 0, y: isArtworkPage ? 12 : 0)
     }
 }
 

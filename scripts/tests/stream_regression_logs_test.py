@@ -240,6 +240,10 @@ class ScriptIntegrationTests(unittest.TestCase):
             "  '-only-testing:yuedu appTests/CodaAggregateSongSearchModelFixtureTests',\n"
             "  '-only-testing:yuedu appTests/CodaExplicitNetEaseSearchTransportFixtureTests',\n"
             "  '-only-testing:yuedu appTests/CodaSearchInteractionPolicyTests',\n"
+            "  '-only-testing:yuedu appTests/CodaSearchPlaybackCoordinatorTests',\n"
+            "  '-only-testing:yuedu appTests/CodaEmbeddedUIRegressionTests',\n"
+            "  '-only-testing:yuedu appTests/NowPlayingPosterLayoutTests',\n"
+            "  '-only-testing:yuedu appTests/FloatingRootTabBarTests',\n"
             "  '-only-testing:yuedu appTests/MediaHubInteractionTests',\n"
             "  '-only-testing:yuedu appTests/SourceImportPlanTests',\n"
             "  '-only-testing:yuedu appTests/MediaTabMenuTests',\n"
@@ -336,14 +340,26 @@ class ScriptIntegrationTests(unittest.TestCase):
         ready = self.root / "active-test"
         proc = subprocess.Popen(["bash", "scripts/test_qingyun_regressions.sh"], cwd=self.root,
                                 env={**self.env, "FAKE_WAIT": "1", "FAKE_READY": str(ready)},
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=True)
+        def reap_cancelled_fixture():
+            if proc.poll() is None:
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate(timeout=5)
+        self.addCleanup(reap_cancelled_fixture)
         eventually(ready.exists)
         output = self.root / "trollstore-output"
         eventually(lambda: (output / "regressions.log").exists())
         self.assertIsNone(proc.poll())
         proc.send_signal(sig)
-        out, err = proc.communicate(timeout=12)
+        try:
+            # Same finite budget as the other contended iSH cleanup tests;
+            # retain exact 130/143, diagnostics, log and private-cleanup assertions.
+            out, err = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            out, err = proc.communicate(timeout=5)
+            self.fail(("cancellation fixture exceeded bounded 30s cleanup", out, err))
         self.assertEqual(proc.returncode, code, (out, err))
         self.assertIn("synthetic-ipad-evidence", (output / "media51-ipad-test.log").read_text())
         self.assertEqual((output / "media51-exit-status.txt").read_text(),

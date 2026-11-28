@@ -5,10 +5,19 @@ struct HomeDiscoverySections: View {
     /// Song-row slots sit above the toplists; playlist and radio shelves stay below.
     let songRows: Bool
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
     @Environment(\.openDestination) private var openDestination
 
+    private var visibleSlots: [HomeDiscoverySlot] {
+        account.provider.homeDiscoverySlots.filter { slot in
+            slot.showsSongRows == songRows
+                && (account.isLoggedIn || settings.showLoginRequiredRecommendations
+                    || !slot.requiresLogin(on: account.provider))
+        }
+    }
+
     var body: some View {
-        ForEach(account.provider.homeDiscoverySlots.filter { $0.showsSongRows == songRows }, id: \.self) { slot in
+        ForEach(visibleSlots, id: \.self) { slot in
             VStack(alignment: .leading, spacing: 0) {
                 SectionHeader(title: LocalizedStringKey(slot.title), action: {
                     openDestination(.homeRecommendation(.discovery(slot)))

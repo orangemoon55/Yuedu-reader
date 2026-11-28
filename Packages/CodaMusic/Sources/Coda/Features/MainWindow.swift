@@ -1,12 +1,14 @@
 import SwiftUI
 
 struct MainWindow: View {
+    @ObservedObject private var searchLifecycle = MusicAccountManager.shared.searchSessionLifecycle
     private let externalPath: Binding<[Destination]>?
 #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     @State private var destinationAfterPlayerDismissal: Destination?
 #endif
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.readccTabBarMetrics) private var embeddedTabBarMetrics
     #if os(iOS)
     @Environment(\.nowPlayingTransitionNamespace) private var compactPlayerNamespace
     @Environment(\.iPadChrome) private var iPadChrome
@@ -15,7 +17,6 @@ struct MainWindow: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.returnToReadcc) private var returnToReadcc
-    @State private var showEmbeddedHostSettings = false
     @State private var showEmbeddedHostSync = false
     // App-switcher snapshots can temporarily propose a compact size class.
     // Letting the split view adapt then destroys the entire detail subtree.
@@ -217,6 +218,8 @@ struct MainWindow: View {
             await account.bootstrap()
         }
         .onChange(of: account.sessionRevision) { _ in
+            if selection == .search,
+               searchLifecycle.preservesRoute(for: MusicAccountManager.shared.searchSessionIdentity) { return }
             path = []
             if selection != .settings { selection = .home }
         }
@@ -311,7 +314,8 @@ struct MainWindow: View {
 
     private var compactBottomChromeHeight: CGFloat {
         let metrics = Theme.Layout.FloatingChrome.self
-        return metrics.fullChromeClearance - metrics.extraPadding
+        let tabHeight = embeddedTabBarMetrics?.height ?? metrics.tabBarHeight
+        return metrics.miniPlayerHeight + metrics.barSpacing + tabHeight + metrics.bottomMargin
     }
 
     private var compactInterface: some View {
@@ -369,7 +373,7 @@ struct MainWindow: View {
                 .modifier(NowPlayingZoomSourceReporter())
                 #endif
             GlassTabBar(items: IOSTab.barItems, selection: compactTab, onReselect: { _ in path = [] })
-            .frame(height: Theme.Layout.FloatingChrome.tabBarHeight)
+            .frame(height: embeddedTabBarMetrics?.height ?? Theme.Layout.FloatingChrome.tabBarHeight)
             .padding(.horizontal, Theme.Layout.FloatingChrome.horizontalMargin)
         }
         .padding(.bottom, Theme.Layout.FloatingChrome.bottomMargin)
@@ -583,46 +587,19 @@ struct MainWindow: View {
             if embeddedIPadHostChrome {
                 ToolbarItemGroup(placement: .primaryAction) {
                     if !compactLibraryVisible && selection == .home && path.isEmpty {
-                        Button { showEmbeddedHostSettings = true } label: {
-                            Image(systemName: "gearshape")
-                        }
-                        .accessibilityLabel("设置")
-                        .accessibilityIdentifier("codaHost.settings")
+                        HomeProviderQuickSwitch()
+                            .environmentObject(account)
                     }
 
-                    if account.provider == .netease,
-                       (compactLibraryVisible && path.isEmpty || selection == .home && path.isEmpty) {
+                    if account.provider == .netease, compactLibraryVisible && path.isEmpty {
                         Button { showEmbeddedHostSync = true } label: {
                             Image(systemName: "arrow.triangle.2.circlepath")
                         }
                         .accessibilityLabel("同步")
                         .accessibilityIdentifier("codaHost.sync")
                     }
-
-                    if let returnToReadcc {
-                        Button(action: returnToReadcc) {
-                            Image(systemName: "book")
-                        }
-                        .accessibilityLabel("返回阅读")
-                        .accessibilityIdentifier("mediaHub.close")
-                    }
                 }
             }
-        }
-        .sheet(isPresented: $showEmbeddedHostSettings) {
-            NavigationStack {
-                SettingsView()
-                    .navigationTitle("设置")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("完成") { showEmbeddedHostSettings = false }
-                        }
-                    }
-            }
-            .environment(\.openDestination, { destination in
-                showEmbeddedHostSettings = false
-                openDestination(destination)
-            })
         }
         .sheet(isPresented: $showEmbeddedHostSync) {
             NavigationStack {
@@ -998,11 +975,19 @@ struct ToastOverlay: ViewModifier {
 
 /// The same page content can be the initial root or a native navigation destination.
 struct SidebarDestinationView: View {
+    @ObservedObject private var searchLifecycle = MusicAccountManager.shared.searchSessionLifecycle
     let item: SidebarItem
     var searchFocusRequested: Binding<Bool> = .constant(false)
     var onPlaylistDeleted: (() -> Void)? = nil
     @EnvironmentObject private var account: AccountStore
     @Environment(\.openLogin) private var openLogin
+
+    init(item: SidebarItem, searchFocusRequested: Binding<Bool> = .constant(false),
+         onPlaylistDeleted: (() -> Void)? = nil) {
+        self.item = item
+        self.searchFocusRequested = searchFocusRequested
+        self.onPlaylistDeleted = onPlaylistDeleted
+    }
 
     @ViewBuilder
     var body: some View {
@@ -1020,7 +1005,8 @@ struct SidebarDestinationView: View {
                 .navigationTitle("设置")
         case .search:
             // 探索 (search plus the 精选 shelves) lives in the detail column on both Mac and iPad.
-            SearchView(query: "", focusRequested: searchFocusRequested).id(account.sessionRevision)
+            SearchView(query: "", focusRequested: searchFocusRequested)
+                .id(searchLifecycle.presentationID(for: MusicAccountManager.shared.searchSessionIdentity))
         case .likedSongs:
             if let playlist = account.likedSongsPlaylist {
                 PlaylistDetailView(playlistID: playlist.id, isLikedList: true)

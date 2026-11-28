@@ -299,7 +299,10 @@ struct SearchView: View {
     @EnvironmentObject private var account: AccountStore
     @Environment(\.openDestination) private var openDestination
 
-    init(query: String, focusRequested: Binding<Bool> = .constant(false)) {
+    private let isActive: Bool
+
+    init(query: String, focusRequested: Binding<Bool> = .constant(false), isActive: Bool = true) {
+        self.isActive = isActive
         _focusRequested = focusRequested
         let cards = SearchViewModel(query: query)
         cards.tab = .songs
@@ -336,7 +339,15 @@ struct SearchView: View {
             cancelProviderSwitch()
             if !supportsCategory(model.tab) { model.tab = .songs }
         }
+        .onChange(of: model.tab) { _ in cancelProviderSwitch() }
         .onDisappear { cancelProviderSwitch() }
+        .onChange(of: isActive) { active in if !active { cancelProviderSwitch() } }
+        .onChange(of: musicAccounts.searchActivationGeneration) { _ in cancelProviderSwitch() }
+        .onChange(of: musicAccounts.searchSessionIdentity) { session in
+            if !musicAccounts.searchSessionLifecycle.owns(providerSwitchGeneration, session: session) {
+                cancelProviderSwitch()
+            }
+        }
         .onChange(of: account.provider) { provider in
             model.setProvider(provider)
             if !supportsCategory(model.tab) { model.tab = .songs }
@@ -418,13 +429,7 @@ struct SearchView: View {
                 .accessibilityIdentifier("codaSearch.settings")
             }
             .padding(.horizontal, phoneLayout.contentInset)
-            providerChips
-            Text(scopeExplanation)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, phoneLayout.contentInset)
-                .accessibilityIdentifier("codaSearch.scopeExplanation")
+            providerMenu
         }
         .pageHeaderTopPadding(8)
         .padding(.bottom, Theme.Spacing.control)
@@ -434,38 +439,55 @@ struct SearchView: View {
 
     private var scopeExplanation: String {
         if scope == .all {
-            return "全源聚合仅搜索单曲；歌手、专辑、歌单请先选择当前音乐平台。"
+            return "全源聚合仅搜索单曲；其他分类仅搜索当前平台。"
         }
         if !isCurrentProviderScope {
-            return "\(scope.title) · 单曲搜索。其他分类需先在「账户」切换到此平台；当前平台为\(account.provider.name)。"
+            return "单曲搜索 · 当前平台为\(account.provider.name)"
         }
-        return "\(scope.title) · \(model.tab.rawValue)；歌手、专辑、歌单仅在当前音乐平台搜索。"
+        return "\(model.tab.rawValue) · 当前平台"
     }
 
-    private var providerChips: some View {
-        ScenePreservingScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.small) {
+    private var providerMenu: some View {
+        HStack(spacing: Theme.Spacing.small) {
+            Menu {
                 ForEach(CodaSongSearchScope.allCases) { item in
                     Button {
                         searchFocused = false
                         scope = item
                     } label: {
-                        Text(item.title)
-                            .font(Theme.Typography.secondary.weight(.medium))
-                            .padding(.horizontal, Theme.Spacing.small)
-                            .frame(minHeight: 36)
+                        if scope == item {
+                            Label(item.title, systemImage: "checkmark")
+                        } else {
+                            Text(item.title)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .tint(scope == item ? Theme.accent : Color.secondary)
-                    .accessibilityAddTraits(scope == item ? .isSelected : [])
-                    .accessibilityValue(scope == item ? "已选择" : "未选择")
                     .accessibilityIdentifier("codaSearch.scope.\(item.rawValue)")
                 }
+            } label: {
+                HStack(spacing: Theme.Spacing.tight) {
+                    Text(scope.title)
+                        .font(Theme.Typography.secondary.weight(.medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .padding(.horizontal, Theme.Spacing.small)
+                .frame(minHeight: 34)
             }
-            .padding(.horizontal, phoneLayout.contentInset)
+            .buttonStyle(.bordered)
+            .accessibilityLabel("搜索平台：\(scope.title)")
+            .accessibilityValue(scope.title)
+            .accessibilityIdentifier("codaSearch.scopeMenu")
+
+            Text(scopeExplanation)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityIdentifier("codaSearch.scopeExplanation")
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, phoneLayout.contentInset)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("codaSearch.providerChips")
     }
 
     private var inlineSearchField: some View {
@@ -633,12 +655,13 @@ struct SearchView: View {
     }
 
     private func providerPanelState(_ provider: MusicProvider) -> String {
-        if !matchesActiveProvider(provider) { return "需切换平台" }
-        if isUIFixture { return "本地测试禁止操作" }
-        return canUseProviderPanel(provider) ? "当前平台可操作" : "平台切换中"
+        if isUIFixture { return "本地测试禁止播放" }
+        if switchingProvider == provider || musicAccounts.isSwitching { return "切换并播放中" }
+        return matchesActiveProvider(provider) ? "当前平台" : "点按歌曲即可切换平台并播放"
     }
 
     private func cancelProviderSwitch() {
+        musicAccounts.searchSessionLifecycle.cancel(providerSwitchGeneration)
         providerSwitchGeneration = UUID()
         providerSwitchTask?.cancel()
         providerSwitchTask = nil
@@ -647,19 +670,28 @@ struct SearchView: View {
         switchFailureMessage = nil
     }
 
-    private func selectSearchProvider(_ provider: MusicProvider) {
-        // Registration is metadata only, not permission to play/write against
-        // another account. Only this explicit user action activates a platform.
-        guard !isUIFixture, !matchesActiveProvider(provider) else { return }
-        cancelProviderSwitch()
-        guard !musicAccounts.isSwitching else {
+    private func playSearchTrack(_ track: Track, source provider: MusicProvider) {
+        guard isActive, !isUIFixture, loadedSongRequest == resultKey else { return }
+        guard !musicAccounts.isSwitching, switchingProvider == nil else {
             switchFailureProvider = provider
-            switchFailureMessage = "其他平台切换正在进行，请稍后重试。"
+            switchFailureMessage = "平台正在切换，请稍后重试。"
             return
         }
+        let registeredTracks = songModel.tracks
+        guard CodaSearchInteractionPolicy.canPlaySearchTrack(
+            track, source: provider, registeredTracks: registeredTracks,
+            fixture: false, switching: false
+        ) else { return }
+
+        cancelProviderSwitch()
         let request = UUID()
-        let session = account.sessionRevision
-        let ticket = MusicProviderContext.shared.ticket
+        let query = keyword
+        let selectedScope = scope
+        let initialSession = account.sessionRevision
+        let initialActivationGeneration = musicAccounts.searchActivationGeneration
+        let initialAccountProvider = account.provider
+        let initialTicket = MusicProviderContext.shared.ticket
+        let initialAuthenticationKey = MusicProviderContext.shared.authenticationKey
         providerSwitchGeneration = request
         switchingProvider = provider
         providerSwitchTask = Task { @MainActor in
@@ -670,62 +702,62 @@ struct SearchView: View {
                 }
             }
             do {
-                try Task.checkCancellation()
-                guard providerSwitchGeneration == request, account.sessionRevision == session,
-                      MusicProviderContext.shared.ticket == ticket else { return }
-                try await musicAccounts.selectProvider(provider)
-                try Task.checkCancellation()
-                guard providerSwitchGeneration == request else { return }
-                guard matchesActiveProvider(provider) else {
-                    switchFailureProvider = provider
-                    switchFailureMessage = "平台未完成切换，请重试。"
-                    return
-                }
-                // No automatic play, next-track insertion or queue edits here.
-                // Normal activation owns its reset; the session key reloads the
-                // existing query/scope, including all four aggregate sources.
+                _ = try await CodaSearchPlaybackCoordinator.play(
+                    track: track,
+                    source: provider,
+                    registeredTracks: registeredTracks,
+                    fixture: false,
+                    switching: false,
+                    isCurrent: {
+                        isActive && providerSwitchGeneration == request && keyword == query
+                            && scope == selectedScope && model.tab == .songs && !isUIFixture
+                    },
+                    initialContextIsCurrent: {
+                        account.sessionRevision == initialSession
+                            && musicAccounts.searchActivationGeneration == initialActivationGeneration
+                            && account.provider == initialAccountProvider
+                            && MusicProviderContext.shared.ticket == initialTicket
+                            && MusicProviderContext.shared.authenticationKey == initialAuthenticationKey
+                    },
+                    activeProvider: {
+                        guard !musicAccounts.isSwitching,
+                              account.provider == MusicProviderContext.shared.current else { return nil }
+                        return account.provider
+                    },
+                    contextTicket: { MusicProviderContext.shared.ticket },
+                    selectProvider: { target in
+                        try await musicAccounts.selectProviderForSearch(target, request: request)
+                    },
+                    startPlayback: { selectedTrack in
+                        // Use only the tapped source row; never create a mixed queue.
+                        // Keep the original NetEase Track untouched (platformSong == nil).
+                        PlayerService.shared.play(tracks: [selectedTrack], source: .none,
+                                                  startAt: selectedTrack)
+                    }
+                )
             } catch is CancellationError {
-                // Cancellation cannot roll back a normal activation which has
-                // already committed; it only discards this UI continuation.
+                // Account lifecycle may complete after cancellation; stale taps never play.
             } catch {
                 guard !Task.isCancelled, providerSwitchGeneration == request else { return }
                 switchFailureProvider = provider
-                switchFailureMessage = "切换平台失败，请重试或在账户中检查登录状态。"
+                switchFailureMessage = "平台切换或播放失败，请重试。"
             }
         }
     }
 
     @ViewBuilder
-    private func providerInteractionNotice(_ provider: MusicProvider) -> some View {
-        if !matchesActiveProvider(provider) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-                Text("切换到此平台后播放、收藏和查看详情")
-                    .font(Theme.Typography.secondary)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("codaSearch.readOnlyHint.\(provider.rawValue)")
-                Text("切换平台将停止当前播放并重置当前队列。")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
-                Button("切换到\(provider.name)") { selectSearchProvider(provider) }
-                    .buttonStyle(.bordered)
-                    .disabled(isUIFixture || switchingProvider != nil || musicAccounts.isSwitching)
-                    .accessibilityIdentifier("codaSearch.switchProvider.\(provider.rawValue)")
-                if switchingProvider == provider {
-                    ProgressView("正在切换平台…")
-                        .accessibilityIdentifier("codaSearch.switchProgress.\(provider.rawValue)")
-                }
-                if switchFailureProvider == provider, let message = switchFailureMessage {
-                    Text(message)
-                        .font(Theme.Typography.secondary)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("codaSearch.switchFailure.\(provider.rawValue)")
-                }
-            }
-            .padding(.horizontal, phoneLayout.contentInset)
-        } else if musicAccounts.isSwitching || switchingProvider != nil {
-            ProgressView("正在更新平台账号…")
+    private func providerPlaybackStatus(_ provider: MusicProvider) -> some View {
+        if switchingProvider == provider {
+            ProgressView(matchesActiveProvider(provider) ? "正在播放…" : "正在切换平台并播放…")
                 .padding(.horizontal, phoneLayout.contentInset)
                 .accessibilityIdentifier("codaSearch.switchProgress.\(provider.rawValue)")
+        }
+        if switchFailureProvider == provider, let message = switchFailureMessage {
+            Text(message)
+                .font(Theme.Typography.secondary)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, phoneLayout.contentInset)
+                .accessibilityIdentifier("codaSearch.switchFailure.\(provider.rawValue)")
         }
     }
 
@@ -765,17 +797,21 @@ struct SearchView: View {
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("codaSearch.providerLabel.\(provider.rawValue)")
                             .padding(.horizontal, phoneLayout.contentInset)
-                        providerInteractionNotice(provider)
-                        // The entire native subtree must be inert for foreign
-                        // sources: row taps, artwork, menus, likes, playlists,
-                        // downloads and artist/album navigation all assume the
-                        // active provider. Never weaken the player guards.
-                        MusicTrackPanel(tracks: tracks, trailingText: { _ in provider.name })
-                            .disabled(!canUseProviderPanel(provider))
-                            .allowsHitTesting(canUseProviderPanel(provider))
-                            .accessibilityElement(children: .contain)
-                            .accessibilityValue(providerPanelState(provider))
-                            .accessibilityIdentifier("codaSearch.results.\(provider.rawValue)")
+                        providerPlaybackStatus(provider)
+                        // Preserve the native Coda panel. Only foreign-source
+                        // write/detail actions are suppressed; tapping a genuine
+                        // search row enters the guarded switch-then-play path.
+                        MusicTrackPanel(
+                            tracks: tracks,
+                            allowsProviderActions: canUseProviderPanel(provider),
+                            onTrackPlay: { playSearchTrack($0, source: provider) },
+                            sourceBadgeText: provider.name
+                        )
+                        .disabled(isUIFixture)
+                        .allowsHitTesting(!isUIFixture)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityValue(providerPanelState(provider))
+                        .accessibilityIdentifier("codaSearch.results.\(provider.rawValue)")
                     }
                 }
             }

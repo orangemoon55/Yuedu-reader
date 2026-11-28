@@ -6,6 +6,7 @@ import CoreGraphics
 
 struct QishuiHomeView: View {
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var scenes = PanelResource<[QishuiListeningScene]>([])
     @StateObject private var charts = HomeViewModel.qishui
@@ -18,7 +19,9 @@ struct QishuiHomeView: View {
     var body: some View {
         ScenePreservingScrollView {
             LazyVStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
-                listeningModes
+                if account.isLoggedIn || settings.showLoginRequiredRecommendations {
+                    listeningModes
+                }
                 HomeToplistsSection(model: charts, contentInset: layout.contentInset)
                 HomeDiscoverySections(model: discovery, songRows: false)
                 PlayerClearanceSpacer()

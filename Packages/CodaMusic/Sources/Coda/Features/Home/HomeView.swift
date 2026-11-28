@@ -217,10 +217,6 @@ final class HomeViewModel: ObservableObject {
 
 struct HomeView: View {
     @EnvironmentObject private var account: AccountStore
-    @Environment(\.openDestination) private var openDestination
-    @Environment(\.returnToReadcc) private var returnToReadcc
-    @State private var showNativeSettings = false
-    @State private var showNativeSync = false
 
     private var usesIPadSidebarOwner: Bool {
         #if os(iOS)
@@ -240,62 +236,58 @@ struct HomeView: View {
             }
         }
         .toolbar {
-            // The iPad's split-view detail owns its native toolbar in MainWindow;
-            // this page-level toolbar is for the compact iPhone tab stack only.
+            // Keep the recommendation header focused on a real platform switch.
             if ReadccHostBridge.isEmbedded && !usesIPadSidebarOwner {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button { showNativeSettings = true } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("设置")
-                    .accessibilityIdentifier("codaHost.settings")
-
-                    if account.provider == .netease {
-                        Button { showNativeSync = true } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                        }
-                        .accessibilityLabel("同步")
-                        .accessibilityIdentifier("codaHost.sync")
-                    }
-
-                    if let returnToReadcc {
-                        Button(action: returnToReadcc) {
-                            Image(systemName: "book")
-                        }
-                        .accessibilityLabel("返回阅读")
-                        .accessibilityIdentifier("mediaHub.close")
-                    }
-                }
+                ToolbarItem(placement: .primaryAction) { HomeProviderQuickSwitch() }
             }
         }
-        .sheet(isPresented: $showNativeSettings) {
-            NavigationStack {
-                SettingsView()
-                    .navigationTitle("设置")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("完成") { showNativeSettings = false }
-                        }
+    }
+}
+
+/// A real account/provider activation, presented as a compact Coda glass control.
+struct HomeProviderQuickSwitch: View {
+    @EnvironmentObject private var account: AccountStore
+    @ObservedObject private var manager = MusicAccountManager.shared
+
+    var body: some View {
+        Menu {
+            ForEach(MusicProvider.allCases) { provider in
+                Button { select(provider) } label: {
+                    if provider == account.provider {
+                        Label(provider.name, systemImage: "checkmark")
+                    } else {
+                        Text(provider.name)
                     }
+                }
+                .disabled(manager.isSwitching || provider == account.provider)
+                .accessibilityIdentifier("home.provider.\(provider.rawValue)")
             }
-            .environment(\.openDestination, { destination in
-                showNativeSettings = false
-                openDestination(destination)
-            })
+        } label: {
+            HStack(spacing: 6) {
+                Text(account.provider.name)
+                    .font(Theme.Typography.secondary.weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .padding(.horizontal, 13)
+            .frame(minHeight: 38)
+            .modifier(LegacyTabSurface())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.7))
         }
-        .sheet(isPresented: $showNativeSync) {
-            NavigationStack {
-                Form {
-                    SyncSettingsSection()
-                }
-                .pageFormStyle()
-                .nativeTabBarScrolling()
-                .navigationTitle("同步")
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("完成") { showNativeSync = false }
-                    }
-                }
+        .buttonStyle(.plain)
+        .accessibilityLabel("切换音乐平台，当前\(account.provider.name)")
+        .accessibilityIdentifier("codaHost.providerSwitcher")
+        .disabled(manager.isSwitching)
+    }
+
+    private func select(_ provider: MusicProvider) {
+        guard provider != account.provider, !manager.isSwitching else { return }
+        Task { @MainActor in
+            do {
+                try await manager.selectProvider(provider)
+            } catch {
+                ToastCenter.shared.show(error.localizedDescription)
             }
         }
     }
@@ -307,6 +299,7 @@ private struct StandardHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
     private let player = PlayerService.shared
     @Environment(\.openDestination) private var openDestination
     @StateObject private var model = HomeViewModel.shared
@@ -450,10 +443,12 @@ private struct StandardHomeView: View {
             if showsDailySongRows {
                 dailySongRows.pageHeaderTopPadding(8)
             } else if !account.isLoggedIn, account.provider.supports(.dailySongs), model.radarPlaylists.isEmpty {
-                // Daily picks, radar and FM are all personal; show the way in instead of an empty row.
-                HomeLoginPrompt(message: String(localized: "\(account.provider.dailySongsTitle)、私人推荐等内容需登录后查看"))
-                    .padding(.horizontal, phoneLayout.contentInset)
-                    .pageHeaderTopPadding(8)
+                // Login-gated personal shelves can be hidden without leaving a spacer.
+                if settings.showLoginRequiredRecommendations {
+                    HomeLoginPrompt(message: String(localized: "\(account.provider.dailySongsTitle)、私人推荐等内容需登录后查看"))
+                        .padding(.horizontal, phoneLayout.contentInset)
+                        .pageHeaderTopPadding(8)
+                }
             } else if account.provider == .netease || account.isLoggedIn || !model.radarPlaylists.isEmpty {
                 if model.loadingModules.contains(.features) {
                     featureSkeleton

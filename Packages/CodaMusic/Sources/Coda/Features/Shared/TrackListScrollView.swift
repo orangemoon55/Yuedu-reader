@@ -174,6 +174,9 @@ struct MusicTrackPanel: View {
     var context: PlayContext?
     var showsLikeButton = false
     var showsRowSeparators: Bool? = nil
+    var allowsProviderActions = true
+    var onTrackPlay: ((Track) -> Void)?
+    var sourceBadgeText: String?
     var removableFromPlaylistID: Int?
     var onRemoved: ((Track) -> Void)?
     var recommendationContext: RecommendationContext?
@@ -201,7 +204,9 @@ struct MusicTrackPanel: View {
                       showsLikeButton: showsLikeButton, showsAlbumSubtitle: true,
                       columns: !isCompact && contentWidth >= 700 ? 2 : 1,
                       showsRowSeparators: showsRowSeparators,
-                      source: source, context: context,
+                      source: source,
+                      allowsProviderActions: allowsProviderActions, onTrackPlay: onTrackPlay,
+                      sourceBadgeText: sourceBadgeText, context: context,
                       removableFromPlaylistID: removableFromPlaylistID, onRemoved: onRemoved,
                       recommendationContext: recommendationContext,
                       onRecommendationReduced: onRecommendationReduced,

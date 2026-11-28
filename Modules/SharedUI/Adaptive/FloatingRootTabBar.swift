@@ -6,11 +6,18 @@ import UIKit
 /// under the user's finger. Artwork stays compact; each control keeps a 48pt hit frame.
 struct FloatingRootTabBarLayout: Equatable {
     static let minimumHitSize: CGFloat = 48
+    static let minimumContentHeight: CGFloat = 52
     static let surfacePadding = DSSpacing.xs
     static let topSpacing = DSSpacing.xs
     static let bottomSpacing: CGFloat = 0
-    static let defaultIconSize: CGFloat = 20
+    static let defaultIconSize: CGFloat = 24
     static let compactHeight = DSLayout.minimumTapTarget + surfacePadding * 2
+    static func visibleHeight(iconSize: CGFloat, lineHeight: CGFloat,
+                              hidesLabels: Bool, accessibilityText: Bool) -> CGFloat {
+        let icon = RootTabIconRenderer.sanitizedIconSize(iconSize)
+        let text = hidesLabels ? 0 : lineHeight * (accessibilityText ? 2 : 1) + DSSpacing.xxs
+        return max(minimumContentHeight, icon + text + DSSpacing.xs) + surfacePadding * 2
+    }
     static let maximumItemWidth: CGFloat = 80
     static let threeTabItemWidth: CGFloat = 82
     static let maximumWidth: CGFloat = 560
@@ -81,13 +88,8 @@ struct FloatingRootTabBar: View {
     var hasSearch: Bool { tabs.contains(.search) }
     private var drawnIconSize: CGFloat { RootTabIconRenderer.sanitizedIconSize(iconSize) }
     private var barHeight: CGFloat {
-        let textHeight = hidesLabels || mainTabs.isEmpty ? 0
-            : labelLineHeight * (dynamicTypeSize.isAccessibilitySize ? 2 : 1) + DSSpacing.xxs
-        // Compact only at the default text size. Accessibility labels get two full
-        // scaled lines and a taller capsule instead of shrinking their type or hit area.
-        let contentHeight = max(FloatingRootTabBarLayout.minimumHitSize,
-                                drawnIconSize + textHeight + DSSpacing.xs)
-        return contentHeight + FloatingRootTabBarLayout.surfacePadding * 2
+        FloatingRootTabBarLayout.visibleHeight(iconSize: drawnIconSize, lineHeight: labelLineHeight,
+            hidesLabels: hidesLabels || mainTabs.isEmpty, accessibilityText: dynamicTypeSize.isAccessibilitySize)
     }
 
     var body: some View {

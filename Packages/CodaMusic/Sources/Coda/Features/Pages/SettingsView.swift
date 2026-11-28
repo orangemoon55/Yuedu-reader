@@ -36,6 +36,13 @@ struct SettingsView: View {
         Form {
             Group {
                 MusicAccountsSection(presentation: accountsPresentation)
+                Section("推荐") {
+                    Toggle("显示需登录的推荐", isOn: $settings.showLoginRequiredRecommendations)
+                        .accessibilityIdentifier("settings.showLoginRequiredRecommendations")
+                    Text("关闭后，未登录时隐藏需要账号的推荐模块并自动收紧布局；登录后可用内容不受影响。")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(.secondary)
+                }
                 #if DEBUG
                 TemporarySettingsSection(showOnboarding: { showsOnboardingPreview = true })
                 #endif

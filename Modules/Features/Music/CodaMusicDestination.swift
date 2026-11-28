@@ -5,11 +5,20 @@ import SwiftUI
 struct CodaMusicDestination: View {
     let isLibrary: Bool
     let onClose: () -> Void
+    let onReturnToBookshelf: (() -> Void)?
+    let tabBarIconSize: CGFloat
+    let tabBarHidesLabels: Bool
+    @ScaledMetric(relativeTo: .caption) private var labelLineHeight: CGFloat = 15
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         IOSMainWindow(initialDestination: isLibrary ? .library : .home,
                       onDeclineDisclaimer: onClose,
-                      onReturnToReading: onClose)
+                      onReturnToReading: onClose,
+                      onReturnToBookshelf: onReturnToBookshelf,
+                      embeddedTabBarMetrics: ReadccTabBarMetrics(iconSize: tabBarIconSize,
+                          labelLineHeight: labelLineHeight, showsLabels: !tabBarHidesLabels,
+                          accessibilityText: dynamicTypeSize.isAccessibilitySize))
     }
 }
 

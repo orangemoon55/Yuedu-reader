@@ -146,7 +146,8 @@ enum Theme {
         #endif
 
         enum FloatingChrome {
-            /// Total height of GlassTabBar: 56pt content + 2 * 4pt inset.
+            /// Standalone Coda: 56pt content + 2 * 4pt inset. Embedded chrome
+            /// receives the host's effective metrics through the environment.
             static let tabBarHeight: CGFloat = 64
             /// Total height of legacy mini player bar: 44pt button + 2 * 4pt vertical padding.
             static let miniPlayerHeight: CGFloat = 52

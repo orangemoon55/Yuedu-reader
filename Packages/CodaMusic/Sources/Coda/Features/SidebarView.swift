@@ -9,6 +9,7 @@ enum SidebarLayout {
 }
 
 struct SidebarView: View {
+    @Environment(\.returnToBookshelf) private var returnToBookshelf
     @Binding var selection: SidebarItem
     var onSearchSelected: () -> Void = {}
 
@@ -388,7 +389,7 @@ struct SidebarView: View {
     }
 
     private func row(_ item: SidebarItem, title: LocalizedStringKey, icon: String) -> some View {
-        SidebarRow(title: Text(title), iconSize: 22, isSelected: selection == item, highlight: selectionHighlight) {
+        let content = SidebarRow(title: Text(title), iconSize: 22, isSelected: selection == item, highlight: selectionHighlight) {
             selection = item
             if item == .search { onSearchSelected() }
         } icon: {
@@ -396,6 +397,25 @@ struct SidebarView: View {
                 .resizable()
                 .scaledToFit()
                 .foregroundStyle(Theme.accent)
+        }
+        return Group {
+            if CodaEmbeddedUIPolicy.canReturnToBookshelf(embedded: ReadccHostBridge.isEmbedded,
+                                                       recommendation: item == .home,
+                                                       hasAction: returnToBookshelf != nil) {
+                content.highPriorityGesture(
+                    LongPressGesture(minimumDuration: 0.7, maximumDistance: 7)
+                        .exclusively(before: TapGesture())
+                        .onEnded { result in
+                            switch result {
+                            case .first(true): returnToBookshelf?()
+                            case .second: selection = .home
+                            default: break
+                            }
+                        })
+                    .accessibilityHint("长按返回书架")
+                    .accessibilityAction(named: Text("返回书架")) { returnToBookshelf?() }
+                    .accessibilityIdentifier("codaTab.home")
+            } else { content }
         }
     }
 

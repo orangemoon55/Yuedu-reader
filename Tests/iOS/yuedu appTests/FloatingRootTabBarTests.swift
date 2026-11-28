@@ -1,18 +1,37 @@
 import SwiftUI
 import UIKit
 import XCTest
+@preconcurrency import CodaCore
 @testable import yuedu_app
 
 @MainActor
 final class FloatingRootTabBarTests: XCTestCase {
-    func testDefaultTwentyPointGlyphKeepsExpandedHitTargets() {
-        XCTAssertEqual(FloatingRootTabBarLayout.defaultIconSize, 20)
-        XCTAssertEqual(RootTabIconRenderer.sanitizedIconSize(FloatingRootTabBarLayout.defaultIconSize), 20)
+    func testDefaultTwentyFourPointGlyphKeepsExpandedHitTargets() {
+        XCTAssertEqual(FloatingRootTabBarLayout.defaultIconSize, 24)
+        XCTAssertEqual(RootTabIconRenderer.sanitizedIconSize(FloatingRootTabBarLayout.defaultIconSize), 24)
         let layout = FloatingRootTabBarLayout(availableWidth: 390, mainTabCount: 3, hasSearch: true, height: 64)
         XCTAssertGreaterThanOrEqual(layout.itemWidth, 48)
         XCTAssertGreaterThanOrEqual(layout.touchHeight, 44)
         XCTAssertEqual(layout.searchHitWidth, 64)
         XCTAssertEqual(RootTabIconRenderer.sanitizedIconSize(28), 28)
+    }
+
+    func testMusicMatchesEffectiveShelfMetricsIncludingCustomAndAccessibilitySizes() {
+        for icon: CGFloat in [20, 24, 28, 36] {
+            for line: CGFloat in [15, 22, 36] {
+                for hidden in [false, true] {
+                    for accessibility in [false, true] {
+                        let shelf = FloatingRootTabBarLayout.visibleHeight(iconSize: icon, lineHeight: line,
+                            hidesLabels: hidden, accessibilityText: accessibility)
+                        let music = ReadccTabBarMetrics(iconSize: icon, labelLineHeight: line,
+                            showsLabels: !hidden, accessibilityText: accessibility)
+                        XCTAssertEqual(shelf, music.height)
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(FloatingRootTabBarLayout.visibleHeight(iconSize: 24, lineHeight: 15,
+            hidesLabels: false, accessibilityText: false), 60)
     }
 
     func testWidthsKeepHitTargetsForOneThroughFiveTabs() {

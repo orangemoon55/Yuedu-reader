@@ -22,7 +22,22 @@ private struct ReturnToReadccKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
 
+private struct ReturnToBookshelfKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+private struct ReadccTabBarMetricsKey: EnvironmentKey {
+    static let defaultValue: ReadccTabBarMetrics? = nil
+}
+
 extension EnvironmentValues {
+    var returnToBookshelf: (() -> Void)? {
+        get { self[ReturnToBookshelfKey.self] }
+        set { self[ReturnToBookshelfKey.self] = newValue }
+    }
+    var readccTabBarMetrics: ReadccTabBarMetrics? {
+        get { self[ReadccTabBarMetricsKey.self] }
+        set { self[ReadccTabBarMetricsKey.self] = newValue }
+    }
     var popDestination: (() -> Void)? {
         get { self[PopDestinationKey.self] }
         set { self[PopDestinationKey.self] = newValue }
@@ -440,6 +455,7 @@ final class PlayerChromeState: ObservableObject {
 struct PlayerClearanceSpacer: View {
     @Environment(\.compactWindowLayout) private var compactWindowLayout
     @ObservedObject private var player = PlayerChromeState.shared
+    @Environment(\.readccTabBarMetrics) private var embeddedTabBarMetrics
 
     var body: some View {
         if compactWindowLayout {
@@ -448,6 +464,11 @@ struct PlayerClearanceSpacer: View {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
             Color.clear.frame(height: Theme.Layout.scrollBreathingMargin)
+        } else if ReadccHostBridge.isEmbedded {
+            let metrics = Theme.Layout.FloatingChrome.self
+            let tabHeight = (embeddedTabBarMetrics ?? ReadccTabBarMetrics()).height
+            Color.clear.frame(height: metrics.miniPlayerHeight + metrics.barSpacing
+                              + tabHeight + metrics.bottomMargin + metrics.extraPadding)
         } else if #available(iOS 26.0, *) {
             // On iOS 26+, the native TabView bottom accessory automatically
             // expands the content safe area insets; keep only the breathing margin.

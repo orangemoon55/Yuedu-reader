@@ -398,10 +398,22 @@ struct ContentView: View {
 
     private func closeMediaHub(_ isLibrary: Bool) {
         mediaActionCoordinator.perform {
+            // Ignore a presentation's late second dismissal after the dedicated
+            // bookshelf action has already cleared its originating route.
+            guard (isLibrary ? libraryMediaSelection : homeMediaSelection) != nil else { return }
             // Menu choices remain in-memory and closing only clears this root's route.
             if isLibrary { libraryMediaSelection = nil }
             else { homeMediaSelection = nil }
             selectedRootTab = isLibrary ? .bookshelf : .explore
+        }
+    }
+
+    /// Explicit music gesture route, distinct from generic dismissal/disclaimer.
+    private func returnMusicToBookshelf() {
+        mediaActionCoordinator.perform {
+            homeMediaSelection = nil
+            libraryMediaSelection = nil
+            selectedRootTab = .bookshelf
         }
     }
 
@@ -478,14 +490,20 @@ struct ContentView: View {
                 root: HomeView(),
                 route: MediaHubSelection.route(libraryMediaSelection, isLibrary: true),
                 isLibrary: true,
-                onClose: { closeMediaHub(true) }
+                onClose: { closeMediaHub(true) },
+                onReturnToBookshelf: returnMusicToBookshelf,
+                tabBarIconSize: floatingRootTabIconSize,
+                tabBarHidesLabels: shouldHideRootTabLabels
             )
         case .explore:
             RootTabMediaNavigationHost(
                 root: BrowserView(browser: browser),
                 route: MediaHubSelection.route(homeMediaSelection, isLibrary: false),
                 isLibrary: false,
-                onClose: { closeMediaHub(false) }
+                onClose: { closeMediaHub(false) },
+                onReturnToBookshelf: returnMusicToBookshelf,
+                tabBarIconSize: floatingRootTabIconSize,
+                tabBarHidesLabels: shouldHideRootTabLabels
             )
         case .library:
             LibraryTabRoot(browser: browser)
@@ -1088,6 +1106,9 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
     let route: MediaHubRoute?
     let isLibrary: Bool
     let onClose: () -> Void
+    let onReturnToBookshelf: () -> Void
+    let tabBarIconSize: CGFloat
+    let tabBarHidesLabels: Bool
 
     /// Coda has its own TabView. Present it outside Readcc's TabView controller,
     /// otherwise both the host's floating/system bars and Coda's bar compete for
@@ -1111,6 +1132,9 @@ private struct RootTabMediaNavigationHost<Root: View>: View {
                     kind: route.kind,
                     isLibrary: isLibrary,
                     onClose: onClose,
+                    onReturnToBookshelf: onReturnToBookshelf,
+                    tabBarIconSize: tabBarIconSize,
+                    tabBarHidesLabels: tabBarHidesLabels,
                     embedsNavigationStack: false
                 )
                 .id(route.id)

@@ -147,6 +147,7 @@ final class HomeSongSuggestionsModel: ObservableObject {
 
 struct HomeSongRecommendationLists: View {
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
     private let player = PlayerService.shared
     @Environment(\.openLogin) private var openLogin
     @Environment(\.openDestination) private var openDestination
@@ -159,7 +160,10 @@ struct HomeSongRecommendationLists: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
-            likedList
+            if CodaEmbeddedUIPolicy.showsLikedRecommendations(
+                loggedIn: account.isLoggedIn, showLoginRequired: settings.showLoginRequiredRecommendations) {
+                likedList
+            }
             songList
         }
     }

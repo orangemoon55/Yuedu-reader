@@ -12,6 +12,7 @@ struct HomeRecommendationPageView: View {
     @ObservedObject private var suggestions = HomeSongSuggestionsModel.shared
     @ObservedObject private var discovery = HomeDiscoveryModel.shared
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
     @Environment(\.openLogin) private var openLogin
 
     private var title: String {
@@ -52,7 +53,9 @@ struct HomeRecommendationPageView: View {
         ScenePreservingScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.section) {
                 if !account.isLoggedIn, requiresLogin {
-                    HomeLoginPrompt(message: String(localized: "此内容为个性化推荐，需登录后查看"), minHeight: 240)
+                    if settings.showLoginRequiredRecommendations {
+                        HomeLoginPrompt(message: String(localized: "此内容为个性化推荐，需登录后查看"), minHeight: 240)
+                    }
                 } else if let error {
                     ErrorStateView(message: error) { Task { await refresh(force: true) } }
                 }

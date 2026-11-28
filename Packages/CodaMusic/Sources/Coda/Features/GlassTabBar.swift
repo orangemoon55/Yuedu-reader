@@ -63,13 +63,26 @@ struct GlassTabBar: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.returnToBookshelf) private var returnToBookshelf
+    @Environment(\.readccTabBarMetrics) private var embeddedMetrics
+    @GestureState private var contactActive = false
+    @State private var interaction = CodaTabBarInteraction()
+    @State private var holdTask: Task<Void, Never>?
+
+    private var hostMetrics: ReadccTabBarMetrics? {
+        ReadccHostBridge.isEmbedded ? (embeddedMetrics ?? ReadccTabBarMetrics()) : nil
+    }
+    private var canReturn: Bool {
+        CodaEmbeddedUIPolicy.canReturnToBookshelf(embedded: ReadccHostBridge.isEmbedded,
+                                                recommendation: true, hasAction: returnToBookshelf != nil)
+    }
 
     /// Finger x (in content space) while actively dragging the pill; nil at rest.
     @State private var dragX: CGFloat?
     @State private var isDragging = false
 
     private let innerInset: CGFloat = 4
-    private let contentHeight: CGFloat = 56
+    private var contentHeight: CGFloat { hostMetrics?.contentHeight ?? 56 }
     private var settle: Animation {
         reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.82)
     }
@@ -90,20 +103,20 @@ struct GlassTabBar: View {
                     .position(x: pillX, y: geo.size.height / 2)
 
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    Button {
-                        if selection == item.tab { onReselect(item.tab) }
-                        else { withAnimation(settle) { selection = item.tab } }
-                    } label: {
-                        itemLabel(item)
-                    }
-                    .buttonStyle(.plain)
+                    tabControl(item)
+                    .accessibilityIdentifier("codaTab.\(item.tab)")
                     .accessibilityAddTraits(selection == item.tab ? .isSelected : [])
                     .frame(width: cellW, height: contentHeight)
                     .position(x: cellW * (CGFloat(index) + 0.5), y: contentHeight / 2)
                 }
             }
             .contentShape(Rectangle())
-            .simultaneousGesture(dragGesture(cellW: cellW, count: count))
+            .gesture(contactGesture(cellW: cellW, count: count, bounds: geo.size),
+                     including: ReadccHostBridge.isEmbedded ? .all : .none)
+            .simultaneousGesture(standaloneDragGesture(cellW: cellW, count: count),
+                                 including: ReadccHostBridge.isEmbedded ? .none : .all)
+            .onChange(of: contactActive) { active in if !active { cancelContact() } }
+            .onDisappear { cancelContact() }
         }
         .frame(height: contentHeight)
         .padding(innerInset)
@@ -111,14 +124,53 @@ struct GlassTabBar: View {
         .modifier(LegacyTabSurface())
     }
 
+    @ViewBuilder
+    private func tabControl(_ item: Item) -> some View {
+        if ReadccHostBridge.isEmbedded {
+            itemLabel(item)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(item.title))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { activate(item.tab) }
+                .modifier(RecommendationReturnAccessibility(
+                    enabled: item.tab == .home && canReturn,
+                    action: { returnToBookshelf?() }))
+        } else {
+            Button { activate(item.tab) } label: { itemLabel(item) }
+                .buttonStyle(.plain)
+        }
+    }
+
+    private func standaloneDragGesture(cellW: CGFloat, count: Int) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height), !items.isEmpty else { return }
+                if !isDragging && abs(value.translation.width) < 8 { return }
+                isDragging = true
+                dragX = value.location.x
+                let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
+                if tab != selection { selection = tab }
+            }
+            .onEnded { value in
+                guard isDragging, !items.isEmpty else { return }
+                let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
+                withAnimation(settle) { selection = tab; dragX = nil; isDragging = false }
+            }
+    }
+
     private func itemLabel(_ item: GlassTabBar.Item) -> some View {
         let isSelected = selection == item.tab
-        return VStack(spacing: 3) {
+        return VStack(spacing: hostMetrics == nil ? 3 : 2) {
             Image(systemName: item.icon)
-                .font(.system(size: 23, weight: .semibold))
+                .font(.system(size: hostMetrics?.iconSize ?? 23, weight: .semibold))
                 .symbolVariant(.fill)
-            Text(item.title)
-                .font(.system(size: 10, weight: .semibold))
+            if hostMetrics?.showsLabels != false {
+                Text(item.title)
+                    .font(hostMetrics == nil ? .system(size: 10, weight: .semibold) : .caption.weight(.semibold))
+                    .lineLimit(hostMetrics?.accessibilityText == true ? 2 : 1)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .foregroundStyle(isSelected
                          ? AnyShapeStyle(Theme.accent)
@@ -139,23 +191,69 @@ struct GlassTabBar: View {
         min(max(Int(x / cellW), 0), count - 1)
     }
 
-    private func dragGesture(cellW: CGFloat, count: Int) -> some Gesture {
-        DragGesture(minimumDistance: 8)
+    private func activate(_ tab: IOSTab) {
+        if selection == tab { onReselect(tab) }
+        else { withAnimation(settle) { selection = tab } }
+    }
+
+    private func cancelContact() {
+        holdTask?.cancel(); holdTask = nil
+        interaction.cancel()
+        dragX = nil; isDragging = false
+    }
+
+    private func contactGesture(cellW: CGFloat, count: Int, bounds: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .updating($contactActive) { _, active, _ in active = true }
             .onChanged { value in
-                // Wait for a clear horizontal intent before "lifting" the pill,
-                // so a plain tap slides rather than teleporting to the finger.
-                guard abs(value.translation.width) > abs(value.translation.height), !items.isEmpty else { return }
-                if !isDragging && abs(value.translation.width) < 8 { return }
+                guard !items.isEmpty else { return }
+                if interaction.startIndex == nil {
+                    let start = index(for: value.startLocation.x, cellW: cellW, count: count)
+                    interaction.begin(index: start)
+                    if items[start].tab == .home && canReturn {
+                        holdTask?.cancel()
+                        holdTask = Task { @MainActor in
+                            do { try await Task.sleep(nanoseconds: 700_000_000) }
+                            catch { return }
+                            guard !Task.isCancelled, interaction.recognizeHold(allowed: canReturn) else { return }
+                            dragX = nil; isDragging = false
+                            returnToBookshelf?()
+                        }
+                    }
+                }
+                interaction.move(horizontal: value.translation.width, vertical: value.translation.height)
+                if interaction.moved { holdTask?.cancel(); holdTask = nil }
+                guard interaction.isDragging, !interaction.holdRecognized else { return }
                 isDragging = true
                 dragX = value.location.x
                 let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
-                if tab != selection { selection = tab }   // live switch, pill tracks finger
+                if tab != selection { selection = tab }
             }
             .onEnded { value in
-                guard isDragging, !items.isEmpty else { return }
-                let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
-                withAnimation(settle) { selection = tab; dragX = nil; isDragging = false }
+                guard !items.isEmpty else { cancelContact(); return }
+                interaction.move(horizontal: value.translation.width, vertical: value.translation.height)
+                let end = index(for: value.location.x, cellW: cellW, count: count)
+                let inside = value.location.x >= 0 && value.location.x <= bounds.width
+                    && value.location.y >= 0 && value.location.y <= bounds.height
+                let outcome = interaction.finish(index: end, inside: inside)
+                cancelContact()
+                switch outcome {
+                case .tap(let index): activate(items[index].tab)
+                case .drag(let index): withAnimation(settle) { selection = items[index].tab }
+                case .none: break
+                }
             }
+    }
+}
+
+private struct RecommendationReturnAccessibility: ViewModifier {
+    let enabled: Bool
+    let action: () -> Void
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.accessibilityHint("长按返回书架")
+                .accessibilityAction(named: Text("返回书架"), action)
+        } else { content }
     }
 }
 

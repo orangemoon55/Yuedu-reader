@@ -23,6 +23,15 @@ final class MusicAccountManager: ObservableObject {
     static let shared = MusicAccountManager()
     @Published private(set) var accounts: [MusicAccount] = []
     @Published private(set) var isSwitching = false
+    // NetEase (including guest) logout does not rotate the provider ticket.
+    // Invalidate outstanding search activations even when no saved ID exists.
+    @Published private(set) var searchActivationGeneration = UUID()
+    let searchSessionLifecycle = CodaSearchSessionLifecycle()
+    var searchSessionIdentity: CodaSearchSessionIdentity {
+        CodaSearchSessionIdentity(revision: AccountStore.shared.sessionRevision,
+            provider: AccountStore.shared.provider, ticket: MusicProviderContext.shared.ticket,
+            authenticationKey: MusicProviderContext.shared.authenticationKey)
+    }
     @Published private(set) var refreshingMembershipIDs: Set<String> = []
     @Published private(set) var failedMembershipIDs: Set<String> = []
     @Published private var validityResults: [String: (credentials: [String: String], status: MusicAccountValidity)] = [:]
@@ -230,13 +239,57 @@ final class MusicAccountManager: ObservableObject {
         let title = item.membership?.membership.rawValue ?? MusicMembership.unknown.rawValue
         return failedMembershipIDs.contains(item.id) && item.membership != nil ? title + "（待更新）" : title
     }
-    func selectProvider(_ provider: MusicProvider) async throws {
+    /// Search uses the normal lifecycle, but keeps the receipt from its commit,
+    /// not a newly sampled ticket after asynchronous account bootstrap finishes.
+    func selectProviderForSearch(_ provider: MusicProvider, request: UUID) async throws -> UUID {
+        guard !isSwitching else { throw MusicProviderError.unsupported }
+        try Task.checkCancellation()
+        let generation = searchActivationGeneration
+        let origin = searchSessionIdentity
+        var revisionObservation: AnyCancellable?
+        defer { revisionObservation?.cancel() }
+        var committedTicket: UUID?
+        var committedAuthenticationKey: String?
+        try await selectProvider(provider, activationCommitted: {
+            let ticket = MusicProviderContext.shared.ticket
+            let authenticationKey = MusicProviderContext.shared.authenticationKey
+            committedTicket = ticket
+            committedAuthenticationKey = authenticationKey
+            revisionObservation = self.searchSessionLifecycle.observeNextCommit(
+                request: request, origin: origin, provider: provider,
+                ticket: ticket, authenticationKey: authenticationKey,
+                revisions: AccountStore.shared.$sessionRevision,
+                snapshot: { revision in
+                    CodaSearchSessionIdentity(revision: revision,
+                        provider: AccountStore.shared.provider,
+                        ticket: MusicProviderContext.shared.ticket,
+                        authenticationKey: MusicProviderContext.shared.authenticationKey)
+                })
+        })
+        try Task.checkCancellation()
+        guard let committedTicket, !isSwitching, searchActivationGeneration == generation,
+              searchSessionLifecycle.owns(request, session: searchSessionIdentity),
+              AccountStore.shared.provider == provider,
+              MusicProviderContext.shared.current == provider,
+              CodaSearchInteractionPolicy.activationReceiptIsCurrent(
+                ticket: committedTicket, authenticationKey: committedAuthenticationKey,
+                currentTicket: MusicProviderContext.shared.ticket,
+                currentAuthenticationKey: MusicProviderContext.shared.authenticationKey) else {
+            throw CancellationError()
+        }
+        return committedTicket
+    }
+
+    func selectProvider(_ provider: MusicProvider, activationCommitted: (() -> Void)? = nil) async throws {
         guard !isSwitching, provider != AccountStore.shared.provider else { return }
-        if let saved = accounts.last(where: { $0.provider == provider }) { try await select(saved); return }
+        if let saved = accounts.last(where: { $0.provider == provider }) {
+            try await select(saved, activationCommitted: activationCommitted)
+            return
+        }
         try rememberCurrent()
         isSwitching = true
         defer { isSwitching = false }
-        await activate(provider)
+        await activate(provider, activationCommitted: activationCommitted)
     }
     /// Whether the active platform is already being browsed without an account.
     func isBrowsingAsGuest(_ provider: MusicProvider) -> Bool {
@@ -289,7 +342,7 @@ final class MusicAccountManager: ObservableObject {
         try persist(accounts + [item])
     }
 
-    func select(_ item: MusicAccount) async throws {
+    func select(_ item: MusicAccount, activationCommitted: (() -> Void)? = nil) async throws {
         guard !isSwitching, item.id != currentID else { return }
         try rememberCurrent()
         isSwitching = true
@@ -301,7 +354,7 @@ final class MusicAccountManager: ObservableObject {
         case .qishui: try QishuiMusicAPI.shared.restore(item.credentials)
         case .kugou: KugouMusicAuth.shared.restore(item.credentials)
         }
-        await activate(item.provider)
+        await activate(item.provider, activationCommitted: activationCommitted)
     }
     func saveAndActivate(provider: MusicProvider, credentials: [String: String], nickname: String) async throws {
         guard provider != .netease, !isSwitching else { throw MusicProviderError.unsupported }
@@ -378,12 +431,15 @@ final class MusicAccountManager: ObservableObject {
         currentID == item.id ? "已登录\(item.nickname)" : "已添加\(item.nickname)，可在账号列表中切换"
     }
 
-    private func activate(_ provider: MusicProvider) async {
+    private func activate(_ provider: MusicProvider, activationCommitted: (() -> Void)? = nil) async {
         PlayerService.shared.resetForMusicAccountChange()
         MusicProviderContext.shared.activate(provider)
+        activationCommitted?()
         await AccountStore.shared.changeProvider(provider)
     }
     func forgetCurrent() throws {
+        searchSessionLifecycle.invalidate()
+        searchActivationGeneration = UUID()
         guard let id = currentID else { return }
         try persist(accounts.filter { $0.id != id })
     }

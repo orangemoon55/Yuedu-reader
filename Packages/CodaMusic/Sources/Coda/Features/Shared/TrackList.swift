@@ -64,9 +64,11 @@ struct TrackRow: View {
     var showsDuration = true
     var showsTrailingActions = true
     var showsAlbumSubtitle = false
+    var allowsProviderActions = true
     var playability: TrackPlayability = .playable
     /// Extra trailing text (e.g. play count for recents).
     var trailingText: String?
+    var sourceBadgeText: String?
     /// Set when the row lives inside a user's own playlist (enables 删除).
     var removableFromPlaylistID: Int?
     var onRemoved: (() -> Void)?
@@ -95,8 +97,10 @@ struct TrackRow: View {
 
     init(track: Track, index: Int, style: TrackRowStyle = .full, playability: TrackPlayability = .playable,
          highlightsTopRanks: Bool = false, showsDuration: Bool = true, showsTrailingActions: Bool = true, showsLikeButton: Bool = true, showsAlbumSubtitle: Bool = false,
+         allowsProviderActions: Bool = true,
          chartRank: Int? = nil, previousChartRank: Int? = nil, chartGrowthRatio: Double? = nil,
-         trailingText: String? = nil, removableFromPlaylistID: Int? = nil, onRemoved: (() -> Void)? = nil,
+         trailingText: String? = nil, sourceBadgeText: String? = nil,
+         removableFromPlaylistID: Int? = nil, onRemoved: (() -> Void)? = nil,
          onRecommendationReduced: ((Track) -> Void)? = nil, onDeleteFromCloud: ((Track) -> Void)? = nil, onPlay: @escaping () -> Void) {
         self.chartGrowthRatio = chartGrowthRatio
         self.chartRank = chartRank
@@ -110,8 +114,10 @@ struct TrackRow: View {
         self.highlightsTopRanks = highlightsTopRanks
         self.showsLikeButton = showsLikeButton
         self.showsAlbumSubtitle = showsAlbumSubtitle
+        self.allowsProviderActions = allowsProviderActions
         self.playability = playability
         self.trailingText = trailingText
+        self.sourceBadgeText = sourceBadgeText
         self.removableFromPlaylistID = removableFromPlaylistID
         self.onRemoved = onRemoved
         self.onRecommendationReduced = onRecommendationReduced
@@ -170,7 +176,7 @@ struct TrackRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if style == .full && !isCompact {
-                if track.album.id != 0, !track.album.name.isEmpty {
+                if allowsProviderActions, track.album.id != 0, !track.album.name.isEmpty {
                     Button {
                         openDestination(.album(track.album.id))
                     } label: {
@@ -205,6 +211,15 @@ struct TrackRow: View {
                     .font(Theme.Typography.caption.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
+            if let sourceBadgeText {
+                Text(sourceBadgeText)
+                    .font(Theme.Typography.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(.quaternary.opacity(0.45), in: Capsule())
+                    .accessibilityIdentifier("codaSearch.trackSourceBadge")
+            }
 
             if showsTrailingActions {
                 likeAndDuration
@@ -231,7 +246,13 @@ struct TrackRow: View {
             playSelectedTrack()
         }
         #endif
-        .contextMenu { contextMenuItems }
+        .contextMenu {
+            if allowsProviderActions {
+                contextMenuItems
+            } else {
+                Button("播放") { onPlay() }
+            }
+        }
         #if os(iOS)
         .sheet(item: $addToPlaylistTrack) { selectedTrack in
             AddToPlaylistSheet(track: selectedTrack)
@@ -260,7 +281,7 @@ struct TrackRow: View {
         .disabled(!isPlayable)
         .accessibilityLabel("播放：\(track.name)")
         #else
-        if track.album.id != 0, !track.album.name.isEmpty {
+        if allowsProviderActions, track.album.id != 0, !track.album.name.isEmpty {
             Button {
                 openDestination(.album(track.album.id))
             } label: {
@@ -299,7 +320,7 @@ struct TrackRow: View {
             .lineLimit(1)
         #else
         let artists = track.artists.filter { $0.id != 0 && !$0.name.isEmpty }
-        if artists.isEmpty {
+        if !allowsProviderActions || artists.isEmpty {
             Text(track.artistNames)
                 .font(Theme.Typography.secondary)
                 .foregroundStyle(.secondary)
@@ -369,16 +390,16 @@ struct TrackRow: View {
 
     private var likeAndDuration: some View {
         HStack(spacing: 8) {
-            #if os(macOS)
-            // A saved track already keeps the button visible through its own state.
-            TrackDownloadButton(track: track, isVisible: isHovering)
-                // Keep download confirmation and in-flight button state bound
-                // to their original song without replacing the whole row.
-                .id(track.id)
-            #else
-            TrackDownloadButton(track: track, isVisible: false)
-            #endif
-            if showsLikeButton && account.provider.supportsFavoriteChanges {
+            if allowsProviderActions {
+                #if os(macOS)
+                // A saved track already keeps the button visible through its own state.
+                TrackDownloadButton(track: track, isVisible: isHovering)
+                    .id(track.id)
+                #else
+                TrackDownloadButton(track: track, isVisible: false)
+                #endif
+            }
+            if allowsProviderActions && showsLikeButton && account.provider.supportsFavoriteChanges {
                 let liked = account.isLiked(track.id)
                 PlayerHeartIcon(liked: liked, size: 18)
                     .frame(width: 24, height: 24)
@@ -764,6 +785,9 @@ struct TrackListView: View {
     /// Defaults to the shared iPad library style, including horizontal song shelves.
     var showsRowSeparators: Bool? = nil
     var source: PlaySource = .none
+    var allowsProviderActions = true
+    var onTrackPlay: ((Track) -> Void)?
+    var sourceBadgeText: String?
     /// The place this list belongs to, for the Dock menu's recents.
     var context: PlayContext?
     var removableFromPlaylistID: Int?
@@ -842,7 +866,9 @@ struct TrackListView: View {
             style: style,
             showsLikeButton: showsLikeButton,
             showsAlbumSubtitle: showsAlbumSubtitle,
+            allowsProviderActions: allowsProviderActions,
             trailingText: trailingText?(track),
+            sourceBadgeText: sourceBadgeText,
             removableFromPlaylistID: removableFromPlaylistID,
             onRemoved: { onRemoved?(track) },
             onRecommendationReduced: recommendationContext == nil || recommendationHandler == nil
@@ -850,8 +876,12 @@ struct TrackListView: View {
                 : { replacement in recommendationHandler?(track, replacement) },
             onDeleteFromCloud: onDeleteFromCloud
         ) {
-            player.play(tracks: tracks, source: source, startAt: track,
-                        context: context)
+            if let onTrackPlay {
+                onTrackPlay(track)
+            } else {
+                player.play(tracks: tracks, source: source, startAt: track,
+                            context: context)
+            }
         }
         return VStack(spacing: 0) {
             if let selection {

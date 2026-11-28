@@ -108,6 +108,7 @@ final class SettingsManager: ObservableObject {
         static let outputDevice = "settings.outputDeviceUID"
         #endif
         static let desktopLyricsCentered = "settings.desktopLyricsCentered"
+        static let showLoginRequiredRecommendations = "settings.showLoginRequiredRecommendations"
         static let mainWindowAmbientBackground = "settings.showMainWindowAmbientBackground"
         static let mainWindowAmbientBackgroundIntensity = "settings.mainWindowAmbientBackgroundIntensity"
         static let enableAudioCache = "settings.enableAudioCache"
@@ -258,6 +259,12 @@ final class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(desktopLyricsCentered, forKey: Keys.desktopLyricsCentered) }
     }
 
+    /// Hide only login-gated recommendation cards while browsing as a guest.
+    /// Logged-in recommendations remain visible regardless of this preference.
+    @Published var showLoginRequiredRecommendations: Bool {
+        didSet { UserDefaults.standard.set(showLoginRequiredRecommendations, forKey: Keys.showLoginRequiredRecommendations) }
+    }
+
     static let mainWindowAmbientBackgroundIntensityRange = 0.5...1.5
 
     #if os(macOS)
@@ -317,6 +324,7 @@ final class SettingsManager: ObservableObject {
         outputDeviceUID = defaults.string(forKey: Keys.outputDevice) ?? ""
         #endif
         desktopLyricsCentered = defaults.object(forKey: Keys.desktopLyricsCentered) as? Bool ?? false
+        showLoginRequiredRecommendations = defaults.object(forKey: Keys.showLoginRequiredRecommendations) as? Bool ?? true
         defaults.set(false, forKey: Keys.mainWindowAmbientBackground)
         let storedAmbientBackgroundIntensity = defaults.object(
             forKey: Keys.mainWindowAmbientBackgroundIntensity

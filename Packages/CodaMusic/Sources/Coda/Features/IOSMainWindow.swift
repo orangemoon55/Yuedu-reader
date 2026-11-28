@@ -800,6 +800,7 @@ public struct IOSMainWindow: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var player = PlayerService.shared
     @StateObject private var account = AccountStore.shared
+    @ObservedObject private var searchLifecycle = MusicAccountManager.shared.searchSessionLifecycle
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var toasts = ToastCenter.shared
     @StateObject private var updater = IOSUpdater.shared
@@ -825,15 +826,21 @@ public struct IOSMainWindow: View {
     private let initialDestination: ReadccHostBridge.InitialDestination
     private let onDeclineDisclaimer: (() -> Void)?
     private let onReturnToReading: (() -> Void)?
+    private let onReturnToBookshelf: (() -> Void)?
+    private let embeddedTabBarMetrics: ReadccTabBarMetrics?
 
     /// Default construction remains the upstream home window. Only initial state is set:
     /// player destinations, independent tab paths and deferred dismiss navigation stay intact.
     public init(initialDestination: ReadccHostBridge.InitialDestination = .home,
                 onDeclineDisclaimer: (() -> Void)? = nil,
-                onReturnToReading: (() -> Void)? = nil) {
+                onReturnToReading: (() -> Void)? = nil,
+                onReturnToBookshelf: (() -> Void)? = nil,
+                embeddedTabBarMetrics: ReadccTabBarMetrics? = nil) {
         self.initialDestination = initialDestination
         self.onDeclineDisclaimer = onDeclineDisclaimer
         self.onReturnToReading = onReturnToReading
+        self.onReturnToBookshelf = onReturnToBookshelf
+        self.embeddedTabBarMetrics = embeddedTabBarMetrics
         _selectedTab = State(initialValue: initialDestination == .library ? .library : .home)
     }
 
@@ -845,7 +852,10 @@ public struct IOSMainWindow: View {
             .environmentObject(player)
             .environmentObject(account)
         .onChange(of: account.sessionRevision) { _ in
-            homePath = []; searchPath = []; libraryPath = []; iPadPath = []
+            homePath = []; libraryPath = []
+            if !searchLifecycle.preservesRoute(for: MusicAccountManager.shared.searchSessionIdentity) {
+                searchPath = []; iPadPath = []
+            }
         }
             .environmentObject(settings)
             .environmentObject(toasts)
@@ -855,6 +865,8 @@ public struct IOSMainWindow: View {
             .environment(\.openLogin, { showLogin = true })
             .environment(\.openDestination, openDestination)
             .environment(\.returnToReadcc, ReadccHostBridge.isEmbedded ? onReturnToReading : nil)
+            .environment(\.returnToBookshelf, ReadccHostBridge.isEmbedded ? onReturnToBookshelf : nil)
+            .environment(\.readccTabBarMetrics, ReadccHostBridge.isEmbedded ? embeddedTabBarMetrics : nil)
             .modifier(PlaybackLifecycle())
             .task {
                 // Prepare independently of authentication/download setup and page transitions.
@@ -1024,7 +1036,8 @@ public struct IOSMainWindow: View {
     @ViewBuilder
     private var tabInterface: some View {
         #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *),
+           CodaEmbeddedUIPolicy.usesNativePhoneTabs(embedded: ReadccHostBridge.isEmbedded, nativeAvailable: true) {
             iOS26TabInterface
         } else {
             customTabInterface
@@ -1054,7 +1067,8 @@ public struct IOSMainWindow: View {
             // A regular tab: the search field lives in the page, not the bar,
             // and the 精选 playlist shelves sit under it.
             Tab("探索", systemImage: "magnifyingglass", value: .search) {
-                tabStack(.search) { SearchView(query: "").id(account.sessionRevision) }
+                tabStack(.search) { SearchView(query: "", isActive: selectedTab == .search)
+                    .id(searchLifecycle.presentationID(for: MusicAccountManager.shared.searchSessionIdentity)) }
             }
             Tab("我的", systemImage: "person.crop.circle", value: .library) {
                 tabStack(.library) { LibraryView(showLogin: $showLogin) }
@@ -1067,7 +1081,8 @@ public struct IOSMainWindow: View {
         ZStack(alignment: .bottom) {
             ZStack {
                 page(.home) { tabStack(.home) { HomeView() } }
-                page(.search) { tabStack(.search) { SearchView(query: "").id(account.sessionRevision) } }
+                page(.search) { tabStack(.search) { SearchView(query: "", isActive: selectedTab == .search)
+                    .id(searchLifecycle.presentationID(for: MusicAccountManager.shared.searchSessionIdentity)) } }
                 page(.library) { tabStack(.library) { LibraryView(showLogin: $showLogin) } }
             }
 
@@ -1084,7 +1099,9 @@ public struct IOSMainWindow: View {
                 .nowPlayingTransitionSource(in: nowPlayingTransition)
 
             GlassTabBar(items: IOSTab.barItems, selection: $selectedTab, onReselect: popToRoot)
-                .frame(height: Theme.Layout.FloatingChrome.tabBarHeight)
+                .frame(height: ReadccHostBridge.isEmbedded
+                       ? (embeddedTabBarMetrics ?? ReadccTabBarMetrics()).height
+                       : Theme.Layout.FloatingChrome.tabBarHeight)
         }
         .padding(.horizontal, Theme.Layout.FloatingChrome.horizontalMargin)
     }

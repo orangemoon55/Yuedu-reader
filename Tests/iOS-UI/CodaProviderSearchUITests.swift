@@ -12,7 +12,7 @@ final class CodaProviderSearchUITests: XCTestCase {
     ]
 
     @MainActor
-    func testFixedNativeHeaderAndFourPlatformChips() throws {
+    func testFixedNativeHeaderAndCompactPlatformMenu() throws {
         let app = try launchMusicSearch()
         defer { app.terminate() }
         let field = app.textFields["codaSearch.keyword"].firstMatch
@@ -22,15 +22,15 @@ final class CodaProviderSearchUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["搜索"].exists, app.debugDescription)
         XCTAssertTrue(app.buttons["codaSearch.settings"].isHittable)
         XCTAssertTrue(element("codaSearch.category", in: app).exists)
-        XCTAssertTrue(app.buttons["codaSearch.scope.all"].exists)
+        XCTAssertTrue(app.buttons["codaSearch.scopeMenu"].exists)
         for platform in platforms {
-            revealScope(platform.id, in: app)
-            let chip = app.buttons["codaSearch.scope.\(platform.id)"].firstMatch
-            XCTAssertEqual(chip.label, platform.title)
+            app.buttons["codaSearch.scopeMenu"].tap()
+            let option = app.buttons["codaSearch.scope.\(platform.id)"].firstMatch
+            XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(option.label.contains(platform.title))
+            option.tap()
         }
-        revealScope("all", in: app)
-        app.buttons["codaSearch.scope.all"].tap()
-        XCTAssertEqual(app.buttons["codaSearch.scope.all"].value as? String, "已选择")
+        selectScope("all", in: app)
         XCTAssertTrue(element("codaSearch.scopeExplanation", in: app).label.contains("仅搜索单曲"))
         XCTAssertFalse(results.descendants(matching: .any)["codaSearch.keyword"].exists,
                        "Keyword field must be outside the scrolling result body")
@@ -48,7 +48,9 @@ final class CodaProviderSearchUITests: XCTestCase {
         XCTAssertEqual(field.frame.height, before.height, accuracy: 2)
         XCTAssertTrue(header.isHittable)
         XCTAssertTrue(app.buttons["codaSearch.settings"].isHittable)
-        XCTAssertTrue(app.buttons["mediaHub.close"].isHittable)
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            XCTAssertTrue(app.buttons["mediaHub.close"].isHittable)
+        }
         XCTAssertFalse(app.buttons["rootTab.explore"].isHittable,
                        "Reading chrome must not overlap Coda")
         XCTAssertFalse(app.buttons["codaHost.legacySources"].exists)
@@ -63,30 +65,21 @@ final class CodaProviderSearchUITests: XCTestCase {
         field.typeText("Coda local UI fixture\n")
         XCTAssertTrue(element("codaSearch.localFixture", in: app).waitForExistence(timeout: 10))
         for platform in platforms {
-            revealScope(platform.id, in: app)
-            let chip = app.buttons["codaSearch.scope.\(platform.id)"].firstMatch
-            chip.tap()
+            selectScope(platform.id, in: app)
             let label = app.staticTexts["codaSearch.providerLabel.\(platform.id)"].firstMatch
             XCTAssertTrue(label.waitForExistence(timeout: 10), app.debugDescription)
             XCTAssertEqual(label.label, platform.title)
-            XCTAssertEqual(chip.value as? String, "已选择")
             let panel = element("codaSearch.results.\(platform.id)", in: app)
             XCTAssertTrue(panel.exists, app.debugDescription)
-            let switchButton = app.buttons["codaSearch.switchProvider.\(platform.id)"].firstMatch
-            if platform.id == "netease" {
-                XCTAssertFalse(switchButton.exists, "Active fixture source has no switch action")
-                XCTAssertFalse(panel.isHittable, "Fixture rows must never be playable")
-            } else {
-                XCTAssertTrue(switchButton.exists, "Foreign source must offer explicit user switch")
-                XCTAssertFalse(switchButton.isEnabled, "Offline fixture cannot activate a platform")
-                XCTAssertTrue(app.staticTexts["切换到此平台后播放、收藏和查看详情"].exists)
-                XCTAssertFalse(panel.isHittable, "Foreign native row/menu actions must be disabled")
+            XCTAssertFalse(app.buttons["codaSearch.switchProvider.\(platform.id)"].exists,
+                           "Search must not expose a separate manual platform switch")
+            XCTAssertFalse(panel.isHittable, "Local fixture rows must never be playable")
+            let badges = panel.staticTexts.matching(identifier: "codaSearch.trackSourceBadge")
+            XCTAssertGreaterThan(badges.count, 0,
+                                 "Every row must expose its source badge")
+            for index in 0..<badges.count {
+                XCTAssertEqual(badges.element(boundBy: index).label, platform.title)
             }
-            // This text is supplied via MusicTrackPanel's native trailingText
-            // slot on the track rows, not just the scope chip or section title.
-            XCTAssertGreaterThan(panel.staticTexts.matching(
-                NSPredicate(format: "label == %@", platform.title)).count, 0,
-                "Every native result panel must expose its track source")
             for other in platforms where other.id != platform.id {
                 XCTAssertFalse(element("codaSearch.results.\(other.id)", in: app).exists,
                                "Another provider's results leaked into \(platform.id)")
@@ -113,8 +106,7 @@ final class CodaProviderSearchUITests: XCTestCase {
         }
         app.buttons.matching(NSPredicate(format: "label == %@", "单曲")).firstMatch.tap()
 
-        revealScope("netease", in: app)
-        app.buttons["codaSearch.scope.netease"].tap()
+        selectScope("netease", in: app)
         XCTAssertTrue(app.staticTexts["codaSearch.providerLabel.netease"].waitForExistence(timeout: 10))
         category.tap()
         for title in ["歌手", "专辑", "歌单"] {
@@ -126,8 +118,7 @@ final class CodaProviderSearchUITests: XCTestCase {
         // non-song endpoint test.
         app.buttons.matching(NSPredicate(format: "label == %@", "单曲")).firstMatch.tap()
 
-        revealScope("qq", in: app)
-        app.buttons["codaSearch.scope.qq"].tap()
+        selectScope("qq", in: app)
         XCTAssertTrue(app.staticTexts["codaSearch.providerLabel.qq"].waitForExistence(timeout: 10))
         XCTAssertTrue(element("codaSearch.scopeExplanation", in: app).label.contains("当前平台为网易云音乐"),
                       "Scope changes must not mutate the active provider")
@@ -149,7 +140,9 @@ final class CodaProviderSearchUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["关于"].exists, "Embedded settings stay simplified")
         app.buttons["完成"].firstMatch.tap()
         XCTAssertTrue(app.textFields["codaSearch.keyword"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["mediaHub.close"].isHittable)
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            XCTAssertTrue(app.buttons["mediaHub.close"].isHittable)
+        }
     }
 
     @MainActor
@@ -177,7 +170,11 @@ final class CodaProviderSearchUITests: XCTestCase {
         let music = app.buttons["rootTabMedia.explore.music"].firstMatch
         XCTAssertTrue(music.waitForExistence(timeout: 5), app.debugDescription)
         music.tap()
-        XCTAssertTrue(app.buttons["mediaHub.close"].firstMatch.waitForExistence(timeout: 20))
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            XCTAssertTrue(app.buttons["mediaHub.close"].firstMatch.waitForExistence(timeout: 20))
+        }
+        // On iPad the MainWindow sidebar owns navigation; its native 探索 row
+        // selects the detail destination without a phone-only close toolbar item.
         let explore = app.buttons.matching(NSPredicate(format: "label == %@", "探索")).firstMatch
         XCTAssertTrue(explore.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(explore.isHittable)
@@ -193,14 +190,12 @@ final class CodaProviderSearchUITests: XCTestCase {
     }
 
     @MainActor
-    private func revealScope(_ id: String, in app: XCUIApplication) {
-        let chip = app.buttons["codaSearch.scope.\(id)"].firstMatch
-        let strip = element("codaSearch.providerChips", in: app)
-        XCTAssertTrue(chip.waitForExistence(timeout: 5), app.debugDescription)
-        for _ in 0..<5 where !chip.isHittable {
-            if id == "all" || id == "netease" { strip.swipeRight() }
-            else { strip.swipeLeft() }
-        }
-        XCTAssertTrue(chip.isHittable, "Provider chip not reachable: \(id); \(app.debugDescription)")
+    private func selectScope(_ id: String, in app: XCUIApplication) {
+        let menu = app.buttons["codaSearch.scopeMenu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
+        menu.tap()
+        let option = app.buttons["codaSearch.scope.\(id)"].firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
+        option.tap()
     }
 }
